@@ -1,0 +1,5 @@
+{
+  "name": "Aether Crawl",
+  "description": "A retro-styled first-person dungeon crawler with AI-generated textures, enemies, and narrative. Features turn-based combat, inventory management, and a dynamic skill system.",
+  "requestFramePermissions": []
+}
