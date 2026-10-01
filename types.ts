@@ -67,6 +67,22 @@ export interface EnemyVisualDefinition {
 
 export type StatusType = 'POISON' | 'BURN' | 'REGEN' | 'SHIELD' | 'STRENGTH' | 'WEAKNESS' | 'STUN';
 
+export type EnemyRole = 'STRIKER' | 'TANK' | 'CONTROLLER' | 'SUPPORT' | 'SCALER' | 'DISRUPTOR';
+
+export type EnemyIntentType = 'ATTACK' | 'HEAVY_ATTACK' | 'DEFEND' | 'BUFF' | 'DEBUFF' | 'HEAL' | 'SPECIAL' | 'PREPARE' | 'SUMMON';
+
+export interface EnemyIntent {
+    type: EnemyIntentType;
+    label: string;
+    shortLabel: string;
+    icon: string;
+    minDamage?: number;
+    maxDamage?: number;
+    description?: string;
+    abilityId: string;
+    interruptible?: boolean;
+}
+
 export interface StatusEffect {
     id: string;
     type: StatusType;
@@ -123,6 +139,23 @@ export interface Enemy {
     visualId: string;
     isBoss?: boolean;
     statusEffects: StatusEffect[];
+    /** Canonical data ID; instance IDs remain unique for targets and summons. */
+    definitionId?: string;
+    role?: EnemyRole;
+    abilityIds?: string[];
+    intent?: EnemyIntent;
+    abilityCooldowns?: Record<string, number>;
+    previousAbilityId?: string;
+    combatFlags?: string[];
+    phase?: number;
+    /** Temporary damage absorption granted by guard abilities. */
+    guard?: number;
+    stolenScrap?: number;
+    isSummoned?: boolean;
+    summonedBy?: string;
+    canSplit?: boolean;
+    /** Fraction of incoming STUN applications resisted by bosses. */
+    stunResistance?: number;
 }
 
 export type GamePhase = 'MENU' | 'CLASS_SELECT' | 'INIT' | 'EXPLORE' | 'COMBAT' | 'INVENTORY' | 'SKILLS' | 'STATS' | 'CRAFTING' | 'GAME_OVER' | 'LEVEL_UP' | 'OPTIONS';

@@ -18,7 +18,7 @@ Biomes are selected by dungeon level: Stone Dungeon (1–5), Moss (6–10), Cata
 
 - Use the on-screen directional pad to move forward/back or turn left/right.
 - Open Inventory, Skills, Status, and Crafting from the exploration controls.
-- In combat, choose Attack, Defend, Skill, Item, or Flee. Click an enemy sprite to select it.
+- In combat, choose Attack, Defend, Skill, Item, or Flee. Click an enemy sprite to select it. Intent badges show each enemy's next action; damage ranges are approximate and gear, Defend, and guard can lower the hit.
 - Use Save and Exit from the game header. Continue is available from the title screen when a save exists.
 
 ## Requirements and setup
@@ -59,8 +59,8 @@ See [the art direction](docs/ART_DIRECTION.md) for visual rules and [the asset p
 ```text
 App.tsx                    Game flow and screen composition
 components/                Canvas viewport, controls, minimap, and log
-data/                      Enemy data, translations, narrative, and asset registry
-services/                  Dungeon generation, combat progression, saves, and asset loading
+data/                      Enemy and ability data, translations, narrative, and asset registry
+services/                  Dungeon generation, enemy intent and combat resolution, progression, saves, and asset loading
 public/assets/
   environments/            Six biome tile sets and biome light sprites
   enemies/                 Normal enemies, mini-bosses, and biome bosses
@@ -74,9 +74,12 @@ tests/                     Dungeon, gameplay, and asset registry tests
 ## Adding a new enemy
 
 1. Add its transparent PNG to `public/assets/enemies/` using a stable kebab-case name.
-2. Add the gameplay definition and stable `visualId` to `data/enemies.ts`.
+2. Add the gameplay definition, stable `visualId`, design role, and ability IDs to `data/enemies.ts`.
 3. Add the corresponding `visualId` entry and sprite path to `enemyVisuals` in `data/assetRegistry.ts`.
-4. Run `npm test`; the registry test verifies every enemy definition points to an existing production sprite.
+4. Register new abilities in `data/enemyAbilities.ts`; use existing typed effects and status types when possible.
+5. Run `npm test`; registry tests check enemy sprites and referenced ability IDs.
+
+See [the combat system guide](docs/COMBAT_SYSTEM.md) for turn flow, intent rules, pilot behaviors, summons, and extension steps.
 
 ## Adding a new biome
 

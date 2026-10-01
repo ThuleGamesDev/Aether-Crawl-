@@ -1,3 +1,5 @@
+import type { EnemyRole } from '../types';
+
 export interface EnemyDefinition {
   id: string;
   name: string;
@@ -7,17 +9,19 @@ export interface EnemyDefinition {
   minLevel?: number;
   visualId: string;
   category: 'normal' | 'miniBoss' | 'biomeBoss';
+  role?: EnemyRole;
+  abilities?: string[];
 }
 
 export const enemyDefinitions: EnemyDefinition[] = [
-  { id: 'giant_rat', name: 'Giant Rat', hp: 15, damage: 4, xp: 10, minLevel: 1, visualId: 'giant_rat', category: 'normal' },
-  { id: 'acid_spider', name: 'Acid Spider', hp: 25, damage: 6, xp: 15, minLevel: 1, visualId: 'acid_spider', category: 'normal' },
-  { id: 'goblin_scavenger', name: 'Goblin Scavenger', hp: 40, damage: 8, xp: 20, minLevel: 2, visualId: 'goblin_scavenger', category: 'normal' },
-  { id: 'skeleton_warrior', name: 'Skeleton Warrior', hp: 60, damage: 10, xp: 30, minLevel: 3, visualId: 'skeleton_warrior', category: 'normal' },
+  { id: 'giant_rat', name: 'Giant Rat', hp: 15, damage: 4, xp: 10, minLevel: 1, visualId: 'giant_rat', category: 'normal', role: 'STRIKER', abilities: ['rat_bite', 'rat_desperate_bite'] },
+  { id: 'acid_spider', name: 'Acid Spider', hp: 25, damage: 6, xp: 15, minLevel: 1, visualId: 'acid_spider', category: 'normal', role: 'CONTROLLER', abilities: ['spider_venom_fang', 'spider_web'] },
+  { id: 'goblin_scavenger', name: 'Goblin Scavenger', hp: 40, damage: 8, xp: 20, minLevel: 2, visualId: 'goblin_scavenger', category: 'normal', role: 'DISRUPTOR', abilities: ['goblin_stab', 'goblin_scavenge'] },
+  { id: 'skeleton_warrior', name: 'Skeleton Warrior', hp: 60, damage: 10, xp: 30, minLevel: 3, visualId: 'skeleton_warrior', category: 'normal', role: 'TANK', abilities: ['skeleton_slash', 'skeleton_raise_shield'] },
   { id: 'bandit_rogue', name: 'Bandit Rogue', hp: 50, damage: 12, xp: 35, minLevel: 4, visualId: 'bandit_rogue', category: 'normal' },
-  { id: 'orc_brute', name: 'Orc Brute', hp: 100, damage: 15, xp: 50, minLevel: 5, visualId: 'orc_brute', category: 'normal' },
-  { id: 'dark_cultist', name: 'Dark Cultist', hp: 80, damage: 20, xp: 60, minLevel: 6, visualId: 'dark_cultist', category: 'normal' },
-  { id: 'green_slime', name: 'Green Slime', hp: 120, damage: 8, xp: 60, minLevel: 7, visualId: 'green_slime', category: 'normal' },
+  { id: 'orc_brute', name: 'Orc Brute', hp: 100, damage: 15, xp: 50, minLevel: 5, visualId: 'orc_brute', category: 'normal', role: 'SCALER', abilities: ['orc_slam', 'orc_wind_up', 'orc_crushing_blow', 'orc_recover'] },
+  { id: 'dark_cultist', name: 'Dark Cultist', hp: 80, damage: 20, xp: 60, minLevel: 6, visualId: 'dark_cultist', category: 'normal', role: 'SUPPORT', abilities: ['cultist_dark_bolt', 'cultist_dark_chant'] },
+  { id: 'green_slime', name: 'Green Slime', hp: 120, damage: 8, xp: 60, minLevel: 7, visualId: 'green_slime', category: 'normal', role: 'SCALER', abilities: ['slime_bounce', 'slime_unstable', 'slime_split'] },
   { id: 'cave_troll', name: 'Cave Troll', hp: 200, damage: 25, xp: 100, minLevel: 8, visualId: 'cave_troll', category: 'normal' },
   { id: 'fire_elemental', name: 'Fire Elemental', hp: 150, damage: 30, xp: 120, minLevel: 9, visualId: 'fire_elemental', category: 'normal' },
   { id: 'specter', name: 'Specter', hp: 100, damage: 30, xp: 110, minLevel: 10, visualId: 'specter', category: 'normal' },
@@ -32,7 +36,7 @@ export const enemyDefinitions: EnemyDefinition[] = [
   { id: 'cursed_knight', name: 'Cursed Knight', hp: 140, damage: 18, xp: 120, visualId: 'cursed_knight', category: 'miniBoss' },
   { id: 'bandit_king', name: 'Bandit King', hp: 130, damage: 20, xp: 130, visualId: 'bandit_king', category: 'miniBoss' },
   { id: 'mimic_queen', name: 'Mimic Queen', hp: 200, damage: 25, xp: 200, visualId: 'mimic_queen', category: 'miniBoss' },
-  { id: 'the_necromancer', name: 'The Necromancer', hp: 400, damage: 25, xp: 500, visualId: 'the_necromancer', category: 'biomeBoss' },
+  { id: 'the_necromancer', name: 'The Necromancer', hp: 400, damage: 25, xp: 500, visualId: 'the_necromancer', category: 'biomeBoss', role: 'SUPPORT', abilities: ['necromancer_soul_bolt', 'necromancer_summon_dead', 'necromancer_curse', 'necromancer_mass_raise_prepare', 'necromancer_mass_raise', 'necromancer_soul_harvest'] },
   { id: 'moss_golem', name: 'Moss Golem', hp: 600, damage: 30, xp: 800, visualId: 'moss_golem', category: 'biomeBoss' },
   { id: 'lich_lord', name: 'Lich Lord', hp: 800, damage: 40, xp: 1200, visualId: 'lich_lord', category: 'biomeBoss' },
   { id: 'frost_giant', name: 'Frost Giant', hp: 1000, damage: 45, xp: 1600, visualId: 'frost_giant', category: 'biomeBoss' },

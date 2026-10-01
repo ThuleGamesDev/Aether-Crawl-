@@ -12,6 +12,34 @@ export interface StatusTurnResolution {
   defeated: boolean;
 }
 
+const statusIcons: Record<StatusType, string> = {
+  POISON: '🤢', BURN: '🔥', REGEN: '💖', SHIELD: '🛡️', STRENGTH: '💪', WEAKNESS: '😓', STUN: '💫',
+};
+
+let statusSequence = 0;
+
+export const createStatusEffect = (type: StatusType, duration: number, value: number): StatusEffect => ({
+  id: `combat_status_${++statusSequence}`,
+  type,
+  name: type,
+  duration,
+  value,
+  icon: statusIcons[type],
+});
+
+/** Refreshes an existing effect instead of letting identical effects stack without limit. */
+export const upsertStatusEffect = (effects: StatusEffect[] = [], effect: StatusEffect): StatusEffect[] => {
+  const existingIndex = effects.findIndex(current => current.type === effect.type);
+  if (existingIndex === -1) return [...effects, effect];
+  const matches = effects.filter(current => current.type === effect.type);
+  const refreshed = {
+    ...effects[existingIndex],
+    duration: Math.max(effect.duration, ...matches.map(current => current.duration)),
+    value: Math.max(effect.value, ...matches.map(current => current.value)),
+  };
+  return effects.flatMap((current, index) => index === existingIndex ? [refreshed] : current.type === effect.type ? [] : [current]);
+};
+
 export const resolveStatusTurn = (
   hp: number,
   maxHp: number,
@@ -45,8 +73,8 @@ export const calculatePlayerAttack = (character: Character, random: () => number
   return { damage, critical };
 };
 
-export const calculateEnemyAttack = (enemy: Enemy, target: Character): number => {
-  let damage = Math.max(1, enemy.damage - Math.floor(target.stats.dex / 4));
+export const calculateEnemyAttack = (enemy: Enemy, target: Character, multiplier = 1): number => {
+  let damage = Math.max(1, Math.floor(enemy.damage * multiplier) - Math.floor(target.stats.dex / 4));
   const strength = enemy.statusEffects?.find(effect => effect.type === 'STRENGTH');
   if (strength) damage += strength.value;
   const weakness = enemy.statusEffects?.find(effect => effect.type === 'WEAKNESS');
@@ -66,6 +94,19 @@ export const calculateSkillPower = (character: Character, skill: Skill): number 
 };
 
 export const damageEnemies = (enemies: Enemy[], targetId: string, damage: number, multiTarget = false): Enemy[] =>
-  enemies.map(enemy => multiTarget || enemy.id === targetId
-    ? { ...enemy, hp: Math.max(0, enemy.hp - damage) }
-    : enemy);
+  enemies.map(enemy => {
+    if (!(multiTarget || enemy.id === targetId) || enemy.hp <= 0) return enemy;
+    const absorbed = Math.min(enemy.guard ?? 0, damage);
+    return {
+      ...enemy,
+      guard: Math.max(0, (enemy.guard ?? 0) - absorbed),
+      hp: Math.max(0, enemy.hp - Math.max(0, damage - absorbed)),
+    };
+  });
+
+export const estimateEnemyDamageRange = (enemy: Enemy, multiplier = 1): { minDamage: number; maxDamage: number } => {
+  const strength = enemy.statusEffects?.find(effect => effect.type === 'STRENGTH')?.value ?? 0;
+  const weakness = enemy.statusEffects?.find(effect => effect.type === 'WEAKNESS')?.value ?? 0;
+  const raw = Math.max(1, Math.floor(enemy.damage * multiplier) + strength - weakness);
+  return { minDamage: Math.max(1, Math.floor(raw * 0.9)), maxDamage: Math.max(1, Math.ceil(raw * 1.1)) };
+};

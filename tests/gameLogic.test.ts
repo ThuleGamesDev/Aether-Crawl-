@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { XP_THRESHOLD } from '../services/gameLogic';
-import { createBoss, generateLoot, hasSaveGame, loadGame, saveGame } from '../services/gameLogic';
+import { createBoss, createEnemyById, createEnemyEncounter, generateLoot, hasSaveGame, loadGame, saveGame } from '../services/gameLogic';
 import { getBiomeIdForLevel } from '../data/assetRegistry';
 import { SaveData } from '../types';
 
@@ -30,6 +30,18 @@ describe('game progression data', () => {
     expect(createBoss(5, true)).toMatchObject({ name: 'The Necromancer', visualId: 'the_necromancer', isBoss: true });
     expect(createBoss(15, true)).toMatchObject({ name: 'Lich Lord', visualId: 'lich_lord' });
     expect(createBoss(30, true)).toMatchObject({ name: 'Obsidian Lord', visualId: 'obsidian_lord' });
+  });
+
+  it('uses canonical IDs and curated early encounters with initialized combat state', () => {
+    vi.spyOn(Math, 'random').mockReturnValueOnce(0).mockReturnValueOnce(0.99);
+    expect(createEnemyEncounter(1).map(enemy => enemy.definitionId)).toEqual(['giant_rat']);
+    const doubleRat = createEnemyEncounter(2);
+    expect(doubleRat.map(enemy => enemy.definitionId)).toEqual(['giant_rat', 'giant_rat']);
+    expect(doubleRat[0]).toMatchObject({ role: 'STRIKER', canSplit: false, guard: 0 });
+    expect(doubleRat[0]).not.toHaveProperty('intent');
+
+    const summoned = createEnemyById('skeleton_warrior', 0.75, { isSummoned: true, summonedBy: 'boss_1' });
+    expect(summoned).toMatchObject({ definitionId: 'skeleton_warrior', isSummoned: true, summonedBy: 'boss_1', xpReward: 0 });
   });
 
   it('keeps the biome order aligned with the existing boss progression', () => {

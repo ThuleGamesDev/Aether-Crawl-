@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { calculateEnemyAttack, calculatePlayerAttack, calculateSkillPower, damageEnemies, resolveStatusTurn } from '../services/combat';
+import { calculateEnemyAttack, calculatePlayerAttack, calculateSkillPower, createStatusEffect, damageEnemies, resolveStatusTurn, upsertStatusEffect } from '../services/combat';
 import { Character, Enemy, Skill, StatusEffect } from '../types';
 
 const character = {
@@ -44,6 +44,20 @@ describe('combat calculations', () => {
       { id: 'two', hp: 5, maxHp: 5 },
     ] as Enemy[];
     expect(damageEnemies(enemies, 'one', 8, true).map(enemy => enemy.hp)).toEqual([12, 0]);
+  });
+
+  it('absorbs player damage with temporary enemy guard before reducing HP', () => {
+    const guarded = { id: 'guarded', hp: 20, maxHp: 20, guard: 8 } as Enemy;
+    expect(damageEnemies([guarded], 'guarded', 6)[0]).toMatchObject({ hp: 20, guard: 2 });
+    expect(damageEnemies([guarded], 'guarded', 11)[0]).toMatchObject({ hp: 17, guard: 0 });
+  });
+
+  it('refreshes the strongest existing status and removes duplicate copies', () => {
+    const first: StatusEffect = { id: 'weak-a', type: 'WEAKNESS', name: 'Weakness', value: 2, duration: 2, icon: '-' };
+    const duplicate: StatusEffect = { ...first, id: 'weak-b', value: 4, duration: 1 };
+    expect(upsertStatusEffect([first, duplicate], createStatusEffect('WEAKNESS', 3, 3))).toEqual([
+      { ...first, value: 4, duration: 3 },
+    ]);
   });
 
   it('applies turn-start damage and healing, clamps health, and expires effects', () => {
