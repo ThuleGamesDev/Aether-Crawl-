@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { calculateEnemyAttack, calculatePlayerAttack, calculateSkillPower, damageEnemies } from '../services/combat';
-import { Character, Enemy, Skill } from '../types';
+import { calculateEnemyAttack, calculatePlayerAttack, calculateSkillPower, damageEnemies, resolveStatusTurn } from '../services/combat';
+import { Character, Enemy, Skill, StatusEffect } from '../types';
 
 const character = {
   name: 'Vanguard',
@@ -44,5 +44,36 @@ describe('combat calculations', () => {
       { id: 'two', hp: 5, maxHp: 5 },
     ] as Enemy[];
     expect(damageEnemies(enemies, 'one', 8, true).map(enemy => enemy.hp)).toEqual([12, 0]);
+  });
+
+  it('applies turn-start damage and healing, clamps health, and expires effects', () => {
+    const effects: StatusEffect[] = [
+      { id: 'poison', type: 'POISON', name: 'Poison', value: 4, duration: 1, icon: '!' },
+      { id: 'burn', type: 'BURN', name: 'Burn', value: 10, duration: 3, icon: '!' },
+      { id: 'regen', type: 'REGEN', name: 'Regen', value: 5, duration: 2, icon: '+' },
+      { id: 'stun', type: 'STUN', name: 'Stun', value: 0, duration: 1, icon: '*' },
+    ];
+
+    expect(resolveStatusTurn(15, 20, effects)).toEqual({
+      hp: 6,
+      statusEffects: [
+        { ...effects[1], duration: 2 },
+        { ...effects[2], duration: 1 },
+      ],
+      ticks: [
+        { type: 'POISON', value: 4 },
+        { type: 'BURN', value: 10 },
+        { type: 'REGEN', value: 5 },
+      ],
+      defeated: false,
+    });
+
+    expect(resolveStatusTurn(18, 20, [{ ...effects[2], duration: 1 }]).hp).toBe(20);
+  });
+
+  it('marks an enemy defeated when a turn-start status tick reduces its health to zero', () => {
+    expect(resolveStatusTurn(3, 20, [
+      { id: 'poison', type: 'POISON', name: 'Poison', value: 4, duration: 1, icon: '!' },
+    ])).toMatchObject({ hp: 0, defeated: true, statusEffects: [] });
   });
 });
