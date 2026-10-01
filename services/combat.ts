@@ -1,9 +1,36 @@
-import type { Character, Enemy, Skill } from '../types';
+import type { Character, Enemy, Skill, StatusEffect, StatusType } from '../types';
 
 export interface AttackResolution {
   damage: number;
   critical: boolean;
 }
+
+export interface StatusTurnResolution {
+  hp: number;
+  statusEffects: StatusEffect[];
+  ticks: Array<{ type: Extract<StatusType, 'POISON' | 'BURN' | 'REGEN'>; value: number }>;
+  defeated: boolean;
+}
+
+export const resolveStatusTurn = (
+  hp: number,
+  maxHp: number,
+  statusEffects: StatusEffect[] = [],
+): StatusTurnResolution => {
+  let hpChange = 0;
+  const nextEffects: StatusEffect[] = [];
+  const ticks: StatusTurnResolution['ticks'] = [];
+
+  for (const effect of statusEffects) {
+    if (effect.type === 'POISON') { hpChange -= effect.value; ticks.push({ type: effect.type, value: effect.value }); }
+    if (effect.type === 'BURN') { hpChange -= effect.value; ticks.push({ type: effect.type, value: effect.value }); }
+    if (effect.type === 'REGEN') { hpChange += effect.value; ticks.push({ type: effect.type, value: effect.value }); }
+    if (effect.duration > 1) nextEffects.push({ ...effect, duration: effect.duration - 1 });
+  }
+
+  const nextHp = Math.min(maxHp, Math.max(0, hp + hpChange));
+  return { hp: nextHp, statusEffects: nextEffects, ticks, defeated: nextHp <= 0 };
+};
 
 export const calculatePlayerAttack = (character: Character, random: () => number = Math.random): AttackResolution => {
   let damage = character.stats.str + (character.equipment.weapon?.value ?? 0);

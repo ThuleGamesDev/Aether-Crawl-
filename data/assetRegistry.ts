@@ -1,4 +1,5 @@
 import type { BiomeId, BiomeVisualDefinition, EnemyVisualDefinition, VFXType, WeaponVisualType } from '../types';
+import { biomeBossDefinitions, miniBossDefinitions, normalEnemyDefinitions } from './enemies';
 
 const asset = (path: string) => `/assets/${path}`;
 
@@ -161,11 +162,31 @@ export const getDecorationAsset = (biomeId: BiomeId, decorationType: number): st
   return undefined;
 };
 
-export const collectAssetPaths = (): string[] => [...new Set([
-  ...Object.values(biomeVisuals).flatMap(biome => [
+export const getBiomeAssetPaths = (biomeId: BiomeId): string[] => {
+  const biome = biomeVisuals[biomeId];
+  return [
     biome.wall, biome.floor, biome.ceiling, biome.door, biome.exit, biome.torch,
     biome.props.barrel, biome.props.crate, biome.props.bones, ...biome.props.extra,
-  ]),
+  ];
+};
+
+export const getLevelAssetPaths = (level: number): string[] => {
+  const availableEnemies = normalEnemyDefinitions.filter(enemy => (enemy.minLevel ?? 1) <= level);
+  const bossCandidates = level % 5 === 0
+    ? [biomeBossDefinitions[Math.max(0, Math.min(Math.floor(level / 5) - 1, biomeBossDefinitions.length - 1))]]
+    : miniBossDefinitions;
+  const enemies = [...availableEnemies, ...bossCandidates];
+
+  return [...new Set([
+    ...getBiomeAssetPaths(getBiomeIdForLevel(level)),
+    ...enemies.map(enemy => enemyVisuals[enemy.visualId]?.sprite).filter((path): path is string => Boolean(path)),
+    ...Object.values(weaponVisuals), shieldVisual,
+    ...Object.values(vfxVisuals),
+  ])];
+};
+
+export const collectAssetPaths = (): string[] => [...new Set([
+  ...Object.keys(biomeVisuals).flatMap(biomeId => getBiomeAssetPaths(biomeId as BiomeId)),
   ...Object.values(enemyVisuals).map(visual => visual.sprite),
   ...Object.values(weaponVisuals), shieldVisual,
   ...Object.values(vfxVisuals),

@@ -14,6 +14,9 @@ export const CRAFTING_RECIPES = [
     { id: 'gamble_access', name: 'Mystery Relic', cost: 200, type: 'ACCESSORY', desc: 'Random Accessory' }
 ];
 
+let generatedItemSequence = 0;
+const generatedItemId = (prefix: string): string => `${prefix}_${Date.now()}_${++generatedItemSequence}`;
+
 export const generateLoot = (level: number, isBoss = false): Item | null => {
     // 30% chance of no loot for normal enemies
     if (!isBoss && Math.random() > 0.7) return null;
@@ -39,7 +42,7 @@ export const generateLoot = (level: number, isBoss = false): Item | null => {
         else if (wRand > 0.3) { name = "Dagger"; icon = "🔪"; }
 
         return {
-            id: `weapon_t${tier}_${Date.now()}`,
+            id: generatedItemId(`weapon_t${tier}`),
             name: `${name} +${tier}`,
             description: 'Deadly weapon.',
             type: 'WEAPON',
@@ -51,7 +54,7 @@ export const generateLoot = (level: number, isBoss = false): Item | null => {
     } else if (rand < 0.65) {
         // Armor
         return {
-            id: `armor_t${tier}_${Date.now()}`,
+            id: generatedItemId(`armor_t${tier}`),
             name: `Armor +${tier}`,
             description: 'Protective gear.',
             type: 'ARMOR',
@@ -62,7 +65,7 @@ export const generateLoot = (level: number, isBoss = false): Item | null => {
     } else if (rand < 0.8) {
         // Shield
         return {
-            id: `shield_t${tier}_${Date.now()}`,
+            id: generatedItemId(`shield_t${tier}`),
             name: `Shield +${tier}`,
             description: 'Blocks damage.',
             type: 'SHIELD',
@@ -74,13 +77,13 @@ export const generateLoot = (level: number, isBoss = false): Item | null => {
         // Accessory
         const accType = Math.random();
         if (accType < 0.25) {
-            return { id: `ring_str_${tier}_${Date.now()}`, name: `Ring of Might +${tier}`, description: 'Boosts Strength.', type: 'ACCESSORY', value: tier, statBonus: 'STR', icon: '💍', quantity: 1 };
+            return { id: generatedItemId(`ring_str_${tier}`), name: `Ring of Might +${tier}`, description: 'Boosts Strength.', type: 'ACCESSORY', value: tier, statBonus: 'STR', icon: '💍', quantity: 1 };
         } else if (accType < 0.5) {
-            return { id: `amulet_int_${tier}_${Date.now()}`, name: `Amulet of Wisdom +${tier}`, description: 'Boosts Intelligence.', type: 'ACCESSORY', value: tier, statBonus: 'INT', icon: '📿', quantity: 1 };
+            return { id: generatedItemId(`amulet_int_${tier}`), name: `Amulet of Wisdom +${tier}`, description: 'Boosts Intelligence.', type: 'ACCESSORY', value: tier, statBonus: 'INT', icon: '📿', quantity: 1 };
         } else if (accType < 0.75) {
-            return { id: `charm_dex_${tier}_${Date.now()}`, name: `Charm of Speed +${tier}`, description: 'Boosts Dexterity.', type: 'ACCESSORY', value: tier, statBonus: 'DEX', icon: '🧿', quantity: 1 };
+            return { id: generatedItemId(`charm_dex_${tier}`), name: `Charm of Speed +${tier}`, description: 'Boosts Dexterity.', type: 'ACCESSORY', value: tier, statBonus: 'DEX', icon: '🧿', quantity: 1 };
         } else {
-             return { id: `ring_hp_${tier}_${Date.now()}`, name: `Ring of Life +${tier}`, description: 'Boosts Max HP.', type: 'ACCESSORY', value: tier * 10, statBonus: 'HP', icon: '💍', quantity: 1 };
+             return { id: generatedItemId(`ring_hp_${tier}`), name: `Ring of Life +${tier}`, description: 'Boosts Max HP.', type: 'ACCESSORY', value: tier * 10, statBonus: 'HP', icon: '💍', quantity: 1 };
         }
     }
 };
@@ -165,9 +168,7 @@ export const loadGame = (): SaveData | null => {
     }
 };
 
-export const hasSaveGame = (): boolean => {
-    return !!localStorage.getItem(SAVE_KEY);
-};
+export const hasSaveGame = (): boolean => loadGame() !== null;
 
 let enemySequence = 0;
 

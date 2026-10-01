@@ -48,7 +48,7 @@ npm run preview
 
 ## Static asset pipeline
 
-All production art is committed under `public/assets/` as individual PNG files. The runtime only loads those files through `services/assetLoader.ts`; it does not call a generation service or create image data URLs. A preload step checks the full registry before the title screen appears. A missing asset is reported visibly instead of silently replaced by generic art.
+All production art is committed under `public/assets/` as individual PNG files. The runtime only loads those files through `services/assetLoader.ts`; it does not call a generation service or create image data URLs. The title screen waits for the first floor's biome, enemies, weapons, and combat effects. Before a saved floor or the next biome appears, its required local assets are loaded and cached. A missing asset is reported visibly instead of silently replaced by generic art.
 
 The assets use a cohesive, dark fantasy pixel-painted style with distinct materials and accent colors for each biome. Transparent enemy, hand, prop, light, and VFX sprites are PNGs with alpha. Environment surfaces are opaque PNG tiles.
 

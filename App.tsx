@@ -3,13 +3,13 @@ import React, { useState, useEffect, useRef } from 'react';
 import { generateDungeon } from './services/dungeonGenerator';
 import { audioService } from './services/audioService';
 import { generateLoot, XP_THRESHOLD, getLeaderboard, saveHighScore, saveGame, loadGame, hasSaveGame, createBoss, createRandomEnemy, CRAFTING_RECIPES } from './services/gameLogic';
-import { getBiomeIdForLevel } from './data/assetRegistry';
+import { getBiomeIdForLevel, getLevelAssetPaths } from './data/assetRegistry';
 import { getExplorationNarrative } from './data/narratives';
 import { normalizePlayerWeaponVisuals } from './data/weaponVisuals';
 import { TEXT, LanguageType } from './data/translations';
 import { preloadAssets } from './services/assetLoader';
 import { generatePerksForCharacter } from './services/progression';
-import { calculateEnemyAttack, calculatePlayerAttack, calculateSkillPower, damageEnemies } from './services/combat';
+import { calculateEnemyAttack, calculatePlayerAttack, calculateSkillPower, damageEnemies, resolveStatusTurn } from './services/combat';
 import Viewport from './components/Viewport';
 import Controls from './components/Controls';
 import Log from './components/Log';
@@ -101,7 +101,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     let active = true;
-    preloadAssets()
+    preloadAssets(getLevelAssetPaths(1))
       .then(() => { if (active) setAssetsLoaded(true); })
       .catch(error => {
         console.error(error);
@@ -203,10 +203,20 @@ const App: React.FC = () => {
       return newExplored;
   };
 
-  const generateLevel = (level: number) => {
+  const generateLevel = async (level: number) => {
       setPhase('INIT');
-      setDungeonLevel(level);
+      setAssetsLoaded(false);
+      setAssetLoadError(null);
       const nextBiome = getBiomeIdForLevel(level);
+      try {
+          await preloadAssets(getLevelAssetPaths(level));
+      } catch (error) {
+          console.error(error);
+          setAssetLoadError(error instanceof Error ? error.message : String(error));
+          return;
+      }
+
+      setDungeonLevel(level);
       setBiomeId(nextBiome);
       setLevelBossDefeated(false);
       pendingLevelChangeRef.current = false;
@@ -228,6 +238,7 @@ const App: React.FC = () => {
       setExplored(initExplored);
 
       setPhase('EXPLORE');
+      setAssetsLoaded(true);
       addLog(`Entered Dungeon Level ${level}.`, 'story');
   };
 
@@ -273,11 +284,20 @@ const App: React.FC = () => {
       generateLevel(1);
   };
 
-  const handleContinue = () => {
+  const handleContinue = async () => {
       const saved = loadGame();
       if (!saved) return;
       
       setPhase('INIT'); // Show loading screen
+      setAssetsLoaded(false);
+      setAssetLoadError(null);
+      try {
+          await preloadAssets(getLevelAssetPaths(saved.dungeonLevel));
+      } catch (error) {
+          console.error(error);
+          setAssetLoadError(error instanceof Error ? error.message : String(error));
+          return;
+      }
 
       setPlayer(normalizePlayerWeaponVisuals(saved.player));
       setPrevPos(saved.player.pos);
@@ -291,16 +311,21 @@ const App: React.FC = () => {
       if (saved.clearedTiles) setClearedTiles(new Set(saved.clearedTiles));
       
       setPhase('EXPLORE');
+      setAssetsLoaded(true);
       addLog("Game Loaded.", 'info');
       audioService.startMusic();
   };
 
   const handleSaveGame = () => {
-      saveGame({ 
+      const saved = saveGame({
           player, map, decorations, explored, dungeonLevel, logs, date: Date.now(), 
           levelBossDefeated, 
           clearedTiles: Array.from(clearedTiles) 
       });
+      if (!saved) {
+          addLog('Save failed. Browser storage may be full or unavailable.', 'info');
+          return;
+      }
       setCanContinue(true);
       addLog("Game Saved.", 'loot');
       audioService.playItemGet();
@@ -370,65 +395,42 @@ const App: React.FC = () => {
               return { ...p, party: newParty };
           });
       } else {
-          setEnemies(prev => prev.map(e => {
-              if (e.id === target.id) {
-                  return { ...e, statusEffects: [...(e.statusEffects || []), newEffect] };
-              }
-              return e;
-          }));
+          const updatedEnemies = enemiesRef.current.map(e => e.id === target.id
+              ? { ...e, statusEffects: [...(e.statusEffects || []), newEffect] }
+              : e);
+          enemiesRef.current = updatedEnemies;
+          setEnemies(updatedEnemies);
       }
       addLog(`${target.name} gained ${type}!`, 'combat');
   };
 
   const processStatusEffects = (character: Character | Enemy, isPlayer: boolean): boolean => {
-      let hpChange = 0;
-      let newEffects: StatusEffect[] = [];
-
       const currentEffects = isPlayer ? (character as Character).statusEffects : (character as Enemy).statusEffects || [];
+      const hp = isPlayer ? (character as Character).stats.hp : (character as Enemy).hp;
+      const maxHp = isPlayer ? (character as Character).stats.maxHp : (character as Enemy).maxHp;
+      const result = resolveStatusTurn(hp, maxHp, currentEffects);
 
-      currentEffects.forEach(eff => {
-          if (eff.type === 'POISON') { hpChange -= eff.value; addLog(`${character.name} takes ${eff.value} poison dmg.`, 'combat'); triggerVfx('POISON', character.id); }
-          if (eff.type === 'BURN') { hpChange -= eff.value; addLog(`${character.name} burns for ${eff.value}.`, 'combat'); triggerVfx('FIREBALL', character.id); }
-          if (eff.type === 'REGEN') { hpChange += eff.value; addLog(`${character.name} regenerates ${eff.value}.`, 'combat'); triggerVfx('HEAL', character.id); }
-          if (eff.type === 'STUN') { addLog(`${character.name} is stunned!`, 'combat'); }
-          if (eff.duration > 1) { newEffects.push({ ...eff, duration: eff.duration - 1 }); }
+      result.ticks.forEach(({ type, value }) => {
+          if (type === 'POISON') { addLog(`${character.name} takes ${value} poison dmg.`, 'combat'); triggerVfx('POISON', character.id); }
+          if (type === 'BURN') { addLog(`${character.name} burns for ${value}.`, 'combat'); triggerVfx('FIREBALL', character.id); }
+          if (type === 'REGEN') { addLog(`${character.name} regenerates ${value}.`, 'combat'); triggerVfx('HEAL', character.id); }
       });
 
-      if (hpChange !== 0) {
-          if (isPlayer) {
-              setPlayer(p => {
-                  const newParty = p.party.map(c => {
-                      if (c.id === character.id) {
-                          const nHp = Math.min(c.stats.maxHp, Math.max(0, c.stats.hp + hpChange));
-                          return { ...c, stats: { ...c.stats, hp: nHp }, statusEffects: newEffects };
-                      }
-                      return c;
-                  });
-                  return { ...p, party: newParty };
-              });
-              if ((character as Character).stats.hp + hpChange <= 0) return true;
-          } else {
-              const newEnemies = enemiesRef.current.map(e => {
-                  if (e.id === character.id) {
-                      const nHp = Math.max(0, e.hp + hpChange);
-                      return { ...e, hp: nHp, statusEffects: newEffects };
-                  }
-                  return e;
-              });
-              setEnemies(newEnemies);
-              enemiesRef.current = newEnemies;
-              if ((character as Enemy).hp + hpChange <= 0) return true;
-          }
+      if (isPlayer) {
+          setPlayer(p => ({
+              ...p,
+              party: p.party.map(c => c.id === character.id
+                  ? { ...c, stats: { ...c.stats, hp: result.hp }, statusEffects: result.statusEffects }
+                  : c),
+          }));
       } else {
-          if (isPlayer) {
-               setPlayer(p => ({ ...p, party: p.party.map(c => c.id === character.id ? { ...c, statusEffects: newEffects } : c) }));
-          } else {
-               const newEnemies = enemiesRef.current.map(e => e.id === character.id ? { ...e, statusEffects: newEffects } : e);
-               setEnemies(newEnemies);
-               enemiesRef.current = newEnemies;
-          }
+          const updatedEnemies = enemiesRef.current.map(e => e.id === character.id
+              ? { ...e, hp: result.hp, statusEffects: result.statusEffects }
+              : e);
+          enemiesRef.current = updatedEnemies;
+          setEnemies(updatedEnemies);
       }
-      return false; 
+      return result.defeated;
   };
 
 
@@ -559,8 +561,7 @@ const App: React.FC = () => {
 
       for (const enemy of activeEnemies) {
           if (enemy.hp <= 0) continue;
-          processStatusEffects(enemy, false);
-          if (enemy.hp <= 0) continue;
+          if (processStatusEffects(enemy, false)) continue;
           const isStunned = enemy.statusEffects.some(e => e.type === 'STUN');
           if (isStunned) {
                addLog(`${enemy.name} is stunned!`, 'combat');

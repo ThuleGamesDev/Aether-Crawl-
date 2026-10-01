@@ -1,10 +1,11 @@
-import { existsSync } from 'node:fs';
+import { existsSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { biomeVisuals, collectAssetPaths, enemyVisuals, vfxVisuals } from '../data/assetRegistry';
+import { biomeVisuals, collectAssetPaths, enemyVisuals, getLevelAssetPaths, vfxVisuals } from '../data/assetRegistry';
 import { enemyDefinitions } from '../data/enemies';
 
 const localAssetExists = (url: string) => existsSync(resolve(process.cwd(), 'public', url.replace(/^\//, '')));
+const localAssetBytes = (url: string) => statSync(resolve(process.cwd(), 'public', url.replace(/^\//, ''))).size;
 
 describe('static asset registry', () => {
   it('maps every gameplay enemy to a present, distinct production sprite', () => {
@@ -36,5 +37,21 @@ describe('static asset registry', () => {
   it('resolves every registry asset to a repository file', () => {
     for (const path of collectAssetPaths()) expect(localAssetExists(path), path).toBe(true);
     for (const [type, path] of Object.entries(vfxVisuals)) expect(localAssetExists(path), `${type}: ${path}`).toBe(true);
+  });
+
+  it('preloads the active floor set without downloading other biome surfaces up front', () => {
+    const firstFloor = getLevelAssetPaths(1);
+    expect(firstFloor).toContain('/assets/environments/dungeon/wall.png');
+    expect(firstFloor).toContain('/assets/enemies/giant-rat.png');
+    expect(firstFloor).toContain('/assets/enemies/dungeon-warden.png');
+    expect(firstFloor).toContain('/assets/hands/sword.png');
+    expect(firstFloor).toContain('/assets/vfx/melee-hit.png');
+    expect(firstFloor).not.toContain('/assets/environments/moss/wall.png');
+    const startupBytes = firstFloor.reduce((total, path) => total + localAssetBytes(path), 0);
+    const registryBytes = collectAssetPaths().reduce((total, path) => total + localAssetBytes(path), 0);
+    expect(startupBytes).toBeLessThan(registryBytes * 0.75);
+
+    expect(getLevelAssetPaths(5)).toContain('/assets/enemies/the-necromancer.png');
+    expect(getLevelAssetPaths(6)).toContain('/assets/environments/moss/wall.png');
   });
 });

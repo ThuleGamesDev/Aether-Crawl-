@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { XP_THRESHOLD } from '../services/gameLogic';
-import { createBoss, generateLoot, loadGame, saveGame } from '../services/gameLogic';
+import { createBoss, generateLoot, hasSaveGame, loadGame, saveGame } from '../services/gameLogic';
 import { getBiomeIdForLevel } from '../data/assetRegistry';
 import { SaveData } from '../types';
 
@@ -44,6 +44,17 @@ describe('game progression data', () => {
     expect(loot).toMatchObject({ type: 'WEAPON', visualType: 'mace', value: 11 });
   });
 
+  it('gives separate drops unique IDs even when generated in the same millisecond', () => {
+    vi.spyOn(Date, 'now').mockReturnValue(1234);
+    vi.spyOn(Math, 'random')
+      .mockReturnValueOnce(0.3).mockReturnValueOnce(0.8)
+      .mockReturnValueOnce(0.3).mockReturnValueOnce(0.1);
+
+    const first = generateLoot(3, true)!;
+    const second = generateLoot(3, true)!;
+    expect(first.id).not.toBe(second.id);
+  });
+
   it('round-trips gameplay save data without storing image payloads or visual URLs', () => {
     const values = new Map<string, string>();
     vi.stubGlobal('localStorage', {
@@ -61,5 +72,17 @@ describe('game progression data', () => {
     expect(stored.player.inventory[0]).not.toHaveProperty('visualType');
     expect(stored.player.inventory[0]).not.toHaveProperty('texture');
     expect(loadGame()?.player.inventory[0].visualType).toBe('axe');
+  });
+
+  it('does not offer Continue for malformed save data', () => {
+    vi.stubGlobal('localStorage', { getItem: () => '{' });
+    expect(loadGame()).toBeNull();
+    expect(hasSaveGame()).toBe(false);
+  });
+
+  it('reports a failed save when browser storage rejects the write', () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.stubGlobal('localStorage', { setItem: () => { throw new Error('quota exceeded'); } });
+    expect(saveGame(makeSave())).toBe(false);
   });
 });

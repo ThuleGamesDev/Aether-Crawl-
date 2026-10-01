@@ -2,9 +2,9 @@
 
 ## Runtime rule
 
-Every gameplay image is a static repository file under `public/assets/`. React and Canvas do not call an image-generation API, create image data URLs, or synthesize replacement textures. All registered assets are preloaded once through `services/assetLoader.ts` and cached as `HTMLImageElement` instances. Rendering reuses those instances.
+Every gameplay image is a static repository file under `public/assets/`. React and Canvas do not call an image-generation API, create image data URLs, or synthesize replacement textures. Required floor assets are preloaded through `services/assetLoader.ts` and cached as `HTMLImageElement` instances. Rendering reuses those instances.
 
-The preloader checks all paths in `data/assetRegistry.ts` before the game opens. A failed image load stops at a clear loading error; a missing image does not silently fall back to generic production art.
+The title screen preloads the first floor's environment, possible enemies, player hands/weapons, and combat effects. A saved floor or new biome preloads its required environment and possible enemy sprites before it is shown. Already loaded assets are reused from the shared cache, so the full 25 MB registry is not downloaded before the first menu. A failed image load stops at a clear loading error; a missing image does not silently fall back to generic production art.
 
 ## Directory layout
 
@@ -41,7 +41,7 @@ public/assets/
 - `biomeVisuals` maps a `BiomeId` to its environment surfaces, light, common props, themed props, and ambient tint.
 - `enemyVisuals` maps stable enemy `visualId` values to sprite files and render scale.
 - `weaponVisuals`, `shieldVisual`, `propVisuals`, and `vfxVisuals` map their gameplay/render keys to static PNG paths.
-- `collectAssetPaths()` exposes the full unique path list to the preloader and tests.
+- `getLevelAssetPaths(level)` exposes the static files needed for a level; `collectAssetPaths()` returns the full unique list for completeness tests.
 
 Gameplay definitions refer to stable IDs, not file paths. Enemy stats and boss selection live in `data/enemies.ts`; sprite scale and paths live in `data/assetRegistry.ts`.
 
