@@ -1,8 +1,8 @@
 
 import { MAP_SIZE } from '../constants';
-import { DungeonData, Position, TileType } from '../types';
+import { BiomeId, DungeonData, Position, TileType } from '../types';
 
-export const generateDungeon = (): DungeonData => {
+export const generateDungeon = (_biome: BiomeId = 'dungeon'): DungeonData => {
   const map = Array(MAP_SIZE).fill(0).map(() => Array(MAP_SIZE).fill(TileType.WALL));
   const decorations = Array(MAP_SIZE).fill(0).map(() => Array(MAP_SIZE).fill(0));
 
@@ -84,7 +84,7 @@ export const generateDungeon = (): DungeonData => {
   }
 
   // DECORATIONS PASS
-  // 1: Torch (Walls), 2: Barrel (Floor), 3: Crate (Floor), 4: Bones (Floor)
+  // 1: Torch (Walls), 2: Barrel, 3: Crate, 4: Bones, 5-6: biome-specific props
   for(let y=1; y<MAP_SIZE-1; y++) {
       for(let x=1; x<MAP_SIZE-1; x++) {
           // Wall Decorations
@@ -107,6 +107,8 @@ export const generateDungeon = (): DungeonData => {
               if (rand < 0.05) decorations[y][x] = 2; // Barrel
               else if (rand < 0.1) decorations[y][x] = 3; // Crate
               else if (rand < 0.13) decorations[y][x] = 4; // Bones
+              else if (rand < 0.15) decorations[y][x] = 5; // Biome prop A
+              else if (rand < 0.17) decorations[y][x] = 6; // Biome prop B
           }
       }
   }

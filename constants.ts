@@ -4,17 +4,6 @@ import { Skill, CharacterTemplate, Item } from './types';
 export const MAP_SIZE = 12;
 export const VIEW_DISTANCE = 4;
 
-export const PREFER_AI_GENERATION = false; 
-
-export const ASSET_LIBRARY: any = {
-    hands: { left: "", right: "" },
-    torch: "",
-    biome_dungeon: { wall: "", floor: "", ceiling: "", door: "" },
-    biome_mossy: { wall: "", floor: "", ceiling: "", door: "" },
-    biome_obsidian: { wall: "", floor: "", ceiling: "", door: "" },
-    enemies: { "Rat": "", "Spider": "", "Goblin": "", "Skeleton": "", "Orc": "", "Shadow": "" }
-};
-
 // --- SKILLS ---
 
 export const MASTER_SKILL_POOL: Skill[] = [
@@ -71,7 +60,7 @@ export const CLASSES: Record<string, CharacterTemplate> = {
         description: 'STR. High HP/Dmg. Tanky.',
         stats: { hp: 130, maxHp: 130, mp: 20, maxMp: 20, str: 14, dex: 10, int: 6, xp: 0, level: 1 },
         startItems: [
-            { id: 'axe_start', name: 'Battle Axe', type: 'WEAPON', value: 5, description: 'Heavy chopper.', icon: '🪓', quantity: 1 }
+            { id: 'axe_start', name: 'Battle Axe', type: 'WEAPON', value: 5, description: 'Heavy chopper.', icon: '🪓', visualType: 'axe', quantity: 1 }
         ],
         startSkills: [
             MASTER_SKILL_POOL.find(s => s.id === 'heavy_slash')!, 
@@ -83,7 +72,7 @@ export const CLASSES: Record<string, CharacterTemplate> = {
         description: 'STR/INT. Holy Knight.',
         stats: { hp: 110, maxHp: 110, mp: 40, maxMp: 40, str: 12, dex: 8, int: 10, xp: 0, level: 1 },
         startItems: [
-            { id: 'mace_start', name: 'Iron Mace', type: 'WEAPON', value: 4, description: 'Crushes bones.', icon: '🔨', quantity: 1 },
+            { id: 'mace_start', name: 'Iron Mace', type: 'WEAPON', value: 4, description: 'Crushes bones.', icon: '🔨', visualType: 'mace', quantity: 1 },
             { id: 'shield_start', name: 'Kite Shield', type: 'SHIELD', value: 2, description: 'Basic protection.', icon: '🛡️', quantity: 1 }
         ],
         startSkills: [
@@ -96,7 +85,7 @@ export const CLASSES: Record<string, CharacterTemplate> = {
         description: 'INT. High Magic Damage.',
         stats: { hp: 80, maxHp: 80, mp: 80, maxMp: 80, str: 6, dex: 12, int: 15, xp: 0, level: 1 },
         startItems: [
-            { id: 'staff_start', name: 'Wooden Staff', type: 'WEAPON', value: 2, description: 'Focus for magic.', icon: '🪄', quantity: 1 },
+            { id: 'staff_start', name: 'Wooden Staff', type: 'WEAPON', value: 2, description: 'Focus for magic.', icon: '🪄', visualType: 'staff', quantity: 1 },
             { id: 'potion_mp', name: 'Mana Potion', type: 'POTION', value: 30, description: 'Restores MP', icon: '🧪', quantity: 1 }
         ],
         startSkills: [
@@ -109,7 +98,7 @@ export const CLASSES: Record<string, CharacterTemplate> = {
         description: 'DEX. Stealth & Crits.',
         stats: { hp: 90, maxHp: 90, mp: 40, maxMp: 40, str: 8, dex: 15, int: 8, xp: 0, level: 1 },
         startItems: [
-            { id: 'dagger_start', name: 'Iron Dagger', type: 'WEAPON', value: 4, description: 'Sharp edge.', icon: '🗡️', quantity: 1 }
+            { id: 'dagger_start', name: 'Iron Dagger', type: 'WEAPON', value: 4, description: 'Sharp edge.', icon: '🗡️', visualType: 'dagger', quantity: 1 }
         ],
         startSkills: [
             MASTER_SKILL_POOL.find(s => s.id === 'backstab')!, 
@@ -121,7 +110,7 @@ export const CLASSES: Record<string, CharacterTemplate> = {
         description: 'DEX. Ranged Attacks.',
         stats: { hp: 100, maxHp: 100, mp: 50, maxMp: 50, str: 10, dex: 14, int: 10, xp: 0, level: 1 },
         startItems: [
-            { id: 'bow_start', name: 'Short Bow', type: 'WEAPON', value: 4, description: 'Ranged attack.', icon: '🏹', quantity: 1 }
+            { id: 'bow_start', name: 'Short Bow', type: 'WEAPON', value: 4, description: 'Ranged attack.', icon: '🏹', visualType: 'bow', quantity: 1 }
         ],
         startSkills: [
             MASTER_SKILL_POOL.find(s => s.id === 'arrow_rain')!, 
@@ -133,7 +122,7 @@ export const CLASSES: Record<string, CharacterTemplate> = {
         description: 'INT/STR. Healer & Tank.',
         stats: { hp: 100, maxHp: 100, mp: 60, maxMp: 60, str: 11, dex: 9, int: 12, xp: 0, level: 1 },
         startItems: [
-            { id: 'hammer_start', name: 'War Hammer', type: 'WEAPON', value: 5, description: 'Heavy hitter.', icon: '⚒️', quantity: 1 }
+            { id: 'hammer_start', name: 'War Hammer', type: 'WEAPON', value: 5, description: 'Heavy hitter.', icon: '⚒️', visualType: 'mace', quantity: 1 }
         ],
         startSkills: [
             MASTER_SKILL_POOL.find(s => s.id === 'smite')!, 
@@ -145,7 +134,7 @@ export const CLASSES: Record<string, CharacterTemplate> = {
         description: 'DEX/STR. Fast Fighter.',
         stats: { hp: 110, maxHp: 110, mp: 30, maxMp: 30, str: 12, dex: 14, int: 8, xp: 0, level: 1 },
         startItems: [
-            { id: 'gloves_start', name: 'Leather Wraps', type: 'WEAPON', value: 3, description: 'Fast attacks.', icon: '🥊', quantity: 1 },
+            { id: 'gloves_start', name: 'Leather Wraps', type: 'WEAPON', value: 3, description: 'Fast attacks.', icon: '🥊', visualType: 'unarmed', quantity: 1 },
             { id: 'potion_hp', name: 'Health Potion', type: 'POTION', value: 30, description: 'Restores HP', icon: '🍷', quantity: 1 }
         ],
         startSkills: [
@@ -158,7 +147,7 @@ export const CLASSES: Record<string, CharacterTemplate> = {
         description: 'INT. Life drain & Dark magic.',
         stats: { hp: 90, maxHp: 90, mp: 60, maxMp: 60, str: 6, dex: 10, int: 14, xp: 0, level: 1 },
         startItems: [
-            { id: 'wand_bone', name: 'Bone Wand', type: 'WEAPON', value: 3, description: 'Channel dark energy.', icon: '🦴', quantity: 1 },
+            { id: 'wand_bone', name: 'Bone Wand', type: 'WEAPON', value: 3, description: 'Channel dark energy.', icon: '🦴', visualType: 'staff', quantity: 1 },
             { id: 'potion_mp', name: 'Mana Potion', type: 'POTION', value: 30, description: 'Restores MP', icon: '🧪', quantity: 1 }
         ],
         startSkills: [

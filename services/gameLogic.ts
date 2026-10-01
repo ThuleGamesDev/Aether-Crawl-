@@ -1,5 +1,7 @@
 
 import { Item, HighScore, SaveData, Enemy } from '../types';
+import { enemyDefinitions, normalEnemyDefinitions, miniBossDefinitions, biomeBossDefinitions } from '../data/enemies';
+import { serializeGameplayItem, normalizePlayerWeaponVisuals } from '../data/weaponVisuals';
 
 // Reduced XP requirement (was level * 100)
 export const XP_THRESHOLD = (level: number) => level * 50;
@@ -43,6 +45,7 @@ export const generateLoot = (level: number, isBoss = false): Item | null => {
             type: 'WEAPON',
             value: 5 + (tier * 2),
             icon: icon,
+            visualType: name === 'Mace' ? 'mace' : name === 'Dagger' ? 'dagger' : 'sword',
             quantity: 1
         };
     } else if (rand < 0.65) {
@@ -111,7 +114,21 @@ export const saveHighScore = (score: HighScore) => {
 
 export const saveGame = (data: SaveData) => {
     try {
-        localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+        const player = normalizePlayerWeaponVisuals(data.player);
+        const savedPlayer = {
+            ...player,
+            inventory: player.inventory.map(serializeGameplayItem),
+            party: player.party.map(character => ({
+                ...character,
+                equipment: {
+                    weapon: character.equipment.weapon ? serializeGameplayItem(character.equipment.weapon) : null,
+                    armor: character.equipment.armor ? serializeGameplayItem(character.equipment.armor) : null,
+                    offhand: character.equipment.offhand ? serializeGameplayItem(character.equipment.offhand) : null,
+                    accessory: character.equipment.accessory ? serializeGameplayItem(character.equipment.accessory) : null,
+                },
+            })),
+        };
+        localStorage.setItem(SAVE_KEY, JSON.stringify({ ...data, player: savedPlayer }));
         return true;
     } catch (e) {
         console.error("Save failed", e);
@@ -123,7 +140,26 @@ export const loadGame = (): SaveData | null => {
     try {
         const data = localStorage.getItem(SAVE_KEY);
         if (!data) return null;
-        return JSON.parse(data);
+        const parsed = JSON.parse(data) as Partial<SaveData>;
+        if (!parsed.player || !Array.isArray(parsed.map)) return null;
+        return {
+            ...parsed,
+            player: normalizePlayerWeaponVisuals({
+                ...parsed.player,
+                pos: parsed.player.pos ?? { x: 1, y: 1 },
+                dir: parsed.player.dir ?? 'E',
+                party: Array.isArray(parsed.player.party) ? parsed.player.party : [],
+                inventory: Array.isArray(parsed.player.inventory) ? parsed.player.inventory : [],
+                scrap: Number.isFinite(parsed.player.scrap) ? parsed.player.scrap : 0,
+            } as SaveData['player']),
+            map: parsed.map,
+            decorations: Array.isArray(parsed.decorations) ? parsed.decorations : [],
+            explored: Array.isArray(parsed.explored) ? parsed.explored : [],
+            clearedTiles: Array.isArray(parsed.clearedTiles) ? parsed.clearedTiles : [],
+            dungeonLevel: Number.isFinite(parsed.dungeonLevel) && parsed.dungeonLevel! > 0 ? parsed.dungeonLevel! : 1,
+            logs: Array.isArray(parsed.logs) ? parsed.logs : [],
+            date: Number.isFinite(parsed.date) ? parsed.date! : Date.now(),
+        } as SaveData;
     } catch (e) {
         return null;
     }
@@ -133,66 +169,36 @@ export const hasSaveGame = (): boolean => {
     return !!localStorage.getItem(SAVE_KEY);
 };
 
-// Internal templates to ensure variety if AI fails
-export const FALLBACK_ENEMIES = [
-    { name: "Giant Rat", hp: 15, damage: 4, xp: 10, minLvl: 1 },
-    { name: "Acid Spider", hp: 25, damage: 6, xp: 15, minLvl: 1 },
-    { name: "Goblin Scavenger", hp: 40, damage: 8, xp: 20, minLvl: 2 },
-    { name: "Skeleton Warrior", hp: 60, damage: 10, xp: 30, minLvl: 3 },
-    { name: "Bandit Rogue", hp: 50, damage: 12, xp: 35, minLvl: 4 },
-    { name: "Orc Brute", hp: 100, damage: 15, xp: 50, minLvl: 5 },
-    { name: "Dark Cultist", hp: 80, damage: 20, xp: 60, minLvl: 6 },
-    { name: "Green Slime", hp: 120, damage: 8, xp: 60, minLvl: 7 },
-    { name: "Cave Troll", hp: 200, damage: 25, xp: 100, minLvl: 8 },
-    { name: "Fire Elemental", hp: 150, damage: 30, xp: 120, minLvl: 9 },
-    { name: "Specter", hp: 100, damage: 30, xp: 110, minLvl: 10 },
-    { name: "Stone Golem", hp: 300, damage: 20, xp: 150, minLvl: 11 },
-    { name: "Vampire Spawn", hp: 180, damage: 35, xp: 180, minLvl: 13 },
-    { name: "Beholder", hp: 250, damage: 45, xp: 250, minLvl: 15 },
-    { name: "Ice Elemental", hp: 280, damage: 35, xp: 220, minLvl: 18 },
-    { name: "Void Dragon", hp: 500, damage: 40, xp: 500, minLvl: 20 },
-    { name: "Chaos Knight", hp: 600, damage: 60, xp: 600, minLvl: 25 },
-];
+let enemySequence = 0;
 
-export const MINI_BOSS_TEMPLATES = [
-    { name: "Dungeon Warden", hp: 120, damage: 15, xp: 100 },
-    { name: "Giant Slime", hp: 150, damage: 12, xp: 100 },
-    { name: "Cursed Knight", hp: 140, damage: 18, xp: 120 },
-    { name: "Bandit King", hp: 130, damage: 20, xp: 130 },
-    { name: "Mimic Queen", hp: 200, damage: 25, xp: 200 },
-];
-
-export const BIOME_BOSS_TEMPLATES = [
-    { name: "The Necromancer", hp: 400, damage: 25, xp: 500 }, // Lvl 5
-    { name: "Moss Golem", hp: 600, damage: 30, xp: 800 },     // Lvl 10
-    { name: "Lich Lord", hp: 800, damage: 40, xp: 1200 },      // Lvl 15 (Catacomb)
-    { name: "Frost Giant", hp: 1000, damage: 45, xp: 1600 },    // Lvl 20 (Ice)
-    { name: "Golden Emperor", hp: 1500, damage: 55, xp: 2500 }, // Lvl 25 (Gilded)
-    { name: "Obsidian Lord", hp: 2000, damage: 70, xp: 3000 },  // Lvl 30+
-];
-
-export const generateBoss = (level: number, isBiomeBoss: boolean): Enemy => {
-    let template;
-    if (isBiomeBoss) {
-        // Every 5 levels
-        const idx = Math.min(Math.floor(level / 5) - 1, BIOME_BOSS_TEMPLATES.length - 1);
-        template = BIOME_BOSS_TEMPLATES[Math.max(0, idx)];
-    } else {
-        template = MINI_BOSS_TEMPLATES[Math.floor(Math.random() * MINI_BOSS_TEMPLATES.length)];
-    }
-
-    // Scale slightly by level
-    const scale = 1 + (level * 0.1);
-    
+const instantiateEnemy = (definition: (typeof enemyDefinitions)[number], scale: number, isBoss: boolean): Enemy => {
+    const hp = Math.floor(definition.hp * scale);
     return {
-        id: `boss_${Date.now()}`,
-        name: template.name,
-        hp: Math.floor(template.hp * scale),
-        maxHp: Math.floor(template.hp * scale),
-        damage: Math.floor(template.damage * scale),
-        xpReward: Math.floor(template.xp * scale),
-        image: '', // Will be generated
-        isBoss: true,
-        statusEffects: []
+        id: `${isBoss ? 'boss' : 'enemy'}_${definition.id}_${++enemySequence}`,
+        name: definition.name,
+        hp,
+        maxHp: hp,
+        damage: Math.floor(definition.damage * scale),
+        xpReward: Math.floor(definition.xp * scale),
+        visualId: definition.visualId,
+        isBoss,
+        statusEffects: [],
     };
+};
+
+export const createRandomEnemy = (level: number): Enemy => {
+    const available = normalEnemyDefinitions.filter(enemy => (enemy.minLevel ?? 1) <= level);
+    const strongest = available[available.length - 1];
+    const template = available.length > 1 && Math.random() < 0.3
+        ? available[Math.floor(Math.random() * available.length)]
+        : strongest;
+    const scale = 1 + (level - (template.minLevel ?? 1)) * 0.1;
+    return instantiateEnemy(template, scale, false);
+};
+
+export const createBoss = (level: number, isBiomeBoss: boolean): Enemy => {
+    const template = isBiomeBoss
+        ? biomeBossDefinitions[Math.max(0, Math.min(Math.floor(level / 5) - 1, biomeBossDefinitions.length - 1))]
+        : miniBossDefinitions[Math.floor(Math.random() * miniBossDefinitions.length)];
+    return instantiateEnemy(template, 1 + (level * 0.1), true);
 };

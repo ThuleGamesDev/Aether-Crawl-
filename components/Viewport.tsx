@@ -1,15 +1,17 @@
-
 import React, { useEffect, useRef } from 'react';
-import { GamePhase, Enemy, Player, BiomeTextures, VFXEvent, TileType, Prop } from '../types';
-import { VIEW_DISTANCE, MAP_SIZE } from '../constants';
+import { biomeVisuals, enemyVisuals, getDecorationAsset, shieldVisual, vfxVisuals, weaponVisuals } from '../data/assetRegistry';
+import { getWeaponVisualType } from '../data/weaponVisuals';
+import { getImageAsset } from '../services/assetLoader';
+import { BiomeId, Direction, Enemy, GamePhase, Player, TileType, VFXEvent } from '../types';
+import { MAP_SIZE, VIEW_DISTANCE } from '../constants';
 
 interface ViewportProps {
   map: number[][];
   decorations: number[][];
   playerPos: { x: number; y: number };
-  playerDir: 'N' | 'E' | 'S' | 'W';
+  playerDir: Direction;
   prevPlayerPos?: { x: number; y: number };
-  textures: BiomeTextures | null;
+  biomeId: BiomeId;
   enemies: Enemy[];
   selectedEnemyId: string | null;
   onSelectEnemy: (id: string) => void;
@@ -19,423 +21,424 @@ interface ViewportProps {
   activeCharIndex: number;
 }
 
-const Viewport: React.FC<ViewportProps> = ({ 
-  map, decorations, playerPos, playerDir, prevPlayerPos, textures, 
-  enemies, selectedEnemyId, onSelectEnemy, phase, vfx, player, activeCharIndex
+type SpritePoint = { x: number; y: number; type: number; distance: number };
+
+const Viewport: React.FC<ViewportProps> = ({
+  map, decorations, playerPos, playerDir, prevPlayerPos, biomeId,
+  enemies, selectedEnemyId, onSelectEnemy, phase, vfx, player, activeCharIndex,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const timeRef = useRef(0);
-  const frameId = useRef(0);
-  
-  // Animation state
-  const animProgress = useRef(1); // 0 to 1
-  const currentRenderPos = useRef({ x: playerPos.x, y: playerPos.y });
+  const frameRef = useRef(0);
+  const frameCountRef = useRef(0);
+  const moveProgressRef = useRef(1);
+  const renderPositionRef = useRef({ x: playerPos.x, y: playerPos.y });
+  const missingAssetReportedRef = useRef(false);
 
-  // Reset animation when player position changes logically
   useEffect(() => {
-      if (prevPlayerPos && (prevPlayerPos.x !== playerPos.x || prevPlayerPos.y !== playerPos.y)) {
-          animProgress.current = 0;
-      }
+    if (prevPlayerPos && (prevPlayerPos.x !== playerPos.x || prevPlayerPos.y !== playerPos.y)) {
+      moveProgressRef.current = 0;
+    }
   }, [playerPos, prevPlayerPos]);
 
-  const handleClick = (e: React.MouseEvent) => {
-      if (phase !== 'COMBAT' || !enemies.length) return;
-      const rect = canvasRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      
-      const x = e.clientX - rect.left;
-      const W = rect.width;
-      const count = enemies.filter(en => en.hp > 0).length;
-      if (count === 0) return;
-
-      const sectorWidth = W / count;
-      const idx = Math.floor(x / sectorWidth);
-      
-      const livingEnemies = enemies.filter(en => en.hp > 0);
-      if (livingEnemies[idx]) {
-          onSelectEnemy(livingEnemies[idx].id);
-      }
+  const handleClick = (event: React.MouseEvent<HTMLCanvasElement>) => {
+    if (phase !== 'COMBAT') return;
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const targets = enemies.filter(enemy => enemy.hp > 0);
+    if (!targets.length) return;
+    const index = Math.floor((event.clientX - rect.left) / (rect.width / targets.length));
+    if (targets[index]) onSelectEnemy(targets[index].id);
   };
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    
-    ctx.imageSmoothingEnabled = false;
+    const context = canvas?.getContext('2d');
+    if (!canvas || !context) return;
+    context.imageSmoothingEnabled = false;
 
     const render = () => {
-        const W = canvas.width;
-        const H = canvas.height;
-        timeRef.current += 1;
+      const width = canvas.width;
+      const height = canvas.height;
+      frameCountRef.current += 1;
+      const frame = frameCountRef.current;
+      const biome = biomeVisuals[biomeId];
+      const wallImage = getImageAsset(biome.wall);
+      const floorImage = getImageAsset(biome.floor);
+      const ceilingImage = getImageAsset(biome.ceiling);
+      const doorImage = getImageAsset(biome.door);
+      const exitImage = getImageAsset(biome.exit);
 
-        // --- Movement Interpolation ---
-        if (animProgress.current < 1 && prevPlayerPos) {
-            animProgress.current += 0.15; // Slightly faster for snappier feel
-            if (animProgress.current > 1) animProgress.current = 1;
-            
-            const t = animProgress.current;
-            const ease = 1 - Math.pow(1 - t, 3); // Cubic ease out
-            
-            currentRenderPos.current.x = prevPlayerPos.x + (playerPos.x - prevPlayerPos.x) * ease;
-            currentRenderPos.current.y = prevPlayerPos.y + (playerPos.y - prevPlayerPos.y) * ease;
-        } else {
-            currentRenderPos.current.x = playerPos.x;
-            currentRenderPos.current.y = playerPos.y;
+      if (!wallImage || !floorImage || !ceilingImage || !doorImage || !exitImage) {
+        if (!missingAssetReportedRef.current) {
+          console.error(`Viewport cannot render biome "${biomeId}": a registered environment asset is missing.`);
+          missingAssetReportedRef.current = true;
         }
+        context.fillStyle = '#320032';
+        context.fillRect(0, 0, width, height);
+        context.fillStyle = '#ff8cff';
+        context.font = '12px monospace';
+        context.fillText(`MISSING ASSET: ${biomeId}`, 20, 28);
+        frameRef.current = requestAnimationFrame(render);
+        return;
+      }
+      missingAssetReportedRef.current = false;
 
-        // Camera Position
-        const posX = currentRenderPos.current.x + 0.5;
-        const posY = currentRenderPos.current.y + 0.5;
+      if (moveProgressRef.current < 1 && prevPlayerPos) {
+        moveProgressRef.current = Math.min(1, moveProgressRef.current + 0.15);
+        const t = 1 - Math.pow(1 - moveProgressRef.current, 3);
+        renderPositionRef.current.x = prevPlayerPos.x + (playerPos.x - prevPlayerPos.x) * t;
+        renderPositionRef.current.y = prevPlayerPos.y + (playerPos.y - prevPlayerPos.y) * t;
+      } else {
+        renderPositionRef.current.x = playerPos.x;
+        renderPositionRef.current.y = playerPos.y;
+      }
 
-        // Camera Plane Data
-        let dirX = 0, dirY = 0, planeX = 0, planeY = 0;
-        if (playerDir === 'N') { dirX = 0; dirY = -1; planeX = 0.66; planeY = 0; }
-        else if (playerDir === 'S') { dirX = 0; dirY = 1; planeX = -0.66; planeY = 0; }
-        else if (playerDir === 'E') { dirX = 1; dirY = 0; planeX = 0; planeY = 0.66; }
-        else if (playerDir === 'W') { dirX = -1; dirY = 0; planeX = 0; planeY = -0.66; }
+      const positionX = renderPositionRef.current.x + 0.5;
+      const positionY = renderPositionRef.current.y + 0.5;
+      let directionX = 0;
+      let directionY = 0;
+      let planeX = 0;
+      let planeY = 0;
+      if (playerDir === 'N') { directionY = -1; planeX = 0.66; }
+      if (playerDir === 'S') { directionY = 1; planeX = -0.66; }
+      if (playerDir === 'E') { directionX = 1; planeY = 0.66; }
+      if (playerDir === 'W') { directionX = -1; planeY = -0.66; }
 
-        // Initialize Z-Buffer
-        const zBuffer = new Float32Array(W).fill(Infinity);
+      context.fillStyle = '#050505';
+      context.fillRect(0, 0, width, height);
+      if (!map.length || !map[0]) {
+        frameRef.current = requestAnimationFrame(render);
+        return;
+      }
 
-        // Clear Background
-        ctx.fillStyle = '#000';
-        ctx.fillRect(0, 0, W, H);
+      drawTexturedPlanes(context, width, height, ceilingImage, floorImage, biome.ambientColor);
+      const zBuffer = drawRaycastWalls({
+        context, width, height, map, positionX, positionY,
+        directionX, directionY, planeX, planeY,
+        wallImage, doorImage, exitImage,
+      });
 
-        if (!map || map.length === 0 || !map[0]) {
-            frameId.current = requestAnimationFrame(render);
-            return;
-        }
+      drawDecorations({
+        context, width, height, map, decorations, biomeId,
+        positionX, positionY, directionX, directionY, planeX, planeY, zBuffer,
+      });
 
-        // --- 1. Ceiling & Floor ---
-        if (textures) {
-            const gradC = ctx.createLinearGradient(0,0,0,H/2);
-            gradC.addColorStop(0, '#000');
-            gradC.addColorStop(1, '#222');
-            ctx.fillStyle = gradC;
-            ctx.fillRect(0,0,W,H/2);
+      const targets = enemies.filter(enemy => enemy.hp > 0);
+      const targetPositions = drawEnemySprites({
+        context, width, height, targets, selectedEnemyId, frame,
+      });
 
-            const gradF = ctx.createLinearGradient(0,H/2,0,H);
-            gradF.addColorStop(0, '#111');
-            gradF.addColorStop(1, '#333');
-            ctx.fillStyle = gradF;
-            ctx.fillRect(0,H/2,W,H/2);
-        } else {
-            ctx.fillStyle = '#1a1a1a';
-            ctx.fillRect(0, 0, W, H/2);
-            ctx.fillStyle = '#2a2a2a';
-            ctx.fillRect(0, H/2, W, H/2);
-        }
+      drawPlayerHands({ context, width, height, frame, player, activeCharIndex, moving: moveProgressRef.current < 1 });
+      drawVfx({ context, width, height, vfx, targetPositions });
 
-        // --- 2. Walls (Raycasting) ---
-        for (let x = 0; x < W; x += 4) { 
-            const cameraX = 2 * x / W - 1;
-            const rayDirX = dirX + planeX * cameraX;
-            const rayDirY = dirY + planeY * cameraX;
-
-            let mapX = Math.floor(posX);
-            let mapY = Math.floor(posY);
-            
-            let sideDistX, sideDistY;
-            const deltaDistX = Math.abs(1 / rayDirX);
-            const deltaDistY = Math.abs(1 / rayDirY);
-            let perpWallDist;
-            let stepX, stepY;
-            let hit = 0;
-            let side = 0;
-            let tileHit = TileType.EMPTY;
-
-            if (rayDirX < 0) { stepX = -1; sideDistX = (posX - mapX) * deltaDistX; }
-            else { stepX = 1; sideDistX = (mapX + 1.0 - posX) * deltaDistX; }
-            if (rayDirY < 0) { stepY = -1; sideDistY = (posY - mapY) * deltaDistY; }
-            else { stepY = 1; sideDistY = (mapY + 1.0 - posY) * deltaDistY; }
-
-            let distCount = 0;
-            while (hit === 0 && distCount < VIEW_DISTANCE * 2) {
-                if (sideDistX < sideDistY) {
-                    sideDistX += deltaDistX;
-                    mapX += stepX;
-                    side = 0;
-                } else {
-                    sideDistY += deltaDistY;
-                    mapY += stepY;
-                    side = 1;
-                }
-                
-                if (mapX >= 0 && mapX < MAP_SIZE && mapY >= 0 && mapY < MAP_SIZE) {
-                     if (map[mapY] && map[mapY][mapX] !== TileType.EMPTY) {
-                         hit = 1;
-                         tileHit = map[mapY][mapX];
-                     }
-                } else {
-                    hit = 1;
-                }
-                distCount++;
-            }
-
-            if (hit) {
-                if (side === 0) perpWallDist = (mapX - posX + (1 - stepX) / 2) / rayDirX;
-                else perpWallDist = (mapY - posY + (1 - stepY) / 2) / rayDirY;
-
-                // STORE Z-BUFFER
-                // We fill the 4-pixel strip in zBuffer
-                for (let k = 0; k < 4; k++) {
-                    if (x + k < W) zBuffer[x + k] = perpWallDist;
-                }
-
-                const lineHeight = Math.floor(H / perpWallDist);
-                const drawStart = -lineHeight / 2 + H / 2;
-                
-                let color = '#555';
-                if (tileHit === TileType.DOOR) color = '#5c4033';
-                if (tileHit === TileType.EXIT) color = '#FFD700';
-
-                const shadow = Math.min(1, perpWallDist / VIEW_DISTANCE);
-                
-                ctx.fillStyle = color;
-                if (side === 1) {
-                     ctx.fillStyle = shadeColor(color, -20);
-                }
-                ctx.fillRect(x, drawStart, 4, lineHeight);
-                
-                // Fog
-                ctx.fillStyle = `rgba(0,0,0,${shadow})`;
-                ctx.fillRect(x, drawStart, 4, lineHeight);
-            }
-        }
-
-        // --- 3. Sprite Casting (Props) ---
-        // Collect all visible props
-        const props: {x: number, y: number, type: number, dist: number}[] = [];
-        
-        for(let y=0; y<MAP_SIZE; y++) {
-            for(let x=0; x<MAP_SIZE; x++) {
-                if (decorations[y][x] > 0) {
-                     const dx = x + 0.5 - posX;
-                     const dy = y + 0.5 - posY;
-                     const dist = dx*dx + dy*dy;
-                     // Simple culling
-                     if (dist < VIEW_DISTANCE * VIEW_DISTANCE * 1.5) {
-                         props.push({ x: x + 0.5, y: y + 0.5, type: decorations[y][x], dist });
-                     }
-                }
-            }
-        }
-
-        // Sort by distance (far to near)
-        props.sort((a, b) => b.dist - a.dist);
-
-        // Draw Props
-        if (textures) {
-            for (const prop of props) {
-                // Transform sprite with the inverse camera matrix
-                // [ planeX   dirX ] -1                                       [ dirY      -dirX ]
-                // [               ]       =  1/(planeX*dirY-dirX*planeY) *   [                 ]
-                // [ planeY   dirY ]                                          [ -planeY  planeX ]
-
-                const spriteX = prop.x - posX;
-                const spriteY = prop.y - posY;
-
-                const invDet = 1.0 / (planeX * dirY - dirX * planeY); // required for correct matrix multiplication
-
-                const transformX = invDet * (dirY * spriteX - dirX * spriteY);
-                const transformY = invDet * (-planeY * spriteX + planeX * spriteY); // this is actually the depth inside the screen
-
-                if (transformY > 0) { // In front of camera
-                    const spriteScreenX = Math.floor((W / 2) * (1 + transformX / transformY));
-                    const spriteHeight = Math.abs(Math.floor(H / (transformY))); // Using 'transformY' instead of real dist prevents fisheye
-                    
-                    // Center sprite vertically
-                    const spriteTop = -spriteHeight / 2 + H / 2 + (spriteHeight * 0.2); // Offset down slightly to sit on floor
-
-                    const spriteWidth = Math.abs(Math.floor(H / (transformY)));
-                    const spriteLeft = Math.floor(spriteScreenX - spriteWidth / 2);
-
-                    // Determine texture
-                    let texSrc = null;
-                    if (prop.type === 1) texSrc = textures.torch;
-                    if (prop.type === 2) texSrc = textures.prop_barrel;
-                    if (prop.type === 3) texSrc = textures.prop_crate;
-                    if (prop.type === 4) texSrc = textures.prop_bones;
-
-                    if (texSrc) {
-                        const img = new Image();
-                        img.src = texSrc;
-                        if (img.src) {
-                            // Check Z-Buffer for visibility
-                            // We check the center column of the sprite to decide visibility or iterate columns
-                            // For simplicity/performance in JS canvas, we check a few points or just draw if not totally occluded?
-                            // Proper way: Iterate columns.
-                            
-                            // Optimization: Check center of sprite. If center is visible, draw whole thing.
-                            // Better: Loop through columns of the sprite on screen.
-                            
-                            // Since we are using Canvas drawImage, we can't easily do per-column z-check without doing manual pixel manipulation (slow).
-                            // Hybrid approach: Check if center is visible.
-                            
-                            const centerIdx = Math.max(0, Math.min(W-1, spriteScreenX));
-                            if (transformY < zBuffer[centerIdx]) {
-                                // Simple distance fade
-                                const shadow = Math.min(1, transformY / VIEW_DISTANCE);
-                                
-                                ctx.filter = `brightness(${Math.max(0.2, 1 - shadow)})`;
-                                ctx.drawImage(img, spriteLeft, spriteTop, spriteWidth, spriteHeight);
-                                ctx.filter = 'none';
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-
-        // --- 4. Enemies (Combat Overlay) ---
-        // This remains an overlay for combat focus
-        if (phase === 'COMBAT') {
-            const livingEnemies = enemies.filter(e => e.hp > 0);
-            const count = livingEnemies.length;
-            
-            livingEnemies.forEach((enemy, index) => {
-                if (enemy.image) {
-                     const eImg = new Image(); 
-                     eImg.src = enemy.image;
-                     if(eImg.src) { 
-                        let ex = (W - (H * 0.8))/2; 
-                        if (count === 2) ex = (W/3) * (index + 1) - (H * 0.4); 
-                        if (count === 3) ex = (W/4) * (index + 1) - (H * 0.4);
-
-                        const size = H * 0.8; 
-                        const ey = (H - size)/2 + 40;
-                        const bob = Math.sin((timeRef.current + index * 100) * 0.05) * 10;
-                        const breath = Math.sin((timeRef.current + index * 50) * 0.03) * 0.02 + 1;
-
-                        if (selectedEnemyId === enemy.id) {
-                             ctx.shadowColor = "red";
-                             ctx.shadowBlur = 30;
-                             ctx.fillStyle = "red";
-                             ctx.beginPath();
-                             ctx.moveTo(ex + size/2, ey - 40 + bob);
-                             ctx.lineTo(ex + size/2 - 15, ey - 60 + bob);
-                             ctx.lineTo(ex + size/2 + 15, ey - 60 + bob);
-                             ctx.fill();
-                        } else {
-                            ctx.shadowBlur = 0;
-                        }
-
-                        ctx.drawImage(eImg, ex + (size - size*breath)/2, ey + bob, size * breath, size * breath);
-                        ctx.shadowBlur = 0;
-
-                        // HP Bar
-                        const hpPct = enemy.hp / enemy.maxHp;
-                        const barW = size * 0.6;
-                        const barX = ex + (size - barW)/2;
-                        const barY = ey + bob - 20;
-                        
-                        ctx.fillStyle = '#333';
-                        ctx.fillRect(barX, barY, barW, 8);
-                        ctx.fillStyle = hpPct > 0.5 ? '#0f0' : hpPct > 0.2 ? '#ff0' : '#f00';
-                        ctx.fillRect(barX, barY, barW * hpPct, 8);
-
-                        // Status Icons
-                        if (enemy.statusEffects && enemy.statusEffects.length > 0) {
-                            enemy.statusEffects.forEach((eff, i) => {
-                                ctx.font = "24px monospace";
-                                ctx.fillStyle = "white";
-                                ctx.fillText(eff.icon, barX + (i * 24), barY - 10);
-                            });
-                        }
-                        
-                        if (vfx && vfx.targetId === enemy.id && (Date.now() - vfx.id < 500)) {
-                             ctx.fillStyle = '#fff';
-                             ctx.font = "bold 40px 'Press Start 2P'";
-                             ctx.strokeStyle = '#f00';
-                             ctx.lineWidth = 2;
-                             const txt = "HIT!";
-                             ctx.fillText(txt, ex + size/2 - 40, ey + size/2);
-                             ctx.strokeText(txt, ex + size/2 - 40, ey + size/2);
-                        }
-                     }
-                }
-            });
-        }
-
-        // --- 5. Hands / Weapons (FPS View) ---
-        if (phase === 'EXPLORE' || phase === 'COMBAT') {
-            const isWalking = animProgress.current < 1;
-            const walkBob = isWalking ? Math.sin(timeRef.current * 0.5) * 30 : 0;
-            const bobX = Math.cos(timeRef.current * 0.1) * 10;
-            const bobY = Math.abs(Math.sin(timeRef.current * 0.1)) * 10 + Math.abs(walkBob);
-            
-            // Determine active hand texture
-            let handTex = textures?.hand_default;
-            const weapon = player.party[activeCharIndex]?.equipment.weapon;
-            const offhand = player.party[activeCharIndex]?.equipment.offhand;
-
-            if (textures) {
-                if (weapon) {
-                    if (weapon.name.includes("Axe")) handTex = textures.hand_axe;
-                    else if (weapon.name.includes("Mace") || weapon.name.includes("Hammer")) handTex = textures.hand_mace;
-                    else if (weapon.name.includes("Dagger")) handTex = textures.hand_dagger;
-                    else if (weapon.name.includes("Staff")) handTex = textures.hand_staff;
-                    else if (weapon.name.includes("Bow")) handTex = textures.hand_bow;
-                    else if (weapon.name.includes("Wraps")) handTex = textures.hand_default;
-                    else handTex = textures.hand_sword;
-                }
-
-                // Render Left Hand (Offhand/Torch)
-                // If offhand is shield, show shield
-                if (offhand && offhand.type === 'SHIELD' && textures.hand_shield) {
-                    const hImg = new Image(); hImg.src = textures.hand_shield;
-                    if (hImg.src) ctx.drawImage(hImg, -80 + bobX, H - 220 + bobY, 240, 240);
-                } else if (textures.hand_default) {
-                     // Default Torch in left hand
-                     const hImg = new Image(); hImg.src = textures.hand_default;
-                     if (hImg.src) ctx.drawImage(hImg, -50 + bobX, H - 200 + bobY, 200, 200);
-                }
-
-                // Render Right Hand (Main Weapon)
-                if (handTex) {
-                     const hImg = new Image(); hImg.src = handTex;
-                     if (hImg.src) ctx.drawImage(hImg, W - 150 - bobX, H - 200 + bobY, 200, 200);
-                }
-            }
-        }
-        
-        // --- 6. VFX Overlay ---
-        if (vfx && Date.now() - vfx.id < 300) {
-            ctx.globalCompositeOperation = 'add';
-            if (vfx.type === 'ATTACK') ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
-            else if (vfx.type === 'DAMAGE') ctx.fillStyle = 'rgba(255, 0, 0, 0.3)';
-            else if (vfx.type === 'HEAL') ctx.fillStyle = 'rgba(0, 255, 0, 0.2)';
-            else ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
-            
-            ctx.fillRect(0, 0, W, H);
-            ctx.globalCompositeOperation = 'source-over';
-        }
-
-        frameId.current = requestAnimationFrame(render);
+      frameRef.current = requestAnimationFrame(render);
     };
 
     render();
-    return () => cancelAnimationFrame(frameId.current);
-  }, [map, decorations, playerPos, playerDir, prevPlayerPos, textures, enemies, selectedEnemyId, phase, vfx, activeCharIndex, player.party]);
+    return () => cancelAnimationFrame(frameRef.current);
+  }, [map, decorations, playerPos, playerDir, prevPlayerPos, biomeId, enemies, selectedEnemyId, phase, vfx, player, activeCharIndex]);
 
   return <canvas ref={canvasRef} onClick={handleClick} width={800} height={450} className="w-full h-full object-contain bg-black rounded cursor-crosshair" />;
 };
 
-function shadeColor(color: string, percent: number) {
-    let R = parseInt(color.substring(1,3),16);
-    let G = parseInt(color.substring(3,5),16);
-    let B = parseInt(color.substring(5,7),16);
-    R = parseInt(String(R * (100 + percent) / 100));
-    G = parseInt(String(G * (100 + percent) / 100));
-    B = parseInt(String(B * (100 + percent) / 100));
-    R = (R<255)?R:255;  G = (G<255)?G:255;  B = (B<255)?B:255;  
-    const RR = ((R.toString(16).length===1)?"0"+R.toString(16):R.toString(16));
-    const GG = ((G.toString(16).length===1)?"0"+G.toString(16):G.toString(16));
-    const BB = ((B.toString(16).length===1)?"0"+B.toString(16):B.toString(16));
-    return "#"+RR+GG+BB;
+function drawTexturedPlanes(
+  context: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  ceiling: HTMLImageElement,
+  floor: HTMLImageElement,
+  ambientColor: string,
+) {
+  context.drawImage(ceiling, 0, 0, width, height / 2);
+  context.drawImage(floor, 0, height / 2, width, height / 2);
+
+  const ceilingShade = context.createLinearGradient(0, 0, 0, height / 2);
+  ceilingShade.addColorStop(0, 'rgba(0,0,0,0.82)');
+  ceilingShade.addColorStop(1, 'rgba(0,0,0,0.18)');
+  context.fillStyle = ceilingShade;
+  context.fillRect(0, 0, width, height / 2);
+
+  const floorShade = context.createLinearGradient(0, height / 2, 0, height);
+  floorShade.addColorStop(0, 'rgba(0,0,0,0.1)');
+  floorShade.addColorStop(1, 'rgba(0,0,0,0.68)');
+  context.fillStyle = floorShade;
+  context.fillRect(0, height / 2, width, height / 2);
+
+  context.fillStyle = `${ambientColor}14`;
+  context.fillRect(0, 0, width, height);
+}
+
+function drawRaycastWalls(args: {
+  context: CanvasRenderingContext2D;
+  width: number;
+  height: number;
+  map: number[][];
+  positionX: number;
+  positionY: number;
+  directionX: number;
+  directionY: number;
+  planeX: number;
+  planeY: number;
+  wallImage: HTMLImageElement;
+  doorImage: HTMLImageElement;
+  exitImage: HTMLImageElement;
+}): Float32Array {
+  const { context, width, height, map, positionX, positionY, directionX, directionY, planeX, planeY, wallImage, doorImage, exitImage } = args;
+  const zBuffer = new Float32Array(width).fill(Infinity);
+
+  for (let screenX = 0; screenX < width; screenX += 4) {
+    const cameraX = 2 * screenX / width - 1;
+    const rayDirectionX = directionX + planeX * cameraX;
+    const rayDirectionY = directionY + planeY * cameraX;
+    let mapX = Math.floor(positionX);
+    let mapY = Math.floor(positionY);
+    const deltaX = Math.abs(1 / rayDirectionX);
+    const deltaY = Math.abs(1 / rayDirectionY);
+    let stepX: number;
+    let stepY: number;
+    let sideDistanceX: number;
+    let sideDistanceY: number;
+
+    if (rayDirectionX < 0) {
+      stepX = -1;
+      sideDistanceX = (positionX - mapX) * deltaX;
+    } else {
+      stepX = 1;
+      sideDistanceX = (mapX + 1 - positionX) * deltaX;
+    }
+    if (rayDirectionY < 0) {
+      stepY = -1;
+      sideDistanceY = (positionY - mapY) * deltaY;
+    } else {
+      stepY = 1;
+      sideDistanceY = (mapY + 1 - positionY) * deltaY;
+    }
+
+    let hit = false;
+    let side = 0;
+    let tileType = TileType.EMPTY;
+    for (let distance = 0; distance < VIEW_DISTANCE * 2 && !hit; distance += 1) {
+      if (sideDistanceX < sideDistanceY) {
+        sideDistanceX += deltaX;
+        mapX += stepX;
+        side = 0;
+      } else {
+        sideDistanceY += deltaY;
+        mapY += stepY;
+        side = 1;
+      }
+      if (mapX < 0 || mapX >= MAP_SIZE || mapY < 0 || mapY >= MAP_SIZE) {
+        hit = true;
+      } else if (map[mapY]?.[mapX] !== TileType.EMPTY) {
+        hit = true;
+        tileType = map[mapY][mapX];
+      }
+    }
+    if (!hit) continue;
+
+    const wallDistance = side === 0
+      ? (mapX - positionX + (1 - stepX) / 2) / rayDirectionX
+      : (mapY - positionY + (1 - stepY) / 2) / rayDirectionY;
+    for (let offset = 0; offset < 4 && screenX + offset < width; offset += 1) zBuffer[screenX + offset] = wallDistance;
+
+    const lineHeight = Math.floor(height / Math.max(0.05, wallDistance));
+    const drawStart = -lineHeight / 2 + height / 2;
+    const texture = tileType === TileType.DOOR ? doorImage : tileType === TileType.EXIT ? exitImage : wallImage;
+    const wallCoordinate = side === 0
+      ? positionY + wallDistance * rayDirectionY
+      : positionX + wallDistance * rayDirectionX;
+    const wallFraction = wallCoordinate - Math.floor(wallCoordinate);
+    let textureX = Math.floor(wallFraction * texture.width);
+    if ((side === 0 && rayDirectionX > 0) || (side === 1 && rayDirectionY < 0)) textureX = texture.width - textureX - 1;
+
+    const darkness = Math.max(0.25, 1 - Math.min(0.82, wallDistance / VIEW_DISTANCE));
+    context.save();
+    context.filter = `brightness(${darkness * (side === 1 ? 0.78 : 1)})`;
+    context.drawImage(texture, textureX, 0, 1, texture.height, screenX, drawStart, 4, lineHeight);
+    context.restore();
+
+    const fogAlpha = Math.min(0.76, wallDistance / (VIEW_DISTANCE * 1.5));
+    context.fillStyle = `rgba(0,0,0,${fogAlpha})`;
+    context.fillRect(screenX, drawStart, 4, lineHeight);
+  }
+
+  return zBuffer;
+}
+
+function drawDecorations(args: {
+  context: CanvasRenderingContext2D;
+  width: number;
+  height: number;
+  map: number[][];
+  decorations: number[][];
+  biomeId: BiomeId;
+  positionX: number;
+  positionY: number;
+  directionX: number;
+  directionY: number;
+  planeX: number;
+  planeY: number;
+  zBuffer: Float32Array;
+}) {
+  const { context, width, height, decorations, biomeId, positionX, positionY, directionX, directionY, planeX, planeY, zBuffer } = args;
+  const visible: SpritePoint[] = [];
+  for (let y = 0; y < MAP_SIZE; y += 1) {
+    for (let x = 0; x < MAP_SIZE; x += 1) {
+      const type = decorations[y]?.[x] ?? 0;
+      if (type <= 0) continue;
+      const dx = x + 0.5 - positionX;
+      const dy = y + 0.5 - positionY;
+      const distance = dx * dx + dy * dy;
+      if (distance < VIEW_DISTANCE * VIEW_DISTANCE * 1.5) visible.push({ x: x + 0.5, y: y + 0.5, type, distance });
+    }
+  }
+  visible.sort((a, b) => b.distance - a.distance);
+
+  const determinant = planeX * directionY - directionX * planeY;
+  if (!determinant) return;
+  const inverseDeterminant = 1 / determinant;
+
+  for (const sprite of visible) {
+    const assetPath = getDecorationAsset(biomeId, sprite.type);
+    const image = assetPath ? getImageAsset(assetPath) : null;
+    if (!image) continue;
+    const spriteX = sprite.x - positionX;
+    const spriteY = sprite.y - positionY;
+    const transformX = inverseDeterminant * (directionY * spriteX - directionX * spriteY);
+    const transformY = inverseDeterminant * (-planeY * spriteX + planeX * spriteY);
+    if (transformY <= 0.05) continue;
+
+    const screenX = Math.floor((width / 2) * (1 + transformX / transformY));
+    const scale = sprite.type === 1 ? 0.52 : 0.68;
+    const spriteHeight = Math.abs(Math.floor(height / transformY * scale));
+    const spriteWidth = spriteHeight * (image.width / image.height);
+    const spriteLeft = Math.floor(screenX - spriteWidth / 2);
+    const groundY = sprite.type === 1 ? height * 0.56 : height * 0.91;
+    const spriteTop = Math.floor(groundY - spriteHeight);
+    const centerColumn = Math.max(0, Math.min(width - 1, screenX));
+    if (transformY >= zBuffer[centerColumn]) continue;
+
+    context.save();
+    context.filter = `brightness(${Math.max(0.22, 1 - transformY / (VIEW_DISTANCE * 1.4))})`;
+    context.drawImage(image, spriteLeft, spriteTop, spriteWidth, spriteHeight);
+    context.restore();
+  }
+}
+
+function drawEnemySprites(args: {
+  context: CanvasRenderingContext2D;
+  width: number;
+  height: number;
+  targets: Enemy[];
+  selectedEnemyId: string | null;
+  frame: number;
+}): Map<string, { x: number; y: number; size: number }> {
+  const { context, width, height, targets, selectedEnemyId, frame } = args;
+  const positions = new Map<string, { x: number; y: number; size: number }>();
+  targets.forEach((enemy, index) => {
+    const visual = enemyVisuals[enemy.visualId];
+    if (!visual) {
+      console.error(`Enemy "${enemy.id}" references unregistered visual "${enemy.visualId}".`);
+      return;
+    }
+    const image = getImageAsset(visual.sprite);
+    if (!image) return;
+    const slotWidth = width / (targets.length + 1);
+    const requestedSize = height * 0.78 * visual.scale;
+    const size = Math.min(requestedSize, slotWidth * 1.82);
+    const centerX = slotWidth * (index + 1);
+    const groundY = height * (targets.length === 1 ? 0.95 : 0.91);
+    const bob = Math.sin((frame + index * 100) * 0.05) * 3;
+    const breath = Math.sin((frame + index * 50) * 0.03) * 0.012 + 1;
+    const drawWidth = size * breath;
+    const drawHeight = size * breath;
+    const drawX = centerX - drawWidth / 2;
+    const drawY = groundY - drawHeight + bob + (visual.offsetY ?? 0);
+    positions.set(enemy.id, { x: centerX, y: drawY + drawHeight * 0.45, size });
+
+    if (selectedEnemyId === enemy.id) {
+      context.save();
+      context.shadowColor = '#ff342c';
+      context.shadowBlur = 24;
+      context.fillStyle = '#ff342c';
+      context.beginPath();
+      context.moveTo(centerX, drawY - 9);
+      context.lineTo(centerX - 13, drawY - 28);
+      context.lineTo(centerX + 13, drawY - 28);
+      context.closePath();
+      context.fill();
+      context.restore();
+    }
+
+    context.drawImage(image, drawX, drawY, drawWidth, drawHeight);
+    const health = Math.max(0, Math.min(1, enemy.hp / enemy.maxHp));
+    const barWidth = size * 0.58;
+    const barX = centerX - barWidth / 2;
+    const barY = drawY - 8;
+    context.fillStyle = '#1b1513';
+    context.fillRect(barX, barY, barWidth, 7);
+    context.fillStyle = health > 0.5 ? '#74b64a' : health > 0.2 ? '#d6a83a' : '#ba3b37';
+    context.fillRect(barX, barY, barWidth * health, 7);
+
+    enemy.statusEffects?.forEach((effect, effectIndex) => {
+      context.font = '20px monospace';
+      context.fillStyle = '#fff5dc';
+      context.fillText(effect.icon, barX + effectIndex * 22, barY - 4);
+    });
+  });
+  return positions;
+}
+
+function drawPlayerHands(args: {
+  context: CanvasRenderingContext2D;
+  width: number;
+  height: number;
+  frame: number;
+  player: Player;
+  activeCharIndex: number;
+  moving: boolean;
+}) {
+  const { context, width, height, frame, player, activeCharIndex, moving } = args;
+  const character = player.party[activeCharIndex];
+  if (!character) return;
+  const weaponPath = weaponVisuals[getWeaponVisualType(character.equipment.weapon)];
+  const weaponImage = getImageAsset(weaponPath);
+  const offhandImage = character.equipment.offhand?.type === 'SHIELD'
+    ? getImageAsset(shieldVisual)
+    : getImageAsset(weaponVisuals.unarmed);
+  if (!weaponImage || !offhandImage) return;
+
+  const stepBob = moving ? Math.sin(frame * 0.5) * 18 : 0;
+  const idleBob = Math.abs(Math.sin(frame * 0.1)) * 7;
+  const bobX = Math.cos(frame * 0.1) * 5;
+  context.drawImage(offhandImage, -54 + bobX, height - 188 + idleBob + stepBob, 176, 188);
+  context.drawImage(weaponImage, width - 174 - bobX, height - 200 + idleBob + stepBob, 190, 206);
+}
+
+function drawVfx(args: {
+  context: CanvasRenderingContext2D;
+  width: number;
+  height: number;
+  vfx: VFXEvent | null;
+  targetPositions: Map<string, { x: number; y: number; size: number }>;
+}) {
+  const { context, width, height, vfx, targetPositions } = args;
+  if (!vfx) return;
+  const elapsed = Date.now() - vfx.id;
+  const duration = 560;
+  if (elapsed < 0 || elapsed >= duration) return;
+  const path = vfxVisuals[vfx.type];
+  const image = path ? getImageAsset(path) : null;
+  if (!image) return;
+
+  const target = vfx.targetId ? targetPositions.get(vfx.targetId) : undefined;
+  const size = target ? Math.min(height * 0.6, target.size * 0.8) : height * 0.54;
+  const centerX = target?.x ?? width / 2;
+  const centerY = target?.y ?? height * 0.48;
+  context.save();
+  context.globalAlpha = 1 - elapsed / duration;
+  context.drawImage(image, centerX - size / 2, centerY - size / 2, size, size);
+  context.restore();
 }
 
 export default Viewport;
