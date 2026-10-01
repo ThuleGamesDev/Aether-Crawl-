@@ -1,14 +1,20 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { generateDungeon } from './services/dungeonGenerator';
-import { generateBiomeTextures, generateEnemy, generateNarrative } from './services/geminiService';
 import { audioService } from './services/audioService';
-import { generateLoot, XP_THRESHOLD, getLeaderboard, saveHighScore, saveGame, loadGame, hasSaveGame, generateBoss, CRAFTING_RECIPES } from './services/gameLogic';
+import { generateLoot, XP_THRESHOLD, getLeaderboard, saveHighScore, saveGame, loadGame, hasSaveGame, createBoss, createRandomEnemy, CRAFTING_RECIPES } from './services/gameLogic';
+import { getBiomeIdForLevel } from './data/assetRegistry';
+import { getExplorationNarrative } from './data/narratives';
+import { normalizePlayerWeaponVisuals } from './data/weaponVisuals';
+import { TEXT, LanguageType } from './data/translations';
+import { preloadAssets } from './services/assetLoader';
+import { generatePerksForCharacter } from './services/progression';
+import { calculateEnemyAttack, calculatePlayerAttack, calculateSkillPower, damageEnemies } from './services/combat';
 import Viewport from './components/Viewport';
 import Controls from './components/Controls';
 import Log from './components/Log';
 import Minimap from './components/Minimap';
-import { Player, Character, TileType, GamePhase, LogEntry, BiomeTextures, Enemy, CombatMenu, VFXEvent, VFXType, Item, HighScore, Perk, ClassType, StatusEffect, StatusType, Direction, Skill } from './types';
+import { Player, Character, TileType, GamePhase, LogEntry, BiomeId, Enemy, CombatMenu, VFXEvent, VFXType, Item, HighScore, Perk, ClassType, StatusEffect, StatusType, Direction, Skill } from './types';
 import { CLASSES, MAP_SIZE, MASTER_SKILL_POOL } from './constants';
 
 const Modal: React.FC<{ title: string; onClose: () => void; children: React.ReactNode }> = ({ title, onClose, children }) => (
@@ -24,17 +30,6 @@ const Modal: React.FC<{ title: string; onClose: () => void; children: React.Reac
         </div>
     </div>
 );
-
-// Translation Dictionary (Truncated for brevity, kept same)
-const TEXT = {
-    EN: { NEW_GAME: "NEW GAME", CONTINUE: "CONTINUE", OPTIONS: "OPTIONS", ASSEMBLE: "ASSEMBLE PARTY", START_ADVENTURE: "START ADVENTURE", GENERATING: "GENERATING...", DEFEAT: "DEFEAT", SUBMIT: "SUBMIT SCORE", MENU: "MENU", INVENTORY: "INVENTORY", SKILLS: "SKILLS", STATS: "STATUS", LEVEL_UP: "LEVEL UP!", EQUIP: "EQUIP", SCRAP: "SCRAP", LANGUAGE: "Language", MUSIC: "Music", SFX: "SFX", API_KEY: "Custom API Key (Optional)", API_HINT: "Leave empty to use default. Required for high-res AI generation.", SELECT_STUDIO: "Select from AI Studio", SAVE: "SAVE GAME", RESUME: "RESUME GAME", EXIT: "EXIT GAME", EXIT_TO_MENU: "EXIT TO TITLE" },
-    DE: { NEW_GAME: "NEUES SPIEL", CONTINUE: "FORTSETZEN", OPTIONS: "EINSTELLUNGEN", ASSEMBLE: "GRUPPE WÄHLEN", START_ADVENTURE: "ABENTEUER STARTEN", GENERATING: "GENERIERUNG...", DEFEAT: "NIEDERLAGE", SUBMIT: "SCORE SENDEN", MENU: "MENÜ", INVENTORY: "INVENTAR", SKILLS: "SKILLS", STATS: "STATUS", LEVEL_UP: "AUFSTIEG!", EQUIP: "AUSRÜSTEN", SCRAP: "ZERLEGEN", LANGUAGE: "Sprache", MUSIC: "Musik", SFX: "Soundeffekte", API_KEY: "Eigener API Key (Optional)", API_HINT: "Leer lassen für Standard. Nötig für KI-Bilder.", SELECT_STUDIO: "AI Studio Key wählen", SAVE: "SPIEL SPEICHERN", RESUME: "WEITERSPIELEN", EXIT: "SPIEL BEENDEN", EXIT_TO_MENU: "ZUM TITELBILDSCHIRM" },
-    FR: { NEW_GAME: "NOUVELLE PARTIE", CONTINUE: "CONTINUER", OPTIONS: "OPTIONS", ASSEMBLE: "RASSEMBLER L'ÉQUIPE", START_ADVENTURE: "COMMENCER L'AVENTURE", GENERATING: "GÉNÉRATION...", DEFEAT: "DÉFAITE", SUBMIT: "SOUMETTRE SCORE", MENU: "MENU", INVENTORY: "INVENTAIRE", SKILLS: "COMPÉTENCES", STATS: "STATUT", LEVEL_UP: "NIVEAU SUPÉRIEUR !", EQUIP: "ÉQUIPER", SCRAP: "RECYCLER", LANGUAGE: "Langue", MUSIC: "Musique", SFX: "Effets sonores", API_KEY: "Clé API Personnalisée (Optionnel)", API_HINT: "Laisser vide par défaut. Requis pour IA haute résolution.", SELECT_STUDIO: "Sélectionner via AI Studio", SAVE: "SAUVEGARDER", RESUME: "REPRENDRE", EXIT: "QUITTER LE JEU", EXIT_TO_MENU: "RETOUR AU TITRE" },
-    ES: { NEW_GAME: "NUEVA PARTIDA", CONTINUE: "CONTINUAR", OPTIONS: "OPCIONES", ASSEMBLE: "REUNIR GRUPO", START_ADVENTURE: "COMENZAR AVENTURA", GENERATING: "GENERANDO...", DEFEAT: "DERROTA", SUBMIT: "ENVIAR PUNTUACIÓN", MENU: "MENÚ", INVENTORY: "INVENTARIO", SKILLS: "HABILIDADES", STATS: "ESTADO", LEVEL_UP: "¡SUBIDA DE NIVEL!", EQUIP: "EQUIPAR", SCRAP: "CHATARRA", LANGUAGE: "Idioma", MUSIC: "Música", SFX: "Efectos de sonido", API_KEY: "Clave API Personalizada (Opcional)", API_HINT: "Dejar vacío para predeterminado. Requerido para IA de alta resolución.", SELECT_STUDIO: "Seleccionar de AI Studio", SAVE: "GUARDAR PARTIDA", RESUME: "REANUDAR", EXIT: "SALIR DEL JUEGO", EXIT_TO_MENU: "VOLVER AL TÍTULO" },
-    JP: { NEW_GAME: "ニューゲーム", CONTINUE: "つづきから", OPTIONS: "オプション", ASSEMBLE: "パーティ編成", START_ADVENTURE: "冒険を始める", GENERATING: "生成中...", DEFEAT: "敗北", SUBMIT: "スコア送信", MENU: "メニュー", INVENTORY: "所持品", SKILLS: "スキル", STATS: "ステータス", LEVEL_UP: "レベルアップ！", EQUIP: "装備", SCRAP: "分解", LANGUAGE: "言語", MUSIC: "音楽", SFX: "効果音", API_KEY: "カスタムAPIキー (任意)", API_HINT: "デフォルトは空欄。高解像度AI生成に必要。", SELECT_STUDIO: "AI Studioから選択", SAVE: "セーブ", RESUME: "再開", EXIT: "ゲーム終了", EXIT_TO_MENU: "タイトルへ戻る" }
-};
-
-type LanguageType = keyof typeof TEXT;
 
 const App: React.FC = () => {
   const [map, setMap] = useState<number[][]>([]);
@@ -57,7 +52,8 @@ const App: React.FC = () => {
   const [language, setLanguage] = useState<LanguageType>('EN');
   const [musicOn, setMusicOn] = useState(true);
   const [sfxOn, setSfxOn] = useState(true);
-  const [customApiKey, setCustomApiKey] = useState('');
+  const [assetsLoaded, setAssetsLoaded] = useState(false);
+  const [assetLoadError, setAssetLoadError] = useState<string | null>(null);
 
   // Selection State
   const [selectedClasses, setSelectedClasses] = useState<ClassType[]>([]);
@@ -65,11 +61,10 @@ const App: React.FC = () => {
   const [phase, setPhase] = useState<GamePhase>('MENU');
   const [prevPhase, setPrevPhase] = useState<GamePhase>('MENU');
   const [combatMenu, setCombatMenu] = useState<CombatMenu>('MAIN');
-  const [textures, setTextures] = useState<BiomeTextures | null>(null);
+  const [biomeId, setBiomeId] = useState<BiomeId>('dungeon');
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [enemies, setEnemies] = useState<Enemy[]>([]);
   const [selectedEnemyId, setSelectedEnemyId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
   const [vfx, setVfx] = useState<VFXEvent | null>(null);
   const [dungeonLevel, setDungeonLevel] = useState(1);
   const [isPlayerTurn, setIsPlayerTurn] = useState(true);
@@ -105,6 +100,17 @@ const App: React.FC = () => {
   }, [player]);
 
   useEffect(() => {
+    let active = true;
+    preloadAssets()
+      .then(() => { if (active) setAssetsLoaded(true); })
+      .catch(error => {
+        console.error(error);
+        if (active) setAssetLoadError(error instanceof Error ? error.message : String(error));
+      });
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
     setCanContinue(hasSaveGame());
     const storedLang = localStorage.getItem('aether_lang') as LanguageType;
     if (storedLang && TEXT[storedLang]) setLanguage(storedLang);
@@ -120,8 +126,6 @@ const App: React.FC = () => {
         setSfxOn(enabled);
         audioService.setSfxEnabled(enabled);
     }
-    const storedKey = localStorage.getItem('aether_custom_api_key');
-    if (storedKey) setCustomApiKey(storedKey);
   }, []);
   
   useEffect(() => {
@@ -155,17 +159,6 @@ const App: React.FC = () => {
       setSfxOn(newVal);
       audioService.setSfxEnabled(newVal);
       localStorage.setItem('aether_sfx', String(newVal));
-  };
-
-  const saveCustomKey = (key: string) => {
-      setCustomApiKey(key);
-      localStorage.setItem('aether_custom_api_key', key);
-  };
-
-  const handleSelectAIStudioKey = async () => {
-      if ((window as any).aistudio) {
-          await (window as any).aistudio.openSelectKey();
-      }
   };
 
   const handleQuitApp = () => {
@@ -210,22 +203,16 @@ const App: React.FC = () => {
       return newExplored;
   };
 
-  const loadTexturesForLevel = async (level: number) => {
-    try {
-        const txt = await generateBiomeTextures(level);
-        setTextures(txt);
-    } catch(e) { console.error(e); }
-  };
-
-  const generateLevel = async (level: number, keepTextures = false) => {
-      setLoading(true);
+  const generateLevel = (level: number) => {
       setPhase('INIT');
       setDungeonLevel(level);
+      const nextBiome = getBiomeIdForLevel(level);
+      setBiomeId(nextBiome);
       setLevelBossDefeated(false);
       pendingLevelChangeRef.current = false;
       setClearedTiles(new Set()); // Reset cleared tiles for new level
       
-      const { map: newMap, decorations: newDecorations } = generateDungeon();
+      const { map: newMap, decorations: newDecorations } = generateDungeon(nextBiome);
       setMap(newMap);
       setDecorations(newDecorations);
 
@@ -240,12 +227,6 @@ const App: React.FC = () => {
       initExplored = updateExplored({x: sx, y: sy}, initExplored);
       setExplored(initExplored);
 
-      if (!textures || !keepTextures || (level - 1) % 5 === 0) {
-          addLog("Entering a new biome...", 'info');
-          await loadTexturesForLevel(level);
-      }
-
-      setLoading(false);
       setPhase('EXPLORE');
       addLog(`Entered Dungeon Level ${level}.`, 'story');
   };
@@ -292,26 +273,23 @@ const App: React.FC = () => {
       generateLevel(1);
   };
 
-  const handleContinue = async () => {
+  const handleContinue = () => {
       const saved = loadGame();
       if (!saved) return;
       
-      setLoading(true);
       setPhase('INIT'); // Show loading screen
 
-      setPlayer(saved.player);
+      setPlayer(normalizePlayerWeaponVisuals(saved.player));
       setPrevPos(saved.player.pos);
       setMap(saved.map);
       setDecorations(saved.decorations);
       setExplored(saved.explored);
       setDungeonLevel(saved.dungeonLevel);
+      setBiomeId(getBiomeIdForLevel(saved.dungeonLevel));
       setLogs(saved.logs);
       setLevelBossDefeated(saved.levelBossDefeated || false);
       if (saved.clearedTiles) setClearedTiles(new Set(saved.clearedTiles));
       
-      await loadTexturesForLevel(saved.dungeonLevel);
-      
-      setLoading(false);
       setPhase('EXPLORE');
       addLog("Game Loaded.", 'info');
       audioService.startMusic();
@@ -455,38 +433,6 @@ const App: React.FC = () => {
 
 
   // --- LEVEL UP ---
-  const generatePerksForChar = (char: Character): Perk[] => {
-      const perks: Perk[] = [];
-      const existingUpgrades = char.skills.filter(s => s.level < s.maxLevel).map((s, i) => ({ id: `upgrade_${s.id}_${Date.now()}_${i}`, type: 'UPGRADE' as const, skillId: s.id, title: `Upgrade: ${s.name} (Lv.${s.level + 1})`, description: `Increase power/efficiency.`, cost: 0 }));
-      const knownIds = char.skills.map(s => s.id);
-      
-      // Filter potential new skills based on Character's primary stats (Categorization)
-      const potentialNew = MASTER_SKILL_POOL.filter(s => !knownIds.includes(s.id));
-      
-      // Determine Character's primary stats (highest values)
-      const stats = { STR: char.stats.str, DEX: char.stats.dex, INT: char.stats.int };
-      const maxStatVal = Math.max(char.stats.str, char.stats.dex, char.stats.int);
-      const primaryStats = Object.keys(stats).filter(k => (stats as any)[k] >= maxStatVal - 2); // Allow slight margin for hybrids
-
-      const relevantSkills = potentialNew.filter(s => primaryStats.includes(s.scalingStat));
-      
-      // If we run out of relevant skills, fallback to all potentials
-      const poolNew = relevantSkills.length > 0 ? relevantSkills : potentialNew;
-      
-      const combinedPool = [];
-      if (existingUpgrades.length > 0) combinedPool.push(existingUpgrades[Math.floor(Math.random()*existingUpgrades.length)]);
-      
-      const newSkillPoolMapped = poolNew.map((s, i) => ({ id: `new_${s.id}_${Date.now()}_${i}`, type: 'NEW' as const, skillId: s.id, title: `Learn: ${s.name}`, description: `${s.description}`, cost: 0 }));
-      
-      if (newSkillPoolMapped.length > 0) combinedPool.push(newSkillPoolMapped[Math.floor(Math.random()*newSkillPoolMapped.length)]);
-      
-      const remaining = [...existingUpgrades.filter(u => !combinedPool.includes(u)), ...newSkillPoolMapped.filter(n => !combinedPool.includes(n))];
-      for (let i = remaining.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [remaining[i], remaining[j]] = [remaining[j], remaining[i]]; }
-      while(combinedPool.length < 3 && remaining.length > 0) { combinedPool.push(remaining.pop()!); }
-      combinedPool.push({id:'heal_self', title:'Full Restore', description:'Fully heal HP & MP', type:'NEW', skillId:'', cost:0});
-      return combinedPool;
-  };
-
   const triggerLevelUp = (currentParty?: Character[]) => {
       const partyToCheck = currentParty || player.party;
       const levelingIndices: number[] = [];
@@ -510,7 +456,7 @@ const App: React.FC = () => {
           setPlayer(p => ({ ...p, party: newParty }));
           setLevelUpQueue(levelingIndices);
           const firstChar = newParty[levelingIndices[0]];
-          setLevelUpOptions(generatePerksForChar(firstChar));
+          setLevelUpOptions(generatePerksForCharacter(firstChar));
           setPhase('LEVEL_UP');
           audioService.playLevelUp();
       } else {
@@ -550,7 +496,7 @@ const App: React.FC = () => {
       setLevelUpQueue(newQueue);
       if (newQueue.length > 0) {
           const nextChar = player.party[newQueue[0]];
-          setLevelUpOptions(generatePerksForChar(nextChar));
+          setLevelUpOptions(generatePerksForCharacter(nextChar));
       } else {
           if (pendingLevelChangeRef.current) { generateLevel(dungeonLevel + 1); } else { setPhase('EXPLORE'); }
       }
@@ -559,7 +505,7 @@ const App: React.FC = () => {
 
   // --- COMBAT SYSTEM ---
 
-  const startCombat = async (isBoss = false) => {
+  const startCombat = (isBoss = false) => {
       // CLEAR OLD ENEMIES TO PREVENT DOUBLE SPAWNS
       setEnemies([]);
       enemiesRef.current = [];
@@ -572,22 +518,9 @@ const App: React.FC = () => {
       if (isBoss) { addLog("BOSS BATTLE INITIATED!", 'combat'); audioService.stopMusic(); } else { addLog("Enemies approaching!", 'combat'); }
       audioService.playBump();
       
-      let newEnemies: Enemy[] = [];
-      if (isBoss) {
-          const isBiomeBoss = dungeonLevel % 5 === 0;
-          const boss = generateBoss(dungeonLevel, isBiomeBoss);
-          const e = await generateEnemy(dungeonLevel, true);
-          boss.image = e.image; 
-          newEnemies.push(boss);
-      } else {
-          const count = Math.floor(Math.random() * 3) + 1; 
-          for(let i=0; i<count; i++) {
-              const e = await generateEnemy(dungeonLevel);
-              e.id = `enemy_${Date.now()}_${i}`;
-              e.statusEffects = [];
-              newEnemies.push(e);
-          }
-      }
+      const newEnemies: Enemy[] = isBoss
+          ? [createBoss(dungeonLevel, dungeonLevel % 5 === 0)]
+          : Array.from({ length: Math.floor(Math.random() * 3) + 1 }, () => createRandomEnemy(dungeonLevel));
       setEnemies(newEnemies);
       enemiesRef.current = newEnemies; 
       setSelectedEnemyId(newEnemies[0].id);
@@ -640,19 +573,7 @@ const App: React.FC = () => {
 
           const target = livingPlayers[Math.floor(Math.random() * livingPlayers.length)];
           
-          let dmg = Math.max(1, enemy.damage - Math.floor(target.stats.dex / 4));
-          
-          // Apply Enemy Buffs/Debuffs to Damage
-          const strBuff = enemy.statusEffects.find(e => e.type === 'STRENGTH');
-          if (strBuff) dmg += strBuff.value;
-          const weakDebuff = enemy.statusEffects.find(e => e.type === 'WEAKNESS');
-          if (weakDebuff) dmg = Math.max(1, dmg - weakDebuff.value);
-
-          if (target.isDefending) dmg = Math.floor(dmg / 2);
-          if (target.equipment.armor) dmg -= target.equipment.armor.value;
-          if (target.equipment.offhand && target.equipment.offhand.type === 'SHIELD') dmg -= target.equipment.offhand.value;
-          
-          dmg = Math.max(1, dmg);
+          const dmg = calculateEnemyAttack(enemy, target);
 
           setPlayer(p => {
               const np = p.party.map(c => c.id === target.id ? { ...c, stats: { ...c.stats, hp: Math.max(0, c.stats.hp - dmg) } } : c);
@@ -722,7 +643,7 @@ const App: React.FC = () => {
 
   // --- ACTIONS ---
 
-  const handleMove = async (forward: boolean) => {
+  const handleMove = (forward: boolean) => {
       if (phase !== 'EXPLORE') return;
       if (isMoving) return; // Prevent rapid movement spam
       
@@ -796,7 +717,7 @@ const App: React.FC = () => {
           
           setTimeout(() => setIsMoving(false), 260); // Match interpolation speed
 
-          // Narrative Logic
+          // Local narrative logic
           setStepCounter(p => p + 1);
           
           // Improved logic: higher chance if seeing interesting things
@@ -808,14 +729,13 @@ const App: React.FC = () => {
           const chance = 0.05 + (interestScore * 0.1);
 
           if (Math.random() < chance) {
-               // Construct a simple context for the AI
-               const surroundings = [];
-               if (neighbors.includes(TileType.DOOR)) surroundings.push("an ancient door");
-               if (decorations[ny][nx] === 1) surroundings.push("a torch flickering on the wall");
-               const context = `Level ${dungeonLevel} dungeon. Surroundings: ${surroundings.join(', ') || "cold stone walls"}.`;
-               
-               const story = await generateNarrative(context);
-               if (story) addLog(story, 'story');
+               const story = getExplorationNarrative(
+                   dungeonLevel,
+                   neighbors.includes(TileType.DOOR),
+                   decorations[ny][nx] === 1,
+                   stepCounter,
+               );
+               addLog(story, 'story');
           }
 
           // Random Encounter Logic
@@ -852,28 +772,13 @@ const App: React.FC = () => {
              if (!target) return;
              
              const char = player.party[activeCharIndex];
-             let dmg = char.stats.str;
-             if (char.equipment.weapon) dmg += char.equipment.weapon.value;
-             
-             // Apply Player Buffs
-             const strBuff = char.statusEffects.find(e => e.type === 'STRENGTH');
-             if (strBuff) dmg += strBuff.value;
-             const weakDebuff = char.statusEffects.find(e => e.type === 'WEAKNESS');
-             if (weakDebuff) dmg = Math.max(1, dmg - weakDebuff.value);
-
-             dmg = Math.floor(dmg * (0.9 + Math.random() * 0.2));
-             let isCrit = false;
-             if (Math.random() < char.stats.dex * 0.02) { dmg = Math.floor(dmg * 1.5); isCrit = true; }
-             
-             const newEnemies = enemiesRef.current.map(e => {
-                 if (e.id === target.id) return { ...e, hp: Math.max(0, e.hp - dmg) };
-                 return e;
-             });
+             const { damage: dmg, critical: isCrit } = calculatePlayerAttack(char);
+             const newEnemies = damageEnemies(enemiesRef.current, target.id, dmg);
              setEnemies(newEnemies);
              enemiesRef.current = newEnemies;
 
              addLog(`${char.name} attacks ${target.name} for ${dmg}${isCrit ? ' (CRIT!)' : ''}.`, 'combat');
-             triggerVfx('ATTACK', target.id);
+             triggerVfx(isCrit ? 'CRITICAL' : 'ATTACK', target.id);
              audioService.playAttack();
              
              if (target.hp - dmg <= 0) {
@@ -940,11 +845,7 @@ const App: React.FC = () => {
                setPlayer(p => { const np = [...p.party]; np[activeCharIndex].stats.mp -= skill.cost; return { ...p, party: np }; });
           }
 
-          let power = skill.basePower;
-          let statVal = char.stats.int;
-          if (skill.scalingStat === 'STR') statVal = char.stats.str;
-          if (skill.scalingStat === 'DEX') statVal = char.stats.dex;
-          power += Math.floor(statVal * skill.scaling);
+          const power = calculateSkillPower(char, skill);
 
           if (skill.type === 'HEAL' || skill.type === 'BUFF') {
                let targetAlly = char;
@@ -964,10 +865,7 @@ const App: React.FC = () => {
                }
           } else if (skill.type === 'DRAIN') {
               if (targetEnemy) {
-                   const newEnemies = enemiesRef.current.map(e => {
-                       if (e.id === targetEnemy.id) { return { ...e, hp: Math.max(0, e.hp - power) }; }
-                       return e;
-                   });
+                   const newEnemies = damageEnemies(enemiesRef.current, targetEnemy.id, power);
                    setEnemies(newEnemies);
                    enemiesRef.current = newEnemies;
                    // Heal Self
@@ -984,10 +882,7 @@ const App: React.FC = () => {
               }
           } else {
               if (targetEnemy) {
-                   const newEnemies = enemiesRef.current.map(e => {
-                       if (skill.targetType === 'MULTI' || e.id === targetEnemy.id) { return { ...e, hp: Math.max(0, e.hp - power) }; }
-                       return e;
-                   });
+                   const newEnemies = damageEnemies(enemiesRef.current, targetEnemy.id, power, skill.targetType === 'MULTI');
                    setEnemies(newEnemies);
                    enemiesRef.current = newEnemies;
                    addLog(`${char.name} casts ${skill.name} for ${power} dmg!`, 'combat');
@@ -1099,6 +994,17 @@ const App: React.FC = () => {
       </div>
   );
 
+  if (!assetsLoaded) {
+    return (
+      <div className="w-full h-screen bg-zinc-950 text-gray-200 flex flex-col items-center justify-center p-6 text-center">
+        <h1 className="text-3xl text-amber-400 font-bold mb-4">AETHER CRAWL</h1>
+        {assetLoadError
+          ? <><p className="text-red-300 mb-3">A required local game asset could not be loaded.</p><code className="max-w-2xl break-all text-xs text-red-200">{assetLoadError}</code></>
+          : <><p className="text-sm text-gray-300">Loading local game assets…</p><div className="mt-4 h-2 w-56 overflow-hidden rounded bg-gray-800"><div className="h-full w-1/2 animate-pulse bg-amber-500" /></div></>}
+      </div>
+    );
+  }
+
   return (
     <div className="w-full h-screen bg-zinc-900 text-gray-200 flex flex-col items-center justify-center p-2 md:p-4 select-none">
       {phase === 'MENU' && (
@@ -1122,7 +1028,6 @@ const App: React.FC = () => {
                   <div className="flex justify-between items-center"><span>{T.MUSIC}</span><button onClick={toggleMusic} className={`w-12 h-6 rounded-full relative transition-colors ${musicOn ? 'bg-green-600' : 'bg-gray-600'}`}><div className={`absolute top-1 left-1 bg-white w-4 h-4 rounded-full transition-transform ${musicOn ? 'translate-x-6' : ''}`}></div></button></div>
                   <div className="flex justify-between items-center"><span>{T.SFX}</span><button onClick={toggleSfx} className={`w-12 h-6 rounded-full relative transition-colors ${sfxOn ? 'bg-green-600' : 'bg-gray-600'}`}><div className={`absolute top-1 left-1 bg-white w-4 h-4 rounded-full transition-transform ${sfxOn ? 'translate-x-6' : ''}`}></div></button></div>
                   <div className="flex justify-between items-center"><span>{T.LANGUAGE}</span><button onClick={toggleLanguage} className="bg-gray-700 px-3 py-1 rounded border border-gray-500">{language}</button></div>
-                  <div className="pt-4 border-t border-gray-700"><label className="block text-xs text-gray-400 mb-1">{T.API_KEY}</label><div className="flex gap-2"><input type="password" value={customApiKey} onChange={(e) => saveCustomKey(e.target.value)} placeholder="AI Studio Key..." className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-xs flex-1"/><button onClick={handleSelectAIStudioKey} className="text-xs bg-blue-700 px-2 rounded">Select</button></div><p className="text-[10px] text-gray-500 mt-1">{T.API_HINT}</p></div>
               </div>
               <button onClick={() => setPhase('MENU')} className="mt-8 w-full bg-gray-700 py-2 rounded font-bold hover:bg-gray-600">{T.MENU}</button>
           </div>
@@ -1146,7 +1051,7 @@ const App: React.FC = () => {
             </div>
             
             <div className="flex-1 min-h-0 relative flex justify-center items-center bg-gray-950 rounded-lg shadow-inner overflow-hidden">
-                <Viewport map={map} decorations={decorations} playerPos={player.pos} playerDir={player.dir} prevPlayerPos={prevPos} textures={textures} enemies={enemies} selectedEnemyId={selectedEnemyId} onSelectEnemy={setSelectedEnemyId} phase={phase} vfx={vfx} player={player} activeCharIndex={activeCharIndex} />
+                <Viewport map={map} decorations={decorations} playerPos={player.pos} playerDir={player.dir} prevPlayerPos={prevPos} biomeId={biomeId} enemies={enemies} selectedEnemyId={selectedEnemyId} onSelectEnemy={setSelectedEnemyId} phase={phase} vfx={vfx} player={player} activeCharIndex={activeCharIndex} />
                 
                 {phase === 'COMBAT' && selectedEnemyId && (() => {
                     const target = enemies.find(e => e.id === selectedEnemyId);

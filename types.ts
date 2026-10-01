@@ -36,7 +36,33 @@ export interface Item {
   icon?: string; 
   isEquipped?: boolean;
   quantity: number;
-  texture?: string; // Cache for the visual representation in hand
+  visualType?: WeaponVisualType;
+}
+
+export type WeaponVisualType = 'unarmed' | 'sword' | 'dagger' | 'axe' | 'mace' | 'staff' | 'bow';
+
+export type BiomeId = 'dungeon' | 'moss' | 'catacombs' | 'obsidian' | 'frost' | 'gilded';
+
+export interface BiomeVisualDefinition {
+  wall: string;
+  floor: string;
+  ceiling: string;
+  door: string;
+  exit: string;
+  torch: string;
+  props: {
+    barrel: string;
+    crate: string;
+    bones: string;
+    extra: [string, string];
+  };
+  ambientColor: string;
+}
+
+export interface EnemyVisualDefinition {
+  sprite: string;
+  scale: number;
+  offsetY?: number;
 }
 
 export type StatusType = 'POISON' | 'BURN' | 'REGEN' | 'SHIELD' | 'STRENGTH' | 'WEAKNESS' | 'STUN';
@@ -80,33 +106,11 @@ export interface Perk {
     cost: number;
 }
 
-export interface BiomeTextures {
-  wall: string;
-  floor: string;
-  ceiling: string;
-  door: string;
-  exit: string; 
-  torch: string; // Wall torch
-  // Hands
-  hand_default: string;  
-  hand_sword: string;
-  hand_axe: string;
-  hand_mace: string;
-  hand_dagger: string;
-  hand_staff: string;
-  hand_bow: string;
-  hand_shield: string;
-  // Props
-  prop_barrel: string;
-  prop_crate: string;
-  prop_bones: string;
-}
-
 export interface Prop {
     id: string;
-    type: 'BARREL' | 'CRATE' | 'BONES';
+    type: 'BARREL' | 'CRATE' | 'BONES' | 'THEMED';
     pos: Position;
-    image: string; // Key to texture in BiomeTextures
+    assetId: string;
 }
 
 export interface Enemy {
@@ -116,7 +120,7 @@ export interface Enemy {
     maxHp: number;
     damage: number;
     xpReward: number;
-    image: string;
+    visualId: string;
     isBoss?: boolean;
     statusEffects: StatusEffect[];
 }
@@ -124,7 +128,7 @@ export interface Enemy {
 export type GamePhase = 'MENU' | 'CLASS_SELECT' | 'INIT' | 'EXPLORE' | 'COMBAT' | 'INVENTORY' | 'SKILLS' | 'STATS' | 'CRAFTING' | 'GAME_OVER' | 'LEVEL_UP' | 'OPTIONS';
 export type CombatMenu = 'MAIN' | 'SKILLS' | 'ITEMS';
 
-export type VFXType = 'DAMAGE' | 'HEAL' | 'ATTACK' | 'FIREBALL' | 'ENEMY_DEATH' | 'ICE' | 'LIGHTNING' | 'BUFF' | 'POISON' | 'HOLY' | 'DARK' | 'DEBUFF';
+export type VFXType = 'DAMAGE' | 'HEAL' | 'ATTACK' | 'FIREBALL' | 'ENEMY_DEATH' | 'ICE' | 'LIGHTNING' | 'BUFF' | 'POISON' | 'HOLY' | 'DARK' | 'DEBUFF' | 'CRITICAL';
 
 export interface VFXEvent {
     type: VFXType;
