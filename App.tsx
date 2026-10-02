@@ -1233,6 +1233,16 @@ const App: React.FC = () => {
       localStorage.setItem('aether_mouse_sensitivity', String(next));
   };
 
+  const isGameplayOverlay = phase === 'INVENTORY'
+      || phase === 'SKILLS'
+      || phase === 'STATS'
+      || phase === 'CRAFTING'
+      || phase === 'OPTIONS';
+  const isGameplayVisible = phase === 'EXPLORE'
+      || phase === 'COMBAT'
+      || (isGameplayOverlay && (prevPhase === 'EXPLORE' || prevPhase === 'COMBAT'));
+  const gameplayPhase: GamePhase = isGameplayOverlay ? prevPhase : phase;
+
   if (!assetsLoaded) {
     return (
       <div className="w-full h-screen bg-zinc-950 text-gray-200 flex flex-col items-center justify-center p-6 text-center">
