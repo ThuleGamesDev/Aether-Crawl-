@@ -235,6 +235,55 @@ export interface HighScore {
     date: string;
 }
 
+export type RoomEventStat = 'STR' | 'DEX' | 'INT';
+export type RoomHazardType = 'TRAP' | 'MIST' | 'SPORES' | 'COLLAPSE' | 'ARCANE_SURGE' | 'FROST';
+
+export interface RoomEventCheckModifier {
+  label: string;
+  value: number;
+}
+
+export interface CharacterEventCheckResult {
+  characterId: string;
+  characterName: string;
+  classType: ClassType;
+  baseStat: RoomEventStat;
+  statValue: number;
+  statBonus: number;
+  modifiers: RoomEventCheckModifier[];
+  roll: number;
+  totalScore: number;
+  difficultyClass: number;
+  success: boolean;
+  criticalSuccess: boolean;
+  criticalFailure: boolean;
+  hpChange: number;
+  mpChange: number;
+  statusApplied?: StatusType;
+  statusDuration?: number;
+  logSummary: string;
+}
+
+export interface RoomEventDefinition {
+  id: string;
+  title: string;
+  subtitle: string;
+  icon: string;
+  description: string;
+  primaryStat: RoomEventStat;
+  hazardType: RoomHazardType;
+  accentColor: string;
+}
+
+export interface ActiveRoomEvent {
+  event: RoomEventDefinition;
+  dungeonLevel: number;
+  difficultyClass: number;
+  results: CharacterEventCheckResult[];
+  scrapsFound?: number;
+  summary: string;
+}
+
 export interface SaveData {
     player: Player;
     map: number[][];
@@ -245,4 +294,5 @@ export interface SaveData {
     logs: LogEntry[];
     date: number;
     levelBossDefeated?: boolean;
+    activeRoomEvent?: ActiveRoomEvent | null;
 }
