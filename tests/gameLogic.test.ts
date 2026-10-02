@@ -84,6 +84,18 @@ describe('game progression data', () => {
     expect(stored.player.inventory[0]).not.toHaveProperty('visualType');
     expect(stored.player.inventory[0]).not.toHaveProperty('texture');
     expect(loadGame()?.player.inventory[0].visualType).toBe('axe');
+    expect(loadGame()?.player.transform).toEqual({ x: 1.5, y: 1.5, angle: 0 });
+  });
+
+  it('migrates a pre-transform save from tile and cardinal direction', () => {
+    const legacySave = makeSave();
+    legacySave.player.pos = { x: 4, y: 7 };
+    legacySave.player.dir = 'N';
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => key === 'aether_crawl_save_v1' ? JSON.stringify(legacySave) : null,
+    });
+
+    expect(loadGame()?.player.transform).toEqual({ x: 4.5, y: 7.5, angle: Math.PI * 1.5 });
   });
 
   it('does not offer Continue for malformed save data', () => {

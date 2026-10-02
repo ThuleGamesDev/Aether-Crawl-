@@ -15,12 +15,14 @@ import Viewport from './components/Viewport';
 import Controls from './components/Controls';
 import Log from './components/Log';
 import Minimap from './components/Minimap';
-import { Player, Character, TileType, GamePhase, LogEntry, BiomeId, Enemy, CombatMenu, VFXEvent, VFXType, Item, HighScore, Perk, ClassType, StatusType, Direction, Skill } from './types';
+import MobileControls from './components/MobileControls';
+import { Player, PlayerTransform, Character, TileType, GamePhase, LogEntry, BiomeId, Enemy, CombatMenu, VFXEvent, VFXType, Item, HighScore, Perk, ClassType, StatusType, Skill } from './types';
 import { CLASSES, MAP_SIZE, MASTER_SKILL_POOL } from './constants';
+import { DEFAULT_MOUSE_SENSITIVITY, MovementInput, angleToDirection, getLookInteraction, getTileCell, hasEnteredNewTile, moveFirstPerson, normalizeAngle, normalizePlayerTransform } from './services/firstPerson';
 
 const Modal: React.FC<{ title: string; onClose: () => void; children: React.ReactNode }> = ({ title, onClose, children }) => (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fadeIn">
-        <div className="bg-gray-900 border-2 border-gray-600 rounded-lg w-full max-w-lg shadow-2xl flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 backdrop-blur-sm p-3 md:p-6 animate-fadeIn">
+        <div className="bg-gray-950/95 border border-amber-100/25 rounded-xl w-full max-w-3xl shadow-2xl flex flex-col max-h-[90dvh]">
             <div className="p-4 border-b border-gray-700 flex justify-between items-center bg-gray-800 rounded-t-lg shrink-0">
                 <h2 className="text-xl font-bold text-yellow-500 font-serif tracking-wider">{title}</h2>
                 <button onClick={onClose} className="text-gray-400 hover:text-white font-bold px-2">✕</button>
@@ -40,14 +42,17 @@ const App: React.FC = () => {
   const [player, setPlayer] = useState<Player>({
     pos: { x: 1, y: 1 },
     dir: 'E',
+    transform: { x: 1.5, y: 1.5, angle: 0 },
     party: [],
     inventory: [],
     scrap: 0
   });
-  // Prev Pos for Interpolation
-  const [prevPos, setPrevPos] = useState<{x:number, y:number}|undefined>(undefined);
   const [isMoving, setIsMoving] = useState(false);
-  const [stepCounter, setStepCounter] = useState(0);
+  const [mapOpen, setMapOpen] = useState(false);
+  const [currentInteraction, setCurrentInteraction] = useState<ReturnType<typeof getLookInteraction>>(null);
+  const [isPointerLocked, setIsPointerLocked] = useState(false);
+  const [fallbackLookActive, setFallbackLookActive] = useState(false);
+  const [mouseSensitivity, setMouseSensitivity] = useState(DEFAULT_MOUSE_SENSITIVITY);
   
   // Settings State
   const [language, setLanguage] = useState<LanguageType>('EN');
@@ -94,10 +99,20 @@ const App: React.FC = () => {
   const [selectedSkill, setSelectedSkill] = useState<Skill | null>(null); // For Skill Detail View
   
   const enemiesRef = useRef<Enemy[]>([]);
-  const playerRef = useRef<Player>(player); // Ref to track latest player state during closures
+  const playerRef = useRef<Player>(player);
+  const transformRef = useRef<PlayerTransform>({ x: 1.5, y: 1.5, angle: 0 });
+  const keyboardInputRef = useRef<MovementInput>({ forward: 0, strafe: 0, turn: 0 });
+  const touchInputRef = useRef<Pick<MovementInput, 'forward' | 'strafe'>>({ forward: 0, strafe: 0 });
+  const pressedKeysRef = useRef(new Set<string>());
+  const lastProcessedCellRef = useRef<{ x: number; y: number } | null>(null);
+  const lastInteractionKeyRef = useRef('');
+  const encounterPendingRef = useRef(false);
+  const walkingDistanceRef = useRef(0);
+  const stepCounterRef = useRef(0);
+  const movingRef = useRef(false);
 
   useEffect(() => {
-    playerRef.current = player;
+    playerRef.current = { ...player, transform: transformRef.current };
   }, [player]);
 
   useEffect(() => {
@@ -126,6 +141,10 @@ const App: React.FC = () => {
         const enabled = storedSfx === 'true';
         setSfxOn(enabled);
         audioService.setSfxEnabled(enabled);
+    }
+    const storedSensitivity = Number(localStorage.getItem('aether_mouse_sensitivity'));
+    if (Number.isFinite(storedSensitivity) && storedSensitivity >= 0.001 && storedSensitivity <= 0.006) {
+        setMouseSensitivity(storedSensitivity);
     }
   }, []);
   
@@ -167,6 +186,8 @@ const App: React.FC = () => {
   };
   
   const handleReturnToMenu = () => {
+      setMapOpen(false);
+      setPrevPhase('MENU');
       setPhase('MENU');
   };
 
@@ -185,6 +206,32 @@ const App: React.FC = () => {
   const closeModal = () => {
       setPhase(prevPhase);
       setSelectedSkill(null);
+  };
+
+  const applyMouseLook = (deltaX: number) => {
+      if (!Number.isFinite(deltaX) || phase !== 'EXPLORE') return;
+      const transform = { ...transformRef.current, angle: normalizeAngle(transformRef.current.angle + deltaX * mouseSensitivity) };
+      transformRef.current = transform;
+      playerRef.current = { ...playerRef.current, transform };
+  };
+
+  const requestPointerLock = (canvas: HTMLCanvasElement) => {
+      if (typeof canvas.requestPointerLock !== 'function') {
+          setFallbackLookActive(true);
+          return;
+      }
+      try {
+          const result = canvas.requestPointerLock() as void | Promise<void>;
+          if (result && typeof result.catch === 'function') {
+              result.catch(() => setFallbackLookActive(true));
+          }
+      } catch {
+          setFallbackLookActive(true);
+      }
+  };
+
+  const setTouchMovement = (input: Pick<MovementInput, 'forward' | 'strafe'>) => {
+      touchInputRef.current = input;
   };
 
   const triggerVfx = (type: VFXType, targetId?: string) => {
@@ -231,8 +278,11 @@ const App: React.FC = () => {
       if (newMap[sy][sx] !== TileType.EMPTY) {
           for(let y=1; y<MAP_SIZE; y++) for(let x=1; x<MAP_SIZE; x++) if(newMap[y][x] === TileType.EMPTY) { sx=x; sy=y; break;}
       }
-      setPlayer(p => ({ ...p, pos: { x: sx, y: sy } }));
-      setPrevPos({ x: sx, y: sy }); // Reset prev pos
+      const nextTransform = { x: sx + 0.5, y: sy + 0.5, angle: transformRef.current.angle };
+      transformRef.current = nextTransform;
+      lastProcessedCellRef.current = { x: sx, y: sy };
+      encounterPendingRef.current = false;
+      setPlayer(p => ({ ...p, pos: { x: sx, y: sy }, dir: angleToDirection(nextTransform.angle), transform: nextTransform }));
       
       let initExplored = Array(MAP_SIZE).fill(false).map(() => Array(MAP_SIZE).fill(false));
       initExplored = updateExplored({x: sx, y: sy}, initExplored);
@@ -279,7 +329,14 @@ const App: React.FC = () => {
           { id: 'potion_hp_start', name: 'Health Potion', type: 'POTION', value: 30, description: 'Restores HP', icon: '🍷', quantity: 3 },
           { id: 'potion_mp_start', name: 'Mana Potion', type: 'POTION', value: 30, description: 'Restores MP', icon: '🧪', quantity: 2 }
       ];
-      setPlayer({ pos: { x: 1, y: 1 }, dir: 'E', party: newParty, inventory: sharedItems, scrap: 0 });
+      const startTransform = { x: 1.5, y: 1.5, angle: 0 };
+      transformRef.current = startTransform;
+      lastProcessedCellRef.current = { x: 1, y: 1 };
+      encounterPendingRef.current = false;
+      stepCounterRef.current = 0;
+      keyboardInputRef.current = { forward: 0, strafe: 0, turn: 0 };
+      touchInputRef.current = { forward: 0, strafe: 0 };
+      setPlayer({ pos: { x: 1, y: 1 }, dir: 'E', transform: startTransform, party: newParty, inventory: sharedItems, scrap: 0 });
       setLogs([]);
       setEnemies([]);
       generateLevel(1);
@@ -300,8 +357,14 @@ const App: React.FC = () => {
           return;
       }
 
-      setPlayer(normalizePlayerWeaponVisuals(saved.player));
-      setPrevPos(saved.player.pos);
+      const restoredPlayer = normalizePlayerWeaponVisuals(saved.player);
+      const restoredTransform = normalizePlayerTransform(restoredPlayer.transform, restoredPlayer.pos, restoredPlayer.dir);
+      transformRef.current = restoredTransform;
+      lastProcessedCellRef.current = getTileCell(restoredTransform);
+      encounterPendingRef.current = false;
+      keyboardInputRef.current = { forward: 0, strafe: 0, turn: 0 };
+      touchInputRef.current = { forward: 0, strafe: 0 };
+      setPlayer({ ...restoredPlayer, pos: getTileCell(restoredTransform), transform: restoredTransform });
       setMap(saved.map);
       setDecorations(saved.decorations);
       setExplored(saved.explored);
@@ -309,7 +372,10 @@ const App: React.FC = () => {
       setBiomeId(getBiomeIdForLevel(saved.dungeonLevel));
       setLogs(saved.logs);
       setLevelBossDefeated(saved.levelBossDefeated || false);
-      if (saved.clearedTiles) setClearedTiles(new Set(saved.clearedTiles));
+      setClearedTiles(new Set(saved.clearedTiles ?? []));
+      setMapOpen(false);
+      lastInteractionKeyRef.current = '';
+      setCurrentInteraction(null);
       
       setPhase('EXPLORE');
       setAssetsLoaded(true);
@@ -319,7 +385,7 @@ const App: React.FC = () => {
 
   const handleSaveGame = () => {
       const saved = saveGame({
-          player, map, decorations, explored, dungeonLevel, logs, date: Date.now(), 
+          player: { ...playerRef.current, transform: transformRef.current }, map, decorations, explored, dungeonLevel, logs, date: Date.now(), 
           levelBossDefeated, 
           clearedTiles: Array.from(clearedTiles) 
       });
@@ -541,7 +607,7 @@ const App: React.FC = () => {
       setEnemies(newEnemies);
       enemiesRef.current = newEnemies; 
       setSelectedEnemyId(newEnemies[0].id);
-      setTimeout(() => startPlayerTurn(0), 1000);
+      setTimeout(() => startPlayerTurn(0), 420);
   };
 
   const startPlayerTurn = (charIndex: number) => {
@@ -555,7 +621,7 @@ const App: React.FC = () => {
       if (died) { startPlayerTurn(charIndex + 1); return; }
       if (isStunned) {
           addLog(`${character.name} is stunned!`, 'combat');
-          setTimeout(() => startPlayerTurn(charIndex + 1), 1000);
+          setTimeout(() => startPlayerTurn(charIndex + 1), 350);
           return;
       }
       setActiveCharIndex(charIndex);
@@ -576,7 +642,7 @@ const App: React.FC = () => {
       for (const enemyId of activeEnemyIds) {
           const enemy = enemiesRef.current.find(candidate => candidate.id === enemyId);
           if (!enemy || enemy.hp <= 0) continue;
-          await new Promise(r => setTimeout(r, 550));
+          await new Promise(r => setTimeout(r, 330));
 
           const currentPlayer = playerRef.current;
           if (!currentPlayer.party.some(character => character.stats.hp > 0)) {
@@ -615,6 +681,7 @@ const App: React.FC = () => {
   };
 
   const endCombat = (victory: boolean) => {
+       encounterPendingRef.current = false;
        if (victory) {
            addLog("Victory!", 'combat');
            let totalXp = 0;
@@ -660,119 +727,100 @@ const App: React.FC = () => {
 
   // --- ACTIONS ---
 
-  const handleMove = (forward: boolean) => {
+  const handleInteract = () => {
       if (phase !== 'EXPLORE') return;
-      if (isMoving) return; // Prevent rapid movement spam
-      
-      const { x, y } = player.pos;
-      let nx = x, ny = y;
-      
-      const dx = player.dir === 'E' ? 1 : player.dir === 'W' ? -1 : 0;
-      const dy = player.dir === 'S' ? 1 : player.dir === 'N' ? -1 : 0;
+      const target = getLookInteraction(map, decorations, transformRef.current);
+      if (!target) return;
 
-      if (forward) { nx += dx; ny += dy; }
-      else { nx -= dx; ny -= dy; }
-
-      if (map[ny][nx] !== TileType.WALL) {
-          
-          if (map[ny][nx] === TileType.EXIT) {
-               if (!levelBossDefeated) {
-                   addLog("A powerful foe guards the exit!", 'story');
-                   startCombat(true); 
-                   return;
-               }
-               generateLevel(dungeonLevel + 1);
-               return;
-          }
-
-          // Lock movement briefly for animation
-          setIsMoving(true);
-          setPrevPos({ x, y });
-          setPlayer(p => ({ ...p, pos: { x: nx, y: ny } }));
-          setExplored(prev => updateExplored({ x: nx, y: ny }, prev));
-          audioService.playStep();
-
-          // PROP INTERACTION LOGIC
-          const decorationType = decorations[ny][nx];
-          if (decorationType > 1) { // 2=Barrel, 3=Crate, 4=Bones
-             // Remove prop
-             setDecorations(prev => {
-                 const next = prev.map(row => [...row]);
-                 next[ny][nx] = 0;
-                 return next;
-             });
-
-             // Give Scrap (Always)
-             audioService.playItemGet();
-             const scrapAmount = Math.floor(Math.random() * 5) + 2;
-             setPlayer(p => ({ ...p, scrap: p.scrap + scrapAmount }));
-             
-             let msg = "Smashed a crate.";
-             if (decorationType === 2) msg = "Broke open a barrel.";
-             if (decorationType === 4) msg = "Searched the bones.";
-             addLog(`${msg} Found ${scrapAmount} scrap.`, 'loot');
-
-             // Chance for real item (Improved Logic)
-             const roll = Math.random();
-             if (roll < 0.02) {
-                 // 2% Chance for JACKPOT (Boss Tier Loot)
-                 const loot = generateLoot(dungeonLevel, true);
-                 if (loot) {
-                     addToInventory(loot);
-                     addLog(`JACKPOT! Found ${loot.name}!`, 'loot');
-                     triggerVfx('HEAL'); // Flash screen
-                 }
-             } else if (roll < 0.22) {
-                 // 20% Chance for Standard Loot
-                 const loot = generateLoot(dungeonLevel, false);
-                 if (loot) {
-                     addToInventory(loot);
-                     addLog(`Hidden inside: ${loot.name}!`, 'loot');
-                 }
-             }
-          }
-          
-          setTimeout(() => setIsMoving(false), 260); // Match interpolation speed
-
-          // Local narrative logic
-          setStepCounter(p => p + 1);
-          
-          // Improved logic: higher chance if seeing interesting things
-          let interestScore = 0;
-          const neighbors = [map[ny][nx+1], map[ny][nx-1], map[ny+1][nx], map[ny-1][nx]];
-          if (neighbors.includes(TileType.DOOR)) interestScore += 3;
-          if (decorations[ny][nx] === 1) interestScore += 2;
-          
-          const chance = 0.05 + (interestScore * 0.1);
-
-          if (Math.random() < chance) {
-               const story = getExplorationNarrative(
-                   dungeonLevel,
-                   neighbors.includes(TileType.DOOR),
-                   decorations[ny][nx] === 1,
-                   stepCounter,
-               );
-               addLog(story, 'story');
-          }
-
-          // Random Encounter Logic
-          const tileKey = `${nx},${ny}`;
-          // Only trigger if tile not cleared AND random chance
-          if (!levelBossDefeated && !clearedTiles.has(tileKey) && Math.random() < 0.05) { 
-              setTimeout(() => startCombat(), 300); // Wait for move animation
+      if (target.kind === 'door') {
+          setMap(previous => {
+              const next = previous.map(row => [...row]);
+              if (next[target.y]?.[target.x] === TileType.DOOR) next[target.y][target.x] = TileType.EMPTY;
+              return next;
+          });
+          addLog('You open the door.', 'story');
+          audioService.playBump();
+      } else if (target.kind === 'exit') {
+          if (!levelBossDefeated && !encounterPendingRef.current) {
+              encounterPendingRef.current = true;
+              addLog('A powerful foe guards the exit!', 'story');
+              startCombat(true);
+          } else {
+              generateLevel(dungeonLevel + 1);
           }
       } else {
-          audioService.playBump();
+          const decorationType = decorations[target.y]?.[target.x] ?? target.decorationType;
+          if (decorationType <= 1) return;
+          setDecorations(previous => {
+              const next = previous.map(row => [...row]);
+              if (next[target.y]) next[target.y][target.x] = 0;
+              return next;
+          });
+          audioService.playItemGet();
+          const scrapAmount = Math.floor(Math.random() * 5) + 2;
+          playerRef.current = { ...playerRef.current, scrap: playerRef.current.scrap + scrapAmount };
+          setPlayer(previous => ({ ...previous, scrap: previous.scrap + scrapAmount }));
+
+          let message = 'You search the remains.';
+          if (decorationType === 2) message = 'You break open a barrel.';
+          if (decorationType === 3) message = 'You open a crate.';
+          if (decorationType === 4) message = 'You search the bones.';
+          addLog(message + ' Found ' + scrapAmount + ' scrap.', 'loot');
+
+          const roll = Math.random();
+          if (roll < 0.02) {
+              const loot = generateLoot(dungeonLevel, true);
+              if (loot) {
+                  addToInventory(loot);
+                  addLog('JACKPOT! Found ' + loot.name + '!', 'loot');
+                  triggerVfx('HEAL');
+              }
+          } else if (roll < 0.22) {
+              const loot = generateLoot(dungeonLevel, false);
+              if (loot) {
+                  addToInventory(loot);
+                  addLog('Hidden inside: ' + loot.name + '!', 'loot');
+              }
+          }
       }
+      lastInteractionKeyRef.current = '';
+      setCurrentInteraction(null);
   };
 
-  const handleTurn = (left: boolean) => {
-      if (phase !== 'EXPLORE') return;
-      const dirs: Direction[] = ['N', 'E', 'S', 'W'];
-      let idx = dirs.indexOf(player.dir);
-      if (left) idx = (idx - 1 + 4) % 4;
-      else idx = (idx + 1) % 4;
-      setPlayer(p => ({ ...p, dir: dirs[idx] }));
+  const handleTileEntered = (x: number, y: number) => {
+      const tile = map[y]?.[x];
+      if (tile === TileType.EXIT) {
+          if (!levelBossDefeated && !encounterPendingRef.current) {
+              encounterPendingRef.current = true;
+              addLog('A powerful foe guards the exit!', 'story');
+              startCombat(true);
+          } else {
+              generateLevel(dungeonLevel + 1);
+          }
+          return;
+      }
+
+      stepCounterRef.current += 1;
+      const neighbors = [map[y]?.[x + 1], map[y]?.[x - 1], map[y + 1]?.[x], map[y - 1]?.[x]];
+      const decoration = decorations[y]?.[x] ?? 0;
+      let interestScore = 0;
+      if (neighbors.includes(TileType.DOOR)) interestScore += 3;
+      if (decoration === 1) interestScore += 2;
+
+      if (Math.random() < 0.05 + interestScore * 0.1) {
+          addLog(getExplorationNarrative(
+              dungeonLevel,
+              neighbors.includes(TileType.DOOR),
+              decoration === 1,
+              stepCounterRef.current,
+          ), 'story');
+      }
+
+      const tileKey = x + ',' + y;
+      if (!encounterPendingRef.current && !levelBossDefeated && !clearedTiles.has(tileKey) && Math.random() < 0.05) {
+          encounterPendingRef.current = true;
+          startCombat();
+      }
   };
 
   const handleAction = (action: string) => {
@@ -781,9 +829,11 @@ const App: React.FC = () => {
           if (action === 'skills') { setViewCharIndex(0); openModal('SKILLS'); }
           if (action === 'stats') { setViewCharIndex(0); openModal('STATS'); }
           if (action === 'craft') { openModal('CRAFTING'); }
+          if (action === 'map') { setMapOpen(true); }
       }
       
       if (phase === 'COMBAT') {
+          if (!isPlayerTurn) return;
           if (action === 'attack') {
              const target = enemiesRef.current.find(e => e.id === selectedEnemyId && e.hp > 0) || enemiesRef.current.find(e => e.hp > 0);
              if (!target) return;
@@ -1008,6 +1058,181 @@ const App: React.FC = () => {
       </div>
   );
 
+
+  useEffect(() => {
+      const syncPointerLock = () => {
+          const locked = Boolean(document.pointerLockElement?.hasAttribute('data-aether-viewport'));
+          setIsPointerLocked(locked);
+          if (locked) setFallbackLookActive(false);
+      };
+      document.addEventListener('pointerlockchange', syncPointerLock);
+      return () => document.removeEventListener('pointerlockchange', syncPointerLock);
+  }, []);
+
+  useEffect(() => {
+      if (phase === 'EXPLORE' && !mapOpen) return;
+      if (document.pointerLockElement && typeof document.exitPointerLock === 'function') document.exitPointerLock();
+      setFallbackLookActive(false);
+      pressedKeysRef.current.clear();
+      keyboardInputRef.current = { forward: 0, strafe: 0, turn: 0 };
+      touchInputRef.current = { forward: 0, strafe: 0 };
+      if (movingRef.current) {
+          movingRef.current = false;
+          setIsMoving(false);
+      }
+  }, [phase, mapOpen]);
+
+  useEffect(() => {
+      const onMouseMove = (event: MouseEvent) => {
+          if (phase === 'EXPLORE' && document.pointerLockElement) applyMouseLook(event.movementX);
+      };
+      document.addEventListener('mousemove', onMouseMove);
+      return () => document.removeEventListener('mousemove', onMouseMove);
+  }, [phase, mouseSensitivity]);
+
+  useEffect(() => {
+      const isTextEntry = (target: EventTarget | null) => {
+          const element = target as HTMLElement | null;
+          return Boolean(element?.closest?.('input, textarea, select, [contenteditable="true"]'));
+      };
+      const refreshKeyboardInput = () => {
+          const keys = pressedKeysRef.current;
+          keyboardInputRef.current = {
+              forward: Number(keys.has('KeyW') || keys.has('ArrowUp')) - Number(keys.has('KeyS') || keys.has('ArrowDown')),
+              strafe: Number(keys.has('KeyD')) - Number(keys.has('KeyA')),
+              turn: Number(keys.has('ArrowRight')) - Number(keys.has('ArrowLeft')),
+          };
+      };
+      const onKeyDown = (event: KeyboardEvent) => {
+          if (isTextEntry(event.target)) return;
+          const code = event.code;
+
+          if (code === 'Escape') {
+              event.preventDefault();
+              if (mapOpen) setMapOpen(false);
+              else if (['INVENTORY', 'SKILLS', 'STATS', 'CRAFTING'].includes(phase)) closeModal();
+              else if (phase === 'OPTIONS' && (prevPhase === 'EXPLORE' || prevPhase === 'COMBAT')) closeModal();
+              else if (document.pointerLockElement && typeof document.exitPointerLock === 'function') document.exitPointerLock();
+              else if (fallbackLookActive) setFallbackLookActive(false);
+              else if (phase === 'EXPLORE' || phase === 'COMBAT') openModal('OPTIONS');
+              return;
+          }
+          if (code === 'Tab' && phase === 'EXPLORE') {
+              event.preventDefault();
+              setMapOpen(value => !value);
+              return;
+          }
+          if (mapOpen) return;
+
+          if (code === 'KeyI' && phase === 'INVENTORY') { event.preventDefault(); closeModal(); return; }
+          if (phase === 'EXPLORE') {
+              if (code === 'KeyE') { event.preventDefault(); handleInteract(); return; }
+              if (code === 'KeyI') { event.preventDefault(); handleAction('inventory'); return; }
+              if (code === 'KeyC' || code === 'KeyK') { event.preventDefault(); handleAction('stats'); return; }
+          }
+
+          if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(code) && phase === 'EXPLORE') {
+              event.preventDefault();
+              pressedKeysRef.current.add(code);
+              refreshKeyboardInput();
+          }
+      };
+      const onKeyUp = (event: KeyboardEvent) => {
+          if (pressedKeysRef.current.delete(event.code)) refreshKeyboardInput();
+      };
+      const clearKeys = () => {
+          pressedKeysRef.current.clear();
+          keyboardInputRef.current = { forward: 0, strafe: 0, turn: 0 };
+          touchInputRef.current = { forward: 0, strafe: 0 };
+      };
+      window.addEventListener('keydown', onKeyDown);
+      window.addEventListener('keyup', onKeyUp);
+      window.addEventListener('blur', clearKeys);
+      return () => {
+          window.removeEventListener('keydown', onKeyDown);
+          window.removeEventListener('keyup', onKeyUp);
+          window.removeEventListener('blur', clearKeys);
+      };
+  }, [phase, mapOpen, prevPhase, fallbackLookActive, handleInteract, handleAction, closeModal, openModal]);
+
+  useEffect(() => {
+      if (phase !== 'EXPLORE' || mapOpen || !map.length) return;
+      let frame = 0;
+      let previousTime = 0;
+      let interactionTimer = 0;
+      let previousCell = lastProcessedCellRef.current ?? getTileCell(transformRef.current);
+      lastProcessedCellRef.current = previousCell;
+
+      const tick = (time: number) => {
+          const delta = previousTime ? Math.min(0.05, Math.max(0, (time - previousTime) / 1000)) : 0;
+          previousTime = time;
+
+          const keyboard = keyboardInputRef.current;
+          const touch = touchInputRef.current;
+          const input: MovementInput = {
+              forward: Math.max(-1, Math.min(1, keyboard.forward + touch.forward)),
+              strafe: Math.max(-1, Math.min(1, keyboard.strafe + touch.strafe)),
+              turn: keyboard.turn,
+          };
+          const result = moveFirstPerson(map, transformRef.current, input, delta);
+          const nextTransform = result.transform;
+          transformRef.current = nextTransform;
+          playerRef.current = { ...playerRef.current, transform: nextTransform };
+
+          const moving = result.distance > 0.0001;
+          if (moving !== movingRef.current) {
+              movingRef.current = moving;
+              setIsMoving(moving);
+          }
+          if (moving) {
+              walkingDistanceRef.current += result.distance;
+              while (walkingDistanceRef.current >= 0.9) {
+                  walkingDistanceRef.current -= 0.9;
+                  audioService.playStep();
+              }
+          }
+
+          const cell = getTileCell(nextTransform);
+          if (hasEnteredNewTile(previousCell, cell) && map[cell.y]?.[cell.x] !== undefined) {
+              previousCell = cell;
+              lastProcessedCellRef.current = cell;
+              const updatedPlayer = {
+                  ...playerRef.current,
+                  pos: cell,
+                  dir: angleToDirection(nextTransform.angle),
+                  transform: nextTransform,
+              };
+              playerRef.current = updatedPlayer;
+              setPlayer(previous => ({ ...previous, pos: cell, dir: updatedPlayer.dir, transform: nextTransform }));
+              setExplored(previous => updateExplored(cell, previous));
+              handleTileEntered(cell.x, cell.y);
+          }
+
+          interactionTimer += delta;
+          if (interactionTimer >= 0.1) {
+              interactionTimer = 0;
+              const target = getLookInteraction(map, decorations, nextTransform);
+              const targetKey = target ? target.kind + ':' + target.x + ',' + target.y : '';
+              if (targetKey !== lastInteractionKeyRef.current) {
+                  lastInteractionKeyRef.current = targetKey;
+                  setCurrentInteraction(target);
+              }
+          }
+          frame = requestAnimationFrame(tick);
+      };
+
+      frame = requestAnimationFrame(tick);
+      return () => cancelAnimationFrame(frame);
+  }, [phase, map, mapOpen, decorations, levelBossDefeated, dungeonLevel, clearedTiles]);
+
+  const handleFallbackLook = (deltaX: number) => applyMouseLook(deltaX);
+  const endFallbackLook = () => setFallbackLookActive(false);
+  const updateMouseSensitivity = (value: number) => {
+      const next = Math.max(0.001, Math.min(0.006, value));
+      setMouseSensitivity(next);
+      localStorage.setItem('aether_mouse_sensitivity', String(next));
+  };
+
   if (!assetsLoaded) {
     return (
       <div className="w-full h-screen bg-zinc-950 text-gray-200 flex flex-col items-center justify-center p-6 text-center">
@@ -1020,14 +1245,14 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="w-full h-screen bg-zinc-900 text-gray-200 flex flex-col items-center justify-center p-2 md:p-4 select-none">
+    <div className="relative flex h-[100dvh] w-screen flex-col items-center justify-center overflow-hidden bg-zinc-950 p-0 text-gray-200 select-none">
       {phase === 'MENU' && (
         <div className="flex flex-col gap-6 items-center animate-fadeIn max-w-md w-full">
             <h1 className="text-4xl md:text-6xl font-bold text-yellow-500 drop-shadow-[0_4px_4px_rgba(0,0,0,0.8)] text-center tracking-tighter">AETHER<br/>CRAWL</h1>
             <div className="flex flex-col gap-3 w-full">
                 {canContinue && <button onClick={handleContinue} className="bg-blue-700 hover:bg-blue-600 text-white font-bold py-3 rounded border-b-4 border-blue-900 active:border-b-0 active:translate-y-1">{T.CONTINUE}</button>}
                 <button onClick={handleNewGame} className="bg-red-700 hover:bg-red-600 text-white font-bold py-3 rounded border-b-4 border-red-900 active:border-b-0 active:translate-y-1">{T.NEW_GAME}</button>
-                <button onClick={() => setPhase('OPTIONS')} className="bg-gray-700 hover:bg-gray-600 text-white font-bold py-3 rounded border-b-4 border-gray-900 active:border-b-0 active:translate-y-1">{T.OPTIONS}</button>
+                <button onClick={() => { setPrevPhase('MENU'); setPhase('OPTIONS'); }} className="bg-gray-700 hover:bg-gray-600 text-white font-bold py-3 rounded border-b-4 border-gray-900 active:border-b-0 active:translate-y-1">{T.OPTIONS}</button>
                 <button onClick={handleQuitApp} className="bg-zinc-800 hover:bg-zinc-700 text-gray-400 font-bold py-3 rounded border-b-4 border-black active:border-b-0 active:translate-y-1">{T.EXIT}</button>
             </div>
             <div className="text-xs text-gray-500 mt-8">v1.4.0 - Retro Dungeon Crawler</div>
@@ -1036,18 +1261,19 @@ const App: React.FC = () => {
 
       {/* Options */}
       {phase === 'OPTIONS' && (
-          <div className="bg-gray-800 p-6 rounded-lg border-2 border-gray-600 w-full max-w-md">
+          <div className="relative z-40 bg-gray-900/95 p-6 rounded-xl border border-gray-500/50 w-full max-w-md shadow-2xl">
               <h2 className="text-xl font-bold text-yellow-500 mb-6 text-center">{T.OPTIONS}</h2>
               <div className="space-y-4">
                   <div className="flex justify-between items-center"><span>{T.MUSIC}</span><button onClick={toggleMusic} className={`w-12 h-6 rounded-full relative transition-colors ${musicOn ? 'bg-green-600' : 'bg-gray-600'}`}><div className={`absolute top-1 left-1 bg-white w-4 h-4 rounded-full transition-transform ${musicOn ? 'translate-x-6' : ''}`}></div></button></div>
                   <div className="flex justify-between items-center"><span>{T.SFX}</span><button onClick={toggleSfx} className={`w-12 h-6 rounded-full relative transition-colors ${sfxOn ? 'bg-green-600' : 'bg-gray-600'}`}><div className={`absolute top-1 left-1 bg-white w-4 h-4 rounded-full transition-transform ${sfxOn ? 'translate-x-6' : ''}`}></div></button></div>
+                  <label className="flex flex-col gap-2 text-sm"><span className="flex justify-between"><span>Mouse sensitivity</span><span className="text-amber-300">{mouseSensitivity.toFixed(4)}</span></span><input aria-label="Mouse sensitivity" type="range" min="0.001" max="0.006" step="0.0001" value={mouseSensitivity} onChange={event => updateMouseSensitivity(Number(event.target.value))} className="w-full accent-amber-400" /></label>
                   <div className="flex justify-between items-center"><span>{T.LANGUAGE}</span><button onClick={toggleLanguage} className="bg-gray-700 px-3 py-1 rounded border border-gray-500">{language}</button></div>
               </div>
-              <button onClick={() => setPhase('MENU')} className="mt-8 w-full bg-gray-700 py-2 rounded font-bold hover:bg-gray-600">{T.MENU}</button>
+              <button onClick={() => (prevPhase === 'EXPLORE' || prevPhase === 'COMBAT') ? closeModal() : setPhase('MENU')} className="mt-8 w-full bg-gray-700 py-2 rounded font-bold hover:bg-gray-600">{T.MENU}</button>
           </div>
       )}
       {phase === 'CLASS_SELECT' && (<div className="w-full max-w-4xl h-[80vh] bg-gray-900 border-2 border-gray-700 rounded-lg p-4">{renderClassSelect()}</div>)}
-      {phase === 'INIT' && (<div className="text-center animate-pulse"><h2 className="text-2xl text-yellow-500 font-bold mb-2">{T.GENERATING}</h2><div className="w-64 h-4 bg-gray-800 rounded-full overflow-hidden mx-auto border border-gray-600"><div className="h-full bg-yellow-500 animate-[width_2s_ease-in-out_infinite] w-full origin-left"></div></div></div>)}
+      {phase === 'INIT' && (<div className="relative z-10 text-center animate-pulse"><h2 className="text-2xl text-yellow-500 font-bold mb-2">{T.GENERATING}</h2><div className="w-64 h-4 bg-gray-800 rounded-full overflow-hidden mx-auto border border-gray-600"><div className="h-full bg-yellow-500 animate-[width_2s_ease-in-out_infinite] w-full origin-left"></div></div></div>)}
       {phase === 'GAME_OVER' && (
           <div className="text-center">
                <h1 className="text-5xl text-red-600 font-bold mb-4 glitch-effect">{T.DEFEAT}</h1>
@@ -1057,129 +1283,164 @@ const App: React.FC = () => {
           </div>
       )}
 
-      {(phase === 'EXPLORE' || phase === 'COMBAT') && (
-        <div className="w-full h-full max-w-4xl mx-auto flex flex-col gap-2 md:gap-4 relative">
-            <div className="flex justify-between items-center h-10 shrink-0 px-1">
-                <div className="text-yellow-500 font-bold text-xs md:text-sm drop-shadow-md">DLVL: {dungeonLevel} <span className="text-gray-500 ml-2">SCRAP: {player.scrap}</span></div>
-                <div className="flex gap-2"><button onClick={handleSaveGame} className="text-[10px] bg-blue-900 px-2 py-1 rounded border border-blue-700 hover:bg-blue-800">SAVE</button><button onClick={handleReturnToMenu} className="text-[10px] bg-red-900 px-2 py-1 rounded border border-red-700 hover:bg-red-800">EXIT</button></div>
-            </div>
-            
-            <div className="flex-1 min-h-0 relative flex justify-center items-center bg-gray-950 rounded-lg shadow-inner overflow-hidden">
-                <Viewport map={map} decorations={decorations} playerPos={player.pos} playerDir={player.dir} prevPlayerPos={prevPos} biomeId={biomeId} enemies={enemies} selectedEnemyId={selectedEnemyId} onSelectEnemy={setSelectedEnemyId} phase={phase} vfx={vfx} player={player} activeCharIndex={activeCharIndex} />
-                
-                {phase === 'COMBAT' && selectedEnemyId && (() => {
-                    const target = enemies.find(e => e.id === selectedEnemyId);
-                    if (target && target.hp > 0) {
-                        const hpPct = (target.hp / target.maxHp) * 100;
-                        return (
-                            <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-black/80 border-2 border-red-900 p-2 rounded shadow-[0_0_15px_rgba(200,0,0,0.5)] min-w-[200px] text-center backdrop-blur-sm animate-fadeIn">
-                                <div className="text-yellow-500 font-bold text-sm mb-1 uppercase tracking-wider">
-                                    {target.name}{target.definitionId === 'the_necromancer' && target.phase === 2 ? ' · PHASE II' : ''}
-                                </div>
-                                <div className="w-full bg-gray-900 h-3 rounded-full border border-gray-700 relative overflow-hidden mb-1">
-                                    <div className={`h-full transition-all duration-300 ${hpPct > 50 ? 'bg-green-600' : hpPct > 25 ? 'bg-yellow-600' : 'bg-red-600'}`} style={{width: `${hpPct}%`}}></div>
-                                </div>
-                                <div className="text-white text-xs font-mono">{target.hp} / {target.maxHp} HP</div>
-                                {(target.guard ?? 0) > 0 && <div className="text-cyan-300 text-[10px] font-bold">🛡 Guard {target.guard}</div>}
-                                {target.statusEffects && target.statusEffects.length > 0 && (
-                                    <div className="flex justify-center gap-2 mt-1">
-                                        {target.statusEffects.map(eff => (
-                                            <span key={eff.id} title={`${eff.type}: ${eff.value}`} className="text-sm bg-gray-800 rounded px-1">{eff.icon}</span>
-                                        ))}
-                                    </div>
-                                )}
-                                {target.intent && (
-                                    <div className="mt-1 border-t border-gray-700 pt-1" title={target.intent.description}>
-                                        <div className="text-white text-[10px] font-bold">
-                                            {target.intent.icon} {target.intent.label}
-                                            {target.intent.minDamage !== undefined && target.intent.maxDamage !== undefined
-                                                ? ` · ${target.intent.minDamage}–${target.intent.maxDamage}` : ''}
-                                        </div>
-                                        <div className="text-gray-300 text-[9px] leading-tight">{target.intent.description}</div>
-                                        {target.intent.interruptible && <div className="text-cyan-300 text-[9px] font-bold">Stun interrupts this action</div>}
-                                        {target.isBoss && (target.stunResistance ?? 0) > 0 && <div className="text-purple-300 text-[9px]">Boss resists {Math.round((target.stunResistance ?? 0) * 100)}% of Stun</div>}
-                                    </div>
-                                )}
-                            </div>
-                        );
-                    }
-                    return null;
-                })()}
+      {isGameplayVisible && (
+        <div className="absolute inset-0 z-0 overflow-hidden bg-black">
+          <Viewport
+            map={map}
+            decorations={decorations}
+            transformRef={transformRef}
+            biomeId={biomeId}
+            enemies={enemies}
+            selectedEnemyId={selectedEnemyId}
+            onSelectEnemy={setSelectedEnemyId}
+            phase={phase}
+            vfx={vfx}
+            player={player}
+            activeCharIndex={activeCharIndex}
+            isMoving={isMoving}
+            fallbackLookActive={fallbackLookActive}
+            onRequestPointerLock={requestPointerLock}
+            onFallbackLook={handleFallbackLook}
+            onFallbackLookEnd={endFallbackLook}
+          />
 
-                <div className="absolute top-2 right-2 opacity-80 pointer-events-none"><Minimap map={map} explored={explored} playerPos={player.pos} playerDir={player.dir} /></div>
+          <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-start justify-between p-3 md:p-4">
+            <div className="pointer-events-auto rounded-lg border border-white/10 bg-black/55 px-3 py-2 text-xs shadow-lg backdrop-blur-md">
+              <div className="font-bold tracking-wide text-amber-300">FLOOR {dungeonLevel}</div>
+              <div className="mt-0.5 text-[10px] text-white/65">SCRAP {player.scrap}</div>
             </div>
+            <div className="pointer-events-auto flex gap-2">
+              <button onClick={handleSaveGame} className="rounded-lg border border-white/15 bg-black/55 px-3 py-2 text-[10px] font-bold text-white/80 backdrop-blur-md hover:bg-black/75">SAVE</button>
+              <button onClick={() => phase === 'EXPLORE' || phase === 'COMBAT' ? openModal('OPTIONS') : null} className="rounded-lg border border-white/15 bg-black/55 px-3 py-2 text-[10px] font-bold text-white/80 backdrop-blur-md hover:bg-black/75">MENU</button>
+            </div>
+          </div>
 
-            <div className="h-20 shrink-0 bg-gray-900 border-y border-gray-700 flex items-center px-4 gap-4 overflow-x-auto">
-                {phase === 'COMBAT' ? (
-                    (() => {
-                        const char = player.party[activeCharIndex];
-                        if(!char) return null;
-                        const hpPct = (char.stats.hp / char.stats.maxHp) * 100;
-                        const mpPct = (char.stats.mp / char.stats.maxMp) * 100;
-                        return (
-                            <div className="flex items-center w-full justify-between">
-                                <div className="flex flex-col flex-1 max-w-md">
-                                    <div className="flex justify-between items-baseline mb-1">
-                                        <span className="text-yellow-400 font-bold text-sm">{char.name}</span>
-                                        <span className="text-gray-400 text-xs">Lv.{char.stats.level}</span>
-                                    </div>
-                                    <div className="flex gap-2">
-                                        <div className="flex-1">
-                                            <div className="bg-gray-800 h-4 rounded border border-gray-600 relative overflow-hidden">
-                                                <div className="bg-red-600 h-full transition-all" style={{width: `${hpPct}%`}}></div>
-                                                <span className="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-white shadow-sm">{char.stats.hp}/{char.stats.maxHp}</span>
-                                            </div>
-                                        </div>
-                                        <div className="flex-1">
-                                            <div className="bg-gray-800 h-4 rounded border border-gray-600 relative overflow-hidden">
-                                                <div className="bg-blue-600 h-full transition-all" style={{width: `${mpPct}%`}}></div>
-                                                <span className="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-white shadow-sm">{char.stats.mp}/{char.stats.maxMp}</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className="flex gap-2 ml-4">
-                                    {char.statusEffects.length === 0 && <span className="text-gray-600 text-xs italic">No buffs</span>}
-                                    {char.statusEffects.map(eff => (
-                                        <div key={eff.id} className="flex flex-col items-center bg-gray-800 p-1 rounded border border-gray-700 w-10">
-                                            <span className="text-lg">{eff.icon}</span>
-                                            <span className="text-[10px] font-bold">{eff.duration}t</span>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        );
-                    })()
-                ) : (
-                    <div className="flex w-full gap-2">
-                        {player.party.map((char, i) => {
-                            const hpPct = (char.stats.hp / char.stats.maxHp) * 100;
-                            const mpPct = (char.stats.mp / char.stats.maxMp) * 100;
-                            return (
-                                <div key={char.id} className="flex-1 bg-gray-800 border border-gray-700 rounded p-1 flex flex-col justify-center min-w-[100px]">
-                                    <div className="flex justify-between text-[10px] mb-1">
-                                        <span className="font-bold text-gray-300 truncate">{char.name}</span>
-                                        <span className="flex gap-0.5">
-                                            {char.statusEffects.map(e => <span key={e.id} className="text-[8px]">{e.icon}</span>)}
-                                        </span>
-                                    </div>
-                                    <div className="bg-gray-900 h-1.5 rounded mb-1 overflow-hidden">
-                                        <div className="bg-red-600 h-full" style={{width: `${hpPct}%`}}></div>
-                                    </div>
-                                    <div className="bg-gray-900 h-1.5 rounded overflow-hidden">
-                                        <div className="bg-blue-600 h-full" style={{width: `${mpPct}%`}}></div>
-                                    </div>
-                                </div>
-                            )
-                        })}
-                    </div>
-                )}
-            </div>
+          <div className="pointer-events-none absolute left-3 top-16 z-10 flex max-w-[44vw] flex-col gap-1 md:left-4 md:top-20 md:max-w-[270px]">
+            {player.party.map((character) => {
+              const hpPercent = character.stats.maxHp > 0 ? Math.max(0, Math.min(100, (character.stats.hp / character.stats.maxHp) * 100)) : 0;
+              return (
+                <div key={character.id} className="rounded-md border border-white/10 bg-black/50 px-2 py-1.5 shadow-md backdrop-blur-md">
+                  <div className="mb-1 flex items-center justify-between gap-2 text-[10px] md:text-xs">
+                    <span className="truncate font-bold text-white/90">{character.name}</span>
+                    <span className="shrink-0 font-mono text-white/70">{character.stats.hp}/{character.stats.maxHp}</span>
+                  </div>
+                  <div className="h-1 overflow-hidden rounded bg-white/15">
+                    <div className={"h-full " + (hpPercent > 50 ? 'bg-emerald-400' : hpPercent > 25 ? 'bg-amber-400' : 'bg-red-400')} style={{ width: hpPercent + '%' }} />
+                  </div>
+                  <div className="mt-1 flex items-center justify-between text-[8px] text-white/45">
+                    <span>MP {character.stats.mp}/{character.stats.maxMp}</span>
+                    <span className="flex gap-1 text-xs">{character.statusEffects.map(effect => <span key={effect.id} title={effect.type}>{effect.icon}</span>)}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
 
-            <div className="h-48 shrink-0 bg-gray-800 border-t-4 border-gray-600 flex flex-row p-2 gap-2 shadow-2xl">
-                <div className="flex-1 min-w-0"><Log logs={logs} /></div>
-                <div className="w-[180px] md:w-[220px] shrink-0"><Controls onMove={handleMove} onTurn={handleTurn} onAction={handleAction} phase={phase} combatMenu={combatMenu} activeCharacter={phase === 'COMBAT' ? player.party[activeCharIndex] : null} inventory={player.inventory} onSubAction={handleSubAction} onBack={() => setCombatMenu('MAIN')} isPlayerTurn={isPlayerTurn} /></div>
+          <div className="absolute right-3 top-16 z-10 md:right-4 md:top-20">
+            <Minimap map={map} explored={explored} transformRef={transformRef} size={124} />
+            <button onClick={() => setMapOpen(true)} className="mt-1 w-full rounded border border-white/15 bg-black/55 py-1 text-[9px] font-bold text-white/70 backdrop-blur-md">TAB · MAP</button>
+          </div>
+
+          {gameplayPhase === 'COMBAT' && selectedEnemyId && (() => {
+            const target = enemies.find(enemy => enemy.id === selectedEnemyId);
+            if (!target || target.hp <= 0) return null;
+            const hpPercent = Math.max(0, Math.min(100, (target.hp / target.maxHp) * 100));
+            return (
+              <div className="pointer-events-none absolute left-1/2 top-3 z-10 w-[min(420px,48vw)] -translate-x-1/2 rounded-lg border border-red-300/30 bg-black/70 p-2 text-center shadow-lg backdrop-blur-md">
+                <div className="text-xs font-bold uppercase tracking-wide text-amber-300">
+                  {target.name}{target.definitionId === 'the_necromancer' && target.phase === 2 ? ' · PHASE II' : ''}
+                </div>
+                <div className="mt-1 h-2 overflow-hidden rounded bg-white/15">
+                  <div className={"h-full transition-all " + (hpPercent > 50 ? 'bg-emerald-500' : hpPercent > 25 ? 'bg-amber-400' : 'bg-red-500')} style={{ width: hpPercent + '%' }} />
+                </div>
+                <div className="mt-1 flex items-center justify-center gap-2 text-[9px] text-white/80">
+                  <span>{target.hp}/{target.maxHp} HP</span>
+                  {(target.guard ?? 0) > 0 && <span className="text-cyan-200">GUARD {target.guard}</span>}
+                  {target.intent && <span>{target.intent.icon} {target.intent.shortLabel}</span>}
+                  {target.intent?.minDamage !== undefined && target.intent?.maxDamage !== undefined && <span>{target.intent.minDamage}–{target.intent.maxDamage}</span>}
+                </div>
+              </div>
+            );
+          })()}
+
+          <div className="pointer-events-none absolute left-1/2 top-1/2 z-10 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center">
+            <span className={"relative block h-4 w-4 rounded-full border " + (currentInteraction ? 'border-amber-200/90 bg-amber-200/20' : 'border-white/40')}>
+              <span className="absolute left-1/2 top-1/2 h-1 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/75" />
+            </span>
+            {gameplayPhase === 'EXPLORE' && currentInteraction && (
+              <span className="mt-3 rounded-full border border-amber-200/30 bg-black/75 px-3 py-1 text-[10px] font-bold uppercase tracking-wide text-amber-100 shadow-lg">
+                E · {currentInteraction.kind === 'door' ? 'Open door' : currentInteraction.kind === 'exit' ? (levelBossDefeated ? 'Descend' : 'Challenge guardian') : 'Search'}
+              </span>
+            )}
+          </div>
+
+          {gameplayPhase === 'EXPLORE' && !isPointerLocked && !fallbackLookActive && (
+            <div className="pointer-events-none absolute bottom-24 left-1/2 z-10 hidden -translate-x-1/2 rounded-full bg-black/45 px-3 py-1.5 text-[10px] text-white/60 backdrop-blur-sm lg:block">
+              Click the view to capture the mouse · WASD to move · E to interact
             </div>
+          )}
+          {gameplayPhase === 'EXPLORE' && isPointerLocked && (
+            <div className="pointer-events-none absolute bottom-24 left-1/2 z-10 hidden -translate-x-1/2 rounded-full bg-black/35 px-3 py-1 text-[9px] text-white/45 lg:block">
+              ESC unlocks mouse · I inventory · TAB map
+            </div>
+          )}
+
+          {logs.length > 0 && (
+            <div className="pointer-events-none absolute bottom-5 left-5 z-10 hidden max-w-[360px] flex-col gap-1 rounded-lg border border-white/10 bg-black/45 p-2 text-[10px] text-white/65 backdrop-blur-sm lg:flex">
+              {logs.slice(-2).map(entry => <div key={entry.id} className="truncate">{entry.text}</div>)}
+            </div>
+          )}
+
+          <div className="absolute bottom-4 left-1/2 z-20 hidden -translate-x-1/2 items-center gap-2 rounded-xl border border-white/10 bg-black/60 p-2 shadow-xl backdrop-blur-md lg:flex">
+            {gameplayPhase === 'EXPLORE' ? (
+              <>
+                <button onClick={() => handleAction('inventory')} className="hud-button">I · BAG</button>
+                <button onClick={() => handleAction('skills')} className="hud-button">SKILLS</button>
+                <button onClick={() => handleAction('stats')} className="hud-button">C · PARTY</button>
+                <button onClick={() => handleAction('craft')} className="hud-button">CRAFT</button>
+                <button onClick={() => setMapOpen(true)} className="hud-button">TAB · MAP</button>
+                <button onClick={handleInteract} className="hud-button hud-button-accent">E · USE</button>
+                <button onClick={handleReturnToMenu} className="hud-button">EXIT</button>
+              </>
+            ) : (
+              <div className="w-[min(520px,55vw)]">
+                <Controls onAction={handleAction} phase="COMBAT" combatMenu={combatMenu} activeCharacter={player.party[activeCharIndex] ?? null} inventory={player.inventory} onSubAction={handleSubAction} onBack={() => setCombatMenu('MAIN')} isPlayerTurn={isPlayerTurn} />
+              </div>
+            )}
+          </div>
+
+          {(phase === 'EXPLORE' || phase === 'COMBAT') && (
+            <MobileControls
+              phase={phase}
+              combatMenu={combatMenu}
+              activeCharacter={player.party[activeCharIndex] ?? null}
+              inventory={player.inventory}
+              isPlayerTurn={isPlayerTurn}
+              onMoveInput={setTouchMovement}
+              onLook={applyMouseLook}
+              onInteract={handleInteract}
+              onAction={handleAction}
+              onSubAction={handleSubAction}
+              onBack={() => setCombatMenu('MAIN')}
+            />
+          )}
+        </div>
+      )}
+
+      {mapOpen && isGameplayVisible && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-4 backdrop-blur-md">
+          <div className="w-full max-w-xl rounded-2xl border border-amber-100/25 bg-slate-950/95 p-4 shadow-2xl">
+            <div className="mb-3 flex items-center justify-between">
+              <div>
+                <h2 className="font-bold tracking-wide text-amber-200">DUNGEON MAP</h2>
+                <p className="mt-1 text-[10px] text-white/45">Explored passages and your current facing</p>
+              </div>
+              <button onClick={() => setMapOpen(false)} className="rounded-lg border border-white/15 px-3 py-2 text-xs text-white/75 hover:bg-white/10">CLOSE · TAB</button>
+            </div>
+            <div className="flex justify-center overflow-auto">
+              <Minimap map={map} explored={explored} transformRef={transformRef} size={Math.min(480, Math.max(240, Math.floor(Math.min(window.innerWidth * 0.72, window.innerHeight * 0.66))))} />
+            </div>
+          </div>
         </div>
       )}
 

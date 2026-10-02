@@ -2,15 +2,13 @@ import React, { useEffect, useRef } from 'react';
 import { biomeVisuals, enemyVisuals, getDecorationAsset, shieldVisual, vfxVisuals, weaponVisuals } from '../data/assetRegistry';
 import { getWeaponVisualType } from '../data/weaponVisuals';
 import { getImageAsset } from '../services/assetLoader';
-import { BiomeId, Direction, Enemy, GamePhase, Player, TileType, VFXEvent } from '../types';
+import { BiomeId, Enemy, GamePhase, Player, PlayerTransform, TileType, VFXEvent } from '../types';
 import { MAP_SIZE, VIEW_DISTANCE } from '../constants';
 
 interface ViewportProps {
   map: number[][];
   decorations: number[][];
-  playerPos: { x: number; y: number };
-  playerDir: Direction;
-  prevPlayerPos?: { x: number; y: number };
+  transformRef: React.RefObject<PlayerTransform>;
   biomeId: BiomeId;
   enemies: Enemy[];
   selectedEnemyId: string | null;
@@ -19,26 +17,70 @@ interface ViewportProps {
   vfx: VFXEvent | null;
   player: Player;
   activeCharIndex: number;
+  isMoving: boolean;
+  fallbackLookActive: boolean;
+  onRequestPointerLock: (canvas: HTMLCanvasElement) => void;
+  onFallbackLook: (deltaX: number) => void;
+  onFallbackLookEnd: () => void;
 }
 
 type SpritePoint = { x: number; y: number; type: number; distance: number };
 
 const Viewport: React.FC<ViewportProps> = ({
-  map, decorations, playerPos, playerDir, prevPlayerPos, biomeId,
+  map, decorations, transformRef, biomeId,
   enemies, selectedEnemyId, onSelectEnemy, phase, vfx, player, activeCharIndex,
+  isMoving, fallbackLookActive, onRequestPointerLock, onFallbackLook, onFallbackLookEnd,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const frameRef = useRef(0);
   const frameCountRef = useRef(0);
-  const moveProgressRef = useRef(1);
-  const renderPositionRef = useRef({ x: playerPos.x, y: playerPos.y });
   const missingAssetReportedRef = useRef(false);
 
   useEffect(() => {
-    if (prevPlayerPos && (prevPlayerPos.x !== playerPos.x || prevPlayerPos.y !== playerPos.y)) {
-      moveProgressRef.current = 0;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const resize = () => {
+      const bounds = canvas.getBoundingClientRect();
+      if (!bounds.width || !bounds.height) return;
+      const mobileScale = window.matchMedia?.('(max-width: 767px)').matches ? 0.88 : 0.96;
+      const pixelRatio = Math.min(window.devicePixelRatio || 1, 1.25);
+      const scale = Math.min(mobileScale * pixelRatio, 1440 / bounds.width, 900 / bounds.height);
+      const width = Math.max(320, Math.round(bounds.width * scale));
+      const height = Math.max(240, Math.round(bounds.height * scale));
+      if (canvas.width !== width || canvas.height !== height) {
+        canvas.width = width;
+        canvas.height = height;
+        const resizedContext = canvas.getContext('2d');
+        if (resizedContext) resizedContext.imageSmoothingEnabled = false;
+      }
+    };
+
+    resize();
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(resize) : null;
+    observer?.observe(canvas);
+    window.addEventListener('resize', resize);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', resize);
+    };
+  }, []);
+
+  const handlePointerDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (phase === 'EXPLORE' && event.pointerType === 'mouse' && event.button === 0 && canvasRef.current) {
+      onRequestPointerLock(canvasRef.current);
     }
-  }, [playerPos, prevPlayerPos]);
+  };
+
+  const handlePointerUp = () => {
+    if (fallbackLookActive) onFallbackLookEnd();
+  };
+
+  const handleMouseMove = (event: React.MouseEvent<HTMLCanvasElement>) => {
+    if (phase === 'EXPLORE' && fallbackLookActive && !document.pointerLockElement) {
+      onFallbackLook(event.movementX);
+    }
+  };
 
   const handleClick = (event: React.MouseEvent<HTMLCanvasElement>) => {
     if (phase !== 'COMBAT') return;
@@ -59,6 +101,10 @@ const Viewport: React.FC<ViewportProps> = ({
     const render = () => {
       const width = canvas.width;
       const height = canvas.height;
+      if (!width || !height) {
+        frameRef.current = requestAnimationFrame(render);
+        return;
+      }
       frameCountRef.current += 1;
       const frame = frameCountRef.current;
       const biome = biomeVisuals[biomeId];
@@ -83,26 +129,13 @@ const Viewport: React.FC<ViewportProps> = ({
       }
       missingAssetReportedRef.current = false;
 
-      if (moveProgressRef.current < 1 && prevPlayerPos) {
-        moveProgressRef.current = Math.min(1, moveProgressRef.current + 0.15);
-        const t = 1 - Math.pow(1 - moveProgressRef.current, 3);
-        renderPositionRef.current.x = prevPlayerPos.x + (playerPos.x - prevPlayerPos.x) * t;
-        renderPositionRef.current.y = prevPlayerPos.y + (playerPos.y - prevPlayerPos.y) * t;
-      } else {
-        renderPositionRef.current.x = playerPos.x;
-        renderPositionRef.current.y = playerPos.y;
-      }
-
-      const positionX = renderPositionRef.current.x + 0.5;
-      const positionY = renderPositionRef.current.y + 0.5;
-      let directionX = 0;
-      let directionY = 0;
-      let planeX = 0;
-      let planeY = 0;
-      if (playerDir === 'N') { directionY = -1; planeX = 0.66; }
-      if (playerDir === 'S') { directionY = 1; planeX = -0.66; }
-      if (playerDir === 'E') { directionX = 1; planeY = 0.66; }
-      if (playerDir === 'W') { directionX = -1; planeY = -0.66; }
+      const transform = transformRef.current ?? { x: 1.5, y: 1.5, angle: 0 };
+      const positionX = transform.x;
+      const positionY = transform.y;
+      const directionX = Math.cos(transform.angle);
+      const directionY = Math.sin(transform.angle);
+      const planeX = -directionY * 0.66;
+      const planeY = directionX * 0.66;
 
       context.fillStyle = '#050505';
       context.fillRect(0, 0, width, height);
@@ -128,18 +161,32 @@ const Viewport: React.FC<ViewportProps> = ({
         context, width, height, targets, selectedEnemyId, frame,
       });
 
-      drawPlayerHands({ context, width, height, frame, player, activeCharIndex, moving: moveProgressRef.current < 1 });
+      drawPlayerHands({ context, width, height, frame, player, activeCharIndex, moving: isMoving });
       drawVfx({ context, width, height, vfx, targetPositions });
-
       frameRef.current = requestAnimationFrame(render);
     };
 
     render();
     return () => cancelAnimationFrame(frameRef.current);
-  }, [map, decorations, playerPos, playerDir, prevPlayerPos, biomeId, enemies, selectedEnemyId, phase, vfx, player, activeCharIndex]);
+  }, [map, decorations, transformRef, biomeId, enemies, selectedEnemyId, phase, vfx, player, activeCharIndex, isMoving]);
 
-  return <canvas ref={canvasRef} onClick={handleClick} width={800} height={450} className="w-full h-full object-contain bg-black rounded cursor-crosshair" />;
+  return (
+    <canvas
+      ref={canvasRef}
+      onPointerDown={handlePointerDown}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerUp}
+      onMouseMove={handleMouseMove}
+      onClick={handleClick}
+      aria-label="First-person dungeon view"
+      data-aether-viewport
+      className="absolute inset-0 block h-full w-full cursor-crosshair bg-black"
+      style={{ imageRendering: 'pixelated' }}
+    />
+  );
 };
+
+export default Viewport;
 
 function drawTexturedPlanes(
   context: CanvasRenderingContext2D,
@@ -437,11 +484,12 @@ function drawPlayerHands(args: {
     : getImageAsset(weaponVisuals.unarmed);
   if (!weaponImage || !offhandImage) return;
 
-  const stepBob = moving ? Math.sin(frame * 0.5) * 18 : 0;
-  const idleBob = Math.abs(Math.sin(frame * 0.1)) * 7;
-  const bobX = Math.cos(frame * 0.1) * 5;
-  context.drawImage(offhandImage, -54 + bobX, height - 188 + idleBob + stepBob, 176, 188);
-  context.drawImage(weaponImage, width - 174 - bobX, height - 200 + idleBob + stepBob, 190, 206);
+  const scale = Math.min(1, Math.max(0.55, Math.min(width / 1280, height / 900)));
+  const stepBob = moving ? Math.sin(frame * 0.16) * 4 * scale : 0;
+  const idleBob = moving ? Math.sin(frame * 0.07) * 2 * scale : 0;
+  const bobX = moving ? Math.cos(frame * 0.07) * 2 * scale : 0;
+  context.drawImage(offhandImage, -34 * scale + bobX, height - 158 * scale + idleBob + stepBob, 146 * scale, 158 * scale);
+  context.drawImage(weaponImage, width - 148 * scale - bobX, height - 172 * scale + idleBob + stepBob, 164 * scale, 172 * scale);
 }
 
 function drawVfx(args: {

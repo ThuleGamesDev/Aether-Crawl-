@@ -1,97 +1,97 @@
 import React, { useEffect, useRef } from 'react';
-import { Position, Direction, TileType } from '../types';
+import { PlayerTransform, TileType } from '../types';
 import { MAP_SIZE } from '../constants';
 
 interface MinimapProps {
   map: number[][];
   explored: boolean[][];
-  playerPos: Position;
-  playerDir: Direction;
+  transformRef: React.RefObject<PlayerTransform>;
+  size?: number;
+  className?: string;
 }
 
-const Minimap: React.FC<MinimapProps> = ({ map, explored, playerPos, playerDir }) => {
+const Minimap: React.FC<MinimapProps> = ({
+  map,
+  explored,
+  transformRef,
+  size = 120,
+  className = '',
+}) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    const ctx = canvas?.getContext('2d');
+    if (!canvas || !ctx) return;
 
-    // Reset transform
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const draw = () => {
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = 'rgba(9, 11, 15, 0.88)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.strokeStyle = 'rgba(214, 177, 103, 0.65)';
+      ctx.lineWidth = Math.max(1, size / 120);
+      ctx.strokeRect(0.5, 0.5, canvas.width - 1, canvas.height - 1);
 
-    // Background
-    ctx.fillStyle = 'rgba(15, 15, 15, 0.85)';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    
-    // Border
-    ctx.strokeStyle = '#4a4a4a';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(0, 0, canvas.width, canvas.height);
+      if (!map.length || !explored.length) return;
+      const tileSize = canvas.width / MAP_SIZE;
 
-    if (!map.length || !explored.length) return;
-
-    const tileSize = canvas.width / MAP_SIZE;
-
-    // Draw Map
-    for (let y = 0; y < MAP_SIZE; y++) {
-      for (let x = 0; x < MAP_SIZE; x++) {
-        if (!explored[y][x]) continue;
-
-        const tile = map[y][x];
-        const px = x * tileSize;
-        const py = y * tileSize;
-
-        if (tile === TileType.WALL) {
-          ctx.fillStyle = '#666';
-        } else if (tile === TileType.DOOR) {
-          ctx.fillStyle = '#8B4513';
-        } else if (tile === TileType.EXIT) {
-          ctx.fillStyle = '#FFD700';
-        } else {
-          ctx.fillStyle = '#2a2a2a'; // Floor
+      for (let y = 0; y < Math.min(MAP_SIZE, map.length); y += 1) {
+        for (let x = 0; x < Math.min(MAP_SIZE, map[y]?.length ?? 0); x += 1) {
+          if (!explored[y]?.[x]) continue;
+          const tile = map[y][x];
+          if (tile === TileType.WALL) ctx.fillStyle = '#74716b';
+          else if (tile === TileType.DOOR) ctx.fillStyle = '#b97840';
+          else if (tile === TileType.EXIT) ctx.fillStyle = '#f1c85d';
+          else ctx.fillStyle = '#3a4147';
+          ctx.fillRect(x * tileSize, y * tileSize, tileSize, tileSize);
+          ctx.fillStyle = 'rgba(0,0,0,0.18)';
+          ctx.fillRect(x * tileSize, y * tileSize, Math.max(1, size / 120), tileSize);
+          ctx.fillRect(x * tileSize, y * tileSize, tileSize, Math.max(1, size / 120));
         }
-        
-        ctx.fillRect(px, py, tileSize, tileSize);
-        // Grid lines for pixel art feel
-        ctx.fillStyle = 'rgba(0,0,0,0.2)';
-        ctx.fillRect(px, py, 1, tileSize);
-        ctx.fillRect(px, py, tileSize, 1);
       }
-    }
 
-    // Draw Player Arrow
-    const px = playerPos.x * tileSize + tileSize / 2;
-    const py = playerPos.y * tileSize + tileSize / 2;
-    
-    ctx.translate(px, py);
-    
-    let angle = 0;
-    if (playerDir === 'S') angle = Math.PI;
-    if (playerDir === 'W') angle = -Math.PI / 2;
-    if (playerDir === 'E') angle = Math.PI / 2;
-    
-    ctx.rotate(angle);
-    
-    // Arrow shape
-    ctx.fillStyle = '#00FF00';
-    ctx.beginPath();
-    ctx.moveTo(0, -tileSize * 0.4);
-    ctx.lineTo(tileSize * 0.3, tileSize * 0.3);
-    ctx.lineTo(-tileSize * 0.3, tileSize * 0.3);
-    ctx.closePath();
-    ctx.fill();
+      const transform = transformRef.current;
+      if (!transform) return;
+      const px = transform.x * tileSize;
+      const py = transform.y * tileSize;
+      ctx.save();
+      ctx.translate(px, py);
+      ctx.rotate(transform.angle + Math.PI / 2);
+      ctx.fillStyle = '#f4cf75';
+      ctx.shadowColor = '#f4cf75';
+      ctx.shadowBlur = Math.max(2, size / 30);
+      ctx.beginPath();
+      ctx.moveTo(0, -tileSize * 0.42);
+      ctx.lineTo(tileSize * 0.3, tileSize * 0.28);
+      ctx.lineTo(0, tileSize * 0.12);
+      ctx.lineTo(-tileSize * 0.3, tileSize * 0.28);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    };
 
-  }, [map, explored, playerPos, playerDir]);
+    let frame = 0;
+    let lastDraw = 0;
+    const tick = (time: number) => {
+      if (time - lastDraw >= 100 || lastDraw === 0) {
+        draw();
+        lastDraw = time;
+      }
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [map, explored, transformRef, size]);
 
   return (
-    <canvas 
-      ref={canvasRef} 
-      width={120} 
-      height={120} 
-      className="rounded border border-gray-600 shadow-xl"
+    <canvas
+      ref={canvasRef}
+      width={size}
+      height={size}
+      aria-label="Dungeon minimap"
+      className={`block rounded border border-amber-100/20 shadow-xl ${className}`}
+      style={{ width: size, height: size }}
     />
   );
 };
