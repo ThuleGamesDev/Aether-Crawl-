@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { biomeVisuals, collectAssetPaths, enemyVisuals, getLevelAssetPaths, vfxVisuals } from '../data/assetRegistry';
 import { enemyDefinitions } from '../data/enemies';
+import { enemyAbilities } from '../data/enemyAbilities';
 
 const localAssetExists = (url: string) => existsSync(resolve(process.cwd(), 'public', url.replace(/^\//, '')));
 const localAssetBytes = (url: string) => statSync(resolve(process.cwd(), 'public', url.replace(/^\//, ''))).size;
@@ -18,6 +19,13 @@ describe('static asset registry', () => {
       expect(visual, `${enemy.id} has a visual definition`).toBeDefined();
       expect(localAssetExists(visual.sprite), `${enemy.id} sprite exists at ${visual.sprite}`).toBe(true);
     }
+  });
+
+  it('maps every authored enemy ability to a registered definition', () => {
+    const abilityIds = enemyDefinitions.flatMap(enemy => enemy.abilities ?? []);
+    expect(abilityIds.length).toBeGreaterThan(0);
+    expect(new Set(abilityIds).size).toBe(abilityIds.length);
+    for (const abilityId of abilityIds) expect(enemyAbilities[abilityId], abilityId).toBeDefined();
   });
 
   it('provides complete local environment art for all six active biomes', () => {

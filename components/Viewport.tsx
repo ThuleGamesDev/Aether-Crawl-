@@ -385,6 +385,35 @@ function drawEnemySprites(args: {
       context.fillStyle = '#fff5dc';
       context.fillText(effect.icon, barX + effectIndex * 22, barY - 4);
     });
+
+    if (enemy.intent) {
+      const intent = enemy.intent;
+      const text = intent.minDamage !== undefined && intent.maxDamage !== undefined
+        ? `${intent.icon} ${intent.minDamage}–${intent.maxDamage}`
+        : `${intent.icon} ${intent.shortLabel}`;
+      const badgeWidth = Math.min(slotWidth * 0.94, 150);
+      const fontSize = Math.max(18, Math.min(22, badgeWidth / 8));
+      context.save();
+      context.font = `bold ${fontSize}px monospace`;
+      const measuredWidth = context.measureText(text).width;
+      const pillWidth = Math.min(badgeWidth, Math.max(48, measuredWidth + 12));
+      const pillHeight = fontSize + 8;
+      const pillX = centerX - pillWidth / 2;
+      const pillY = Math.max(2, barY - pillHeight - 5);
+      context.fillStyle = intent.type === 'HEAVY_ATTACK' ? 'rgba(120, 20, 18, 0.94)'
+        : intent.type === 'DEFEND' || intent.type === 'BUFF' || intent.type === 'HEAL' ? 'rgba(18, 60, 82, 0.94)'
+        : intent.type === 'PREPARE' || intent.type === 'SUMMON' ? 'rgba(69, 35, 91, 0.94)'
+        : 'rgba(28, 24, 20, 0.94)';
+      context.fillRect(pillX, pillY, pillWidth, pillHeight);
+      context.strokeStyle = intent.type === 'HEAVY_ATTACK' ? '#ff7b5a' : '#d3b46f';
+      context.lineWidth = 1;
+      context.strokeRect(pillX, pillY, pillWidth, pillHeight);
+      context.fillStyle = '#fff5dc';
+      context.textAlign = 'center';
+      context.textBaseline = 'middle';
+      context.fillText(text, centerX, pillY + pillHeight / 2, pillWidth - 6);
+      context.restore();
+    }
   });
   return positions;
 }

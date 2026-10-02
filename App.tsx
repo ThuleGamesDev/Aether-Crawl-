@@ -2,19 +2,20 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { generateDungeon } from './services/dungeonGenerator';
 import { audioService } from './services/audioService';
-import { generateLoot, XP_THRESHOLD, getLeaderboard, saveHighScore, saveGame, loadGame, hasSaveGame, createBoss, createRandomEnemy, CRAFTING_RECIPES } from './services/gameLogic';
+import { generateLoot, XP_THRESHOLD, getLeaderboard, saveHighScore, saveGame, loadGame, hasSaveGame, createBoss, createEnemyEncounter, CRAFTING_RECIPES } from './services/gameLogic';
 import { getBiomeIdForLevel, getLevelAssetPaths } from './data/assetRegistry';
 import { getExplorationNarrative } from './data/narratives';
 import { normalizePlayerWeaponVisuals } from './data/weaponVisuals';
 import { TEXT, LanguageType } from './data/translations';
 import { preloadAssets } from './services/assetLoader';
 import { generatePerksForCharacter } from './services/progression';
-import { calculateEnemyAttack, calculatePlayerAttack, calculateSkillPower, damageEnemies, resolveStatusTurn } from './services/combat';
+import { calculatePlayerAttack, calculateSkillPower, createStatusEffect, damageEnemies, resolveStatusTurn, upsertStatusEffect } from './services/combat';
+import { activateEnemyPhases, planEnemyIntents, resolveEnemyIntent, settleDefeatedEnemyTheft } from './services/enemyAI';
 import Viewport from './components/Viewport';
 import Controls from './components/Controls';
 import Log from './components/Log';
 import Minimap from './components/Minimap';
-import { Player, Character, TileType, GamePhase, LogEntry, BiomeId, Enemy, CombatMenu, VFXEvent, VFXType, Item, HighScore, Perk, ClassType, StatusEffect, StatusType, Direction, Skill } from './types';
+import { Player, Character, TileType, GamePhase, LogEntry, BiomeId, Enemy, CombatMenu, VFXEvent, VFXType, Item, HighScore, Perk, ClassType, StatusType, Direction, Skill } from './types';
 import { CLASSES, MAP_SIZE, MASTER_SKILL_POOL } from './constants';
 
 const Modal: React.FC<{ title: string; onClose: () => void; children: React.ReactNode }> = ({ title, onClose, children }) => (
@@ -335,6 +336,29 @@ const App: React.FC = () => {
     setLogs(prev => [...prev, { id: Date.now() + Math.random(), text, type }]);
   };
 
+  const commitEnemies = (nextEnemies: Enemy[], syncScrapRefund = true): { enemies: Enemy[]; refundedScrap: number } => {
+      const phaseUpdate = activateEnemyPhases(nextEnemies);
+      phaseUpdate.logs.forEach(line => addLog(line, 'combat'));
+      const newlyPhasedNecromancer = phaseUpdate.logs.length
+          ? phaseUpdate.enemies.find(enemy => enemy.definitionId === 'the_necromancer' && enemy.phase === 2)
+          : undefined;
+      if (newlyPhasedNecromancer) triggerVfx('DARK', newlyPhasedNecromancer.id);
+      const theft = settleDefeatedEnemyTheft(phaseUpdate.enemies);
+      const committed = theft.enemies;
+      const refundedScrap = theft.refundedScrap;
+      theft.logs.forEach(line => addLog(line, 'loot'));
+      enemiesRef.current = committed;
+      setEnemies(committed);
+      if (selectedEnemyId && !committed.some(enemy => enemy.id === selectedEnemyId && enemy.hp > 0)) {
+          setSelectedEnemyId(committed.find(enemy => enemy.hp > 0)?.id ?? null);
+      }
+      if (syncScrapRefund && refundedScrap > 0) {
+          playerRef.current = { ...playerRef.current, scrap: playerRef.current.scrap + refundedScrap };
+          setPlayer(player => ({ ...player, scrap: player.scrap + refundedScrap }));
+      }
+      return { enemies: committed, refundedScrap };
+  };
+
   const addToInventory = (item: Item) => {
       setPlayer(p => {
           const newInv = [...p.inventory];
@@ -380,15 +404,17 @@ const App: React.FC = () => {
 
   // --- STATUS EFFECTS ---
   const applyStatus = (target: Character | Enemy, type: StatusType, duration: number, val: number, isPlayer: boolean) => {
-      const id = `status_${Date.now()}_${Math.random()}`;
-      const iconMap: Record<StatusType, string> = { 'POISON': '🤢', 'BURN': '🔥', 'REGEN': '💖', 'SHIELD': '🛡️', 'STRENGTH': '💪', 'WEAKNESS': '😓', 'STUN': '💫' };
-      const newEffect: StatusEffect = { id, type, name: type, duration, value: val, icon: iconMap[type] };
+      if (!isPlayer && type === 'STUN' && 'isBoss' in target && target.isBoss && Math.random() < (target.stunResistance ?? 0.5)) {
+          addLog(`${target.name} resists the stun.`, 'combat');
+          return;
+      }
+      const newEffect = createStatusEffect(type, duration, val);
 
       if (isPlayer) {
           setPlayer(p => {
               const newParty = p.party.map(c => {
                   if (c.id === target.id) {
-                      return { ...c, statusEffects: [...c.statusEffects, newEffect] };
+                      return { ...c, statusEffects: upsertStatusEffect(c.statusEffects, newEffect) };
                   }
                   return c;
               });
@@ -396,19 +422,15 @@ const App: React.FC = () => {
           });
       } else {
           const updatedEnemies = enemiesRef.current.map(e => e.id === target.id
-              ? { ...e, statusEffects: [...(e.statusEffects || []), newEffect] }
+              ? { ...e, statusEffects: upsertStatusEffect(e.statusEffects || [], newEffect) }
               : e);
-          enemiesRef.current = updatedEnemies;
-          setEnemies(updatedEnemies);
+          commitEnemies(updatedEnemies);
       }
       addLog(`${target.name} gained ${type}!`, 'combat');
   };
 
-  const processStatusEffects = (character: Character | Enemy, isPlayer: boolean): boolean => {
-      const currentEffects = isPlayer ? (character as Character).statusEffects : (character as Enemy).statusEffects || [];
-      const hp = isPlayer ? (character as Character).stats.hp : (character as Enemy).hp;
-      const maxHp = isPlayer ? (character as Character).stats.maxHp : (character as Enemy).maxHp;
-      const result = resolveStatusTurn(hp, maxHp, currentEffects);
+  const processStatusEffects = (character: Character): boolean => {
+      const result = resolveStatusTurn(character.stats.hp, character.stats.maxHp, character.statusEffects);
 
       result.ticks.forEach(({ type, value }) => {
           if (type === 'POISON') { addLog(`${character.name} takes ${value} poison dmg.`, 'combat'); triggerVfx('POISON', character.id); }
@@ -416,20 +438,12 @@ const App: React.FC = () => {
           if (type === 'REGEN') { addLog(`${character.name} regenerates ${value}.`, 'combat'); triggerVfx('HEAL', character.id); }
       });
 
-      if (isPlayer) {
-          setPlayer(p => ({
-              ...p,
-              party: p.party.map(c => c.id === character.id
-                  ? { ...c, stats: { ...c.stats, hp: result.hp }, statusEffects: result.statusEffects }
-                  : c),
-          }));
-      } else {
-          const updatedEnemies = enemiesRef.current.map(e => e.id === character.id
-              ? { ...e, hp: result.hp, statusEffects: result.statusEffects }
-              : e);
-          enemiesRef.current = updatedEnemies;
-          setEnemies(updatedEnemies);
-      }
+      setPlayer(p => ({
+          ...p,
+          party: p.party.map(c => c.id === character.id
+              ? { ...c, stats: { ...c.stats, hp: result.hp }, statusEffects: result.statusEffects }
+              : c),
+      }));
       return result.defeated;
   };
 
@@ -520,9 +534,10 @@ const App: React.FC = () => {
       if (isBoss) { addLog("BOSS BATTLE INITIATED!", 'combat'); audioService.stopMusic(); } else { addLog("Enemies approaching!", 'combat'); }
       audioService.playBump();
       
-      const newEnemies: Enemy[] = isBoss
+      const encounter: Enemy[] = isBoss
           ? [createBoss(dungeonLevel, dungeonLevel % 5 === 0)]
-          : Array.from({ length: Math.floor(Math.random() * 3) + 1 }, () => createRandomEnemy(dungeonLevel));
+          : createEnemyEncounter(dungeonLevel);
+      const newEnemies = planEnemyIntents(encounter, playerRef.current.scrap);
       setEnemies(newEnemies);
       enemiesRef.current = newEnemies; 
       setSelectedEnemyId(newEnemies[0].id);
@@ -535,9 +550,9 @@ const App: React.FC = () => {
       if (charIndex >= player.party.length) { enemyTurn(); return; }
       const character = player.party[charIndex];
       if (character.stats.hp <= 0) { startPlayerTurn(charIndex + 1); return; }
-      const died = processStatusEffects(character, true);
-      if (died) { startPlayerTurn(charIndex + 1); return; }
       const isStunned = character.statusEffects.some(e => e.type === 'STUN');
+      const died = processStatusEffects(character);
+      if (died) { startPlayerTurn(charIndex + 1); return; }
       if (isStunned) {
           addLog(`${character.name} is stunned!`, 'combat');
           setTimeout(() => startPlayerTurn(charIndex + 1), 1000);
@@ -554,48 +569,48 @@ const App: React.FC = () => {
   };
 
   const enemyTurn = async () => {
-      const currentEnemies = enemiesRef.current;
-      const activeEnemies = currentEnemies.filter(e => e.hp > 0);
-      if (activeEnemies.length === 0) { setTimeout(() => endCombat(true), 500); return; }
+      const activeEnemyIds = enemiesRef.current.filter(enemy => enemy.hp > 0).map(enemy => enemy.id);
+      if (activeEnemyIds.length === 0) { endCombat(true); return; }
       setIsPlayerTurn(false);
 
-      for (const enemy of activeEnemies) {
-          if (enemy.hp <= 0) continue;
-          if (processStatusEffects(enemy, false)) continue;
-          const isStunned = enemy.statusEffects.some(e => e.type === 'STUN');
-          if (isStunned) {
-               addLog(`${enemy.name} is stunned!`, 'combat');
-               continue;
+      for (const enemyId of activeEnemyIds) {
+          const enemy = enemiesRef.current.find(candidate => candidate.id === enemyId);
+          if (!enemy || enemy.hp <= 0) continue;
+          await new Promise(r => setTimeout(r, 550));
+
+          const currentPlayer = playerRef.current;
+          if (!currentPlayer.party.some(character => character.stats.hp > 0)) {
+              endCombat(false);
+              return;
           }
+          const previousParty = currentPlayer.party;
+          const resolution = resolveEnemyIntent(enemyId, enemiesRef.current, previousParty, currentPlayer.scrap);
+          const committed = commitEnemies(resolution.enemies, false);
+          const nextPlayer = {
+              ...currentPlayer,
+              party: resolution.party,
+              scrap: resolution.scrap + committed.refundedScrap,
+          };
+          playerRef.current = nextPlayer;
+          setPlayer(nextPlayer);
 
-          await new Promise(r => setTimeout(r, 600));
-          const livingPlayers = playerRef.current.party.filter(c => c.stats.hp > 0); // Use REF to get latest state
-          if (livingPlayers.length === 0) break;
-
-          const target = livingPlayers[Math.floor(Math.random() * livingPlayers.length)];
-          
-          const dmg = calculateEnemyAttack(enemy, target);
-
-          setPlayer(p => {
-              const np = p.party.map(c => c.id === target.id ? { ...c, stats: { ...c.stats, hp: Math.max(0, c.stats.hp - dmg) } } : c);
-              return { ...p, party: np };
+          resolution.logs.forEach(line => addLog(line, 'combat'));
+          resolution.vfx.forEach(effect => triggerVfx(effect.type, effect.targetId));
+          if (resolution.acted && resolution.vfx.some(effect => effect.type === 'DAMAGE')) audioService.playAttack();
+          resolution.party.forEach(character => {
+              const previous = previousParty.find(candidate => candidate.id === character.id);
+              if (previous && previous.stats.hp > 0 && character.stats.hp <= 0) addLog(`${character.name} collapsed!`, 'combat');
           });
-          
-          addLog(`${enemy.name} attacks ${target.name} for ${dmg} dmg!`, 'combat');
-          triggerVfx('DAMAGE', target.id);
-          audioService.playAttack();
 
-          if (target.stats.hp - dmg <= 0) {
-              addLog(`${target.name} collapsed!`, 'combat');
-          }
-          
-          // CHECK GAME OVER HERE (After every attack)
-          const stillAlive = playerRef.current.party.some(c => c.stats.hp > 0);
-          if (!stillAlive) {
+          if (!resolution.party.some(character => character.stats.hp > 0)) {
               endCombat(false);
               return;
           }
       }
+
+      const remainingEnemies = enemiesRef.current.filter(enemy => enemy.hp > 0);
+      if (!remainingEnemies.length) { endCombat(true); return; }
+      commitEnemies(planEnemyIntents(enemiesRef.current, playerRef.current.scrap));
       startPlayerTurn(0);
   };
 
@@ -620,6 +635,7 @@ const App: React.FC = () => {
            
            addLog(`Party gained ${xpPerChar} XP each.`, 'loot');
            enemiesRef.current.forEach(e => {
+               if (e.isSummoned || e.xpReward <= 0) return;
                const loot = generateLoot(dungeonLevel, e.isBoss);
                if (loot) { addToInventory(loot); addLog(`Found ${loot.name}!`, 'loot'); }
            });
@@ -769,20 +785,19 @@ const App: React.FC = () => {
       
       if (phase === 'COMBAT') {
           if (action === 'attack') {
-             const target = enemiesRef.current.find(e => e.id === selectedEnemyId) || enemiesRef.current.find(e => e.hp > 0);
+             const target = enemiesRef.current.find(e => e.id === selectedEnemyId && e.hp > 0) || enemiesRef.current.find(e => e.hp > 0);
              if (!target) return;
              
              const char = player.party[activeCharIndex];
              const { damage: dmg, critical: isCrit } = calculatePlayerAttack(char);
              const newEnemies = damageEnemies(enemiesRef.current, target.id, dmg);
-             setEnemies(newEnemies);
-             enemiesRef.current = newEnemies;
+             commitEnemies(newEnemies);
 
              addLog(`${char.name} attacks ${target.name} for ${dmg}${isCrit ? ' (CRIT!)' : ''}.`, 'combat');
              triggerVfx(isCrit ? 'CRITICAL' : 'ATTACK', target.id);
              audioService.playAttack();
              
-             if (target.hp - dmg <= 0) {
+             if (newEnemies.find(enemy => enemy.id === target.id)?.hp === 0) {
                  addLog(`${target.name} died!`, 'combat');
                  triggerVfx('ENEMY_DEATH', target.id);
                  
@@ -817,7 +832,7 @@ const App: React.FC = () => {
 
   const handleSubAction = (type: 'skill' | 'item', id: string) => {
       const char = player.party[activeCharIndex];
-      const targetEnemy = enemiesRef.current.find(e => e.id === selectedEnemyId) || enemiesRef.current.find(e => e.hp > 0);
+      const targetEnemy = enemiesRef.current.find(e => e.id === selectedEnemyId && e.hp > 0) || enemiesRef.current.find(e => e.hp > 0);
       
       if (type === 'skill') {
           const skill = char.skills.find(s => s.id === id);
@@ -867,8 +882,7 @@ const App: React.FC = () => {
           } else if (skill.type === 'DRAIN') {
               if (targetEnemy) {
                    const newEnemies = damageEnemies(enemiesRef.current, targetEnemy.id, power);
-                   setEnemies(newEnemies);
-                   enemiesRef.current = newEnemies;
+                   commitEnemies(newEnemies);
                    // Heal Self
                    const healAmt = Math.floor(power * 0.8);
                    setPlayer(p => { const np = [...p.party]; np[activeCharIndex].stats.hp = Math.min(np[activeCharIndex].stats.maxHp, np[activeCharIndex].stats.hp + healAmt); return { ...p, party: np }; });
@@ -884,8 +898,7 @@ const App: React.FC = () => {
           } else {
               if (targetEnemy) {
                    const newEnemies = damageEnemies(enemiesRef.current, targetEnemy.id, power, skill.targetType === 'MULTI');
-                   setEnemies(newEnemies);
-                   enemiesRef.current = newEnemies;
+                   commitEnemies(newEnemies);
                    addLog(`${char.name} casts ${skill.name} for ${power} dmg!`, 'combat');
                    triggerVfx(skill.vfxType, targetEnemy.id);
                    audioService.playAttack();
@@ -1060,16 +1073,31 @@ const App: React.FC = () => {
                         const hpPct = (target.hp / target.maxHp) * 100;
                         return (
                             <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-black/80 border-2 border-red-900 p-2 rounded shadow-[0_0_15px_rgba(200,0,0,0.5)] min-w-[200px] text-center backdrop-blur-sm animate-fadeIn">
-                                <div className="text-yellow-500 font-bold text-sm mb-1 uppercase tracking-wider">{target.name}</div>
+                                <div className="text-yellow-500 font-bold text-sm mb-1 uppercase tracking-wider">
+                                    {target.name}{target.definitionId === 'the_necromancer' && target.phase === 2 ? ' · PHASE II' : ''}
+                                </div>
                                 <div className="w-full bg-gray-900 h-3 rounded-full border border-gray-700 relative overflow-hidden mb-1">
                                     <div className={`h-full transition-all duration-300 ${hpPct > 50 ? 'bg-green-600' : hpPct > 25 ? 'bg-yellow-600' : 'bg-red-600'}`} style={{width: `${hpPct}%`}}></div>
                                 </div>
                                 <div className="text-white text-xs font-mono">{target.hp} / {target.maxHp} HP</div>
+                                {(target.guard ?? 0) > 0 && <div className="text-cyan-300 text-[10px] font-bold">🛡 Guard {target.guard}</div>}
                                 {target.statusEffects && target.statusEffects.length > 0 && (
                                     <div className="flex justify-center gap-2 mt-1">
                                         {target.statusEffects.map(eff => (
                                             <span key={eff.id} title={`${eff.type}: ${eff.value}`} className="text-sm bg-gray-800 rounded px-1">{eff.icon}</span>
                                         ))}
+                                    </div>
+                                )}
+                                {target.intent && (
+                                    <div className="mt-1 border-t border-gray-700 pt-1" title={target.intent.description}>
+                                        <div className="text-white text-[10px] font-bold">
+                                            {target.intent.icon} {target.intent.label}
+                                            {target.intent.minDamage !== undefined && target.intent.maxDamage !== undefined
+                                                ? ` · ${target.intent.minDamage}–${target.intent.maxDamage}` : ''}
+                                        </div>
+                                        <div className="text-gray-300 text-[9px] leading-tight">{target.intent.description}</div>
+                                        {target.intent.interruptible && <div className="text-cyan-300 text-[9px] font-bold">Stun interrupts this action</div>}
+                                        {target.isBoss && (target.stunResistance ?? 0) > 0 && <div className="text-purple-300 text-[9px]">Boss resists {Math.round((target.stunResistance ?? 0) * 100)}% of Stun</div>}
                                     </div>
                                 )}
                             </div>

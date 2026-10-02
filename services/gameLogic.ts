@@ -172,19 +172,50 @@ export const hasSaveGame = (): boolean => loadGame() !== null;
 
 let enemySequence = 0;
 
-const instantiateEnemy = (definition: (typeof enemyDefinitions)[number], scale: number, isBoss: boolean): Enemy => {
+export interface EnemyCreationOptions {
+    isBoss?: boolean;
+    isSummoned?: boolean;
+    summonedBy?: string;
+    canSplit?: boolean;
+}
+
+const instantiateEnemy = (
+    definition: (typeof enemyDefinitions)[number],
+    scale: number,
+    options: EnemyCreationOptions = {},
+): Enemy => {
     const hp = Math.floor(definition.hp * scale);
+    const isBoss = options.isBoss ?? definition.category !== 'normal';
+    const isSummoned = options.isSummoned ?? false;
     return {
-        id: `${isBoss ? 'boss' : 'enemy'}_${definition.id}_${++enemySequence}`,
+        id: `${isBoss ? 'boss' : isSummoned ? 'summon' : 'enemy'}_${definition.id}_${++enemySequence}`,
         name: definition.name,
         hp,
         maxHp: hp,
         damage: Math.floor(definition.damage * scale),
-        xpReward: Math.floor(definition.xp * scale),
+        xpReward: isSummoned ? 0 : Math.floor(definition.xp * scale),
         visualId: definition.visualId,
         isBoss,
         statusEffects: [],
+        definitionId: definition.id,
+        role: definition.role ?? 'STRIKER',
+        abilityIds: definition.abilities ?? ['basic_attack'],
+        abilityCooldowns: {},
+        combatFlags: [],
+        phase: 1,
+        guard: 0,
+        stolenScrap: 0,
+        isSummoned,
+        summonedBy: options.summonedBy,
+        canSplit: options.canSplit ?? definition.id === 'green_slime',
+        stunResistance: isBoss ? 0.5 : 0,
     };
+};
+
+export const createEnemyById = (enemyId: string, scale = 1, options: EnemyCreationOptions = {}): Enemy => {
+    const definition = enemyDefinitions.find(enemy => enemy.id === enemyId);
+    if (!definition) throw new Error(`Unknown canonical enemy ID: ${enemyId}`);
+    return instantiateEnemy(definition, scale, options);
 };
 
 export const createRandomEnemy = (level: number): Enemy => {
@@ -194,12 +225,34 @@ export const createRandomEnemy = (level: number): Enemy => {
         ? available[Math.floor(Math.random() * available.length)]
         : strongest;
     const scale = 1 + (level - (template.minLevel ?? 1)) * 0.1;
-    return instantiateEnemy(template, scale, false);
+    return instantiateEnemy(template, scale, { isBoss: false });
 };
 
 export const createBoss = (level: number, isBiomeBoss: boolean): Enemy => {
     const template = isBiomeBoss
         ? biomeBossDefinitions[Math.max(0, Math.min(Math.floor(level / 5) - 1, biomeBossDefinitions.length - 1))]
         : miniBossDefinitions[Math.floor(Math.random() * miniBossDefinitions.length)];
-    return instantiateEnemy(template, 1 + (level * 0.1), true);
+    return instantiateEnemy(template, 1 + (level * 0.1), { isBoss: true });
+};
+
+/** Curated early/mid encounters teach the pilot roles before the broad enemy roster enters. */
+export const createEnemyEncounter = (level: number): Enemy[] => {
+    let encounters: string[][] | null = null;
+    if (level <= 2) {
+        encounters = [['giant_rat'], ['acid_spider'], ['giant_rat', 'giant_rat']];
+    } else if (level <= 4) {
+        encounters = [['goblin_scavenger', 'skeleton_warrior'], ['acid_spider', 'giant_rat'], ['skeleton_warrior']];
+    } else if (level <= 6) {
+        encounters = [['orc_brute', 'acid_spider'], ['goblin_scavenger', 'skeleton_warrior'], ['skeleton_warrior', 'dark_cultist'], ['dark_cultist']];
+    }
+
+    if (!encounters) {
+        return Array.from({ length: Math.floor(Math.random() * 3) + 1 }, () => createRandomEnemy(level));
+    }
+
+    const chosen = encounters[Math.floor(Math.random() * encounters.length)];
+    return chosen.map(enemyId => {
+        const definition = enemyDefinitions.find(enemy => enemy.id === enemyId)!;
+        return createEnemyById(enemyId, 1 + Math.max(0, level - (definition.minLevel ?? 1)) * 0.1, { isBoss: false });
+    });
 };
