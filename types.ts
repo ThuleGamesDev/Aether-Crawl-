@@ -7,6 +7,14 @@ export interface Position {
   y: number;
 }
 
+export interface PlayerTransform {
+  /** World coordinates: integer cells are tile boundaries, not tile centers. */
+  x: number;
+  y: number;
+  /** Horizontal look angle in radians; 0 faces east and positive turns clockwise. */
+  angle: number;
+}
+
 export enum TileType {
   EMPTY = 0,
   WALL = 1,
@@ -193,8 +201,12 @@ export interface Character {
 }
 
 export interface Player {
+  /** Legacy grid cell retained for old saves and tile-based gameplay systems. */
   pos: Position;
+  /** Legacy nearest-cardinal heading; the renderer uses transform.angle. */
   dir: Direction;
+  /** Continuous first-person world transform. Missing only in pre-migration saves. */
+  transform?: PlayerTransform;
   party: Character[];
   inventory: Item[]; // Shared inventory
   scrap: number;

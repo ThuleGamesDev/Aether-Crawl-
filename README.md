@@ -16,10 +16,11 @@ Biomes are selected by dungeon level: Stone Dungeon (1–5), Moss (6–10), Cata
 
 ## Controls
 
-- Use the on-screen directional pad to move forward/back or turn left/right.
-- Open Inventory, Skills, Status, and Crafting from the exploration controls.
-- In combat, choose Attack, Defend, Skill, Item, or Flee. Click an enemy sprite to select it. Intent badges show each enemy's next action; damage ranges are approximate and gear, Defend, and guard can lower the hit.
-- Use Save and Exit from the game header. Continue is available from the title screen when a save exists.
+**Desktop:** click the viewport to capture the mouse, then use WASD to move and strafe. Mouse movement turns freely; arrow keys turn if you prefer keyboard-only aiming. Press E to use a nearby door, prop, or exit; I opens or closes Inventory, C/K opens party stats, Tab opens the map, and Escape releases the pointer or opens the menu. Mouse sensitivity is adjustable in Options. Movement stops at walls and slides along them.
+
+**Mobile:** drag the left virtual stick to move and drag the right half of the view to look. Large touch buttons open Inventory, Skills, Party, Crafting, and the map; E interacts. Turn the device sideways for more room where possible.
+
+Combat remains turn-based. Use the on-screen actions to Attack, Defend, choose a Skill or Item, or Flee. Click an enemy sprite on desktop to select it. Intent badges show each enemy's next action; damage ranges are approximate and gear, Defend, and guard can lower the hit. Save and Menu remain available from the viewport HUD.
 
 ## Requirements and setup
 
@@ -58,7 +59,7 @@ See [the art direction](docs/ART_DIRECTION.md) for visual rules and [the asset p
 
 ```text
 App.tsx                    Game flow and screen composition
-components/                Canvas viewport, controls, minimap, and log
+components/                Canvas viewport, mobile controls, minimap, and log
 data/                      Enemy and ability data, translations, narrative, and asset registry
 services/                  Dungeon generation, enemy intent and combat resolution, progression, saves, and asset loading
 public/assets/
@@ -79,7 +80,7 @@ tests/                     Dungeon, gameplay, and asset registry tests
 4. Register new abilities in `data/enemyAbilities.ts`; use existing typed effects and status types when possible.
 5. Run `npm test`; registry tests check enemy sprites and referenced ability IDs.
 
-See [the combat system guide](docs/COMBAT_SYSTEM.md) for turn flow, intent rules, pilot behaviors, summons, and extension steps.
+See [the combat system guide](docs/COMBAT_SYSTEM.md) for turn flow, intent rules, pilot behaviors, summons, and extension steps. [First-person exploration](docs/FIRST_PERSON_EXPLORATION.md) documents movement, input, interaction, and migration details.
 
 ## Adding a new biome
 
@@ -90,4 +91,4 @@ See [the combat system guide](docs/COMBAT_SYSTEM.md) for turn flow, intent rules
 
 ## Save data
 
-Saves remain in browser `localStorage` under the existing Aether Crawl save key. The save stores gameplay state only; visual URLs, image payloads, and derived weapon sprite types are excluded. Older saves receive defaults and weapon visual types are recovered from their item names when loaded.
+Saves remain in browser `localStorage` under the existing Aether Crawl save key. The save stores gameplay state only; visual URLs, image payloads, and derived weapon sprite types are excluded. Player position now stores continuous world coordinates and a horizontal angle. Older saves with integer `pos` and cardinal `dir` are migrated to the center of that tile while preserving the old facing; weapon visual types are still recovered from item names when loaded.

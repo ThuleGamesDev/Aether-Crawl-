@@ -1,5 +1,6 @@
 
 import { Item, HighScore, SaveData, Enemy } from '../types';
+import { normalizePlayerTransform } from './firstPerson';
 import { enemyDefinitions, normalEnemyDefinitions, miniBossDefinitions, biomeBossDefinitions } from '../data/enemies';
 import { serializeGameplayItem, normalizePlayerWeaponVisuals } from '../data/weaponVisuals';
 
@@ -120,6 +121,7 @@ export const saveGame = (data: SaveData) => {
         const player = normalizePlayerWeaponVisuals(data.player);
         const savedPlayer = {
             ...player,
+            transform: normalizePlayerTransform(player.transform, player.pos, player.dir),
             inventory: player.inventory.map(serializeGameplayItem),
             party: player.party.map(character => ({
                 ...character,
@@ -151,6 +153,7 @@ export const loadGame = (): SaveData | null => {
                 ...parsed.player,
                 pos: parsed.player.pos ?? { x: 1, y: 1 },
                 dir: parsed.player.dir ?? 'E',
+                transform: normalizePlayerTransform(parsed.player.transform, parsed.player.pos, parsed.player.dir),
                 party: Array.isArray(parsed.player.party) ? parsed.player.party : [],
                 inventory: Array.isArray(parsed.player.inventory) ? parsed.player.inventory : [],
                 scrap: Number.isFinite(parsed.player.scrap) ? parsed.player.scrap : 0,

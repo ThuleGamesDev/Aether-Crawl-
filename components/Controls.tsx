@@ -3,8 +3,6 @@ import React from 'react';
 import { GamePhase, CombatMenu, Skill, Item, Character } from '../types';
 
 interface ControlsProps {
-  onMove: (forward: boolean) => void;
-  onTurn: (left: boolean) => void;
   onAction: (action: string) => void;
   phase: GamePhase;
   
@@ -18,7 +16,7 @@ interface ControlsProps {
 }
 
 const Controls: React.FC<ControlsProps> = ({ 
-    onMove, onTurn, onAction, phase, 
+    onAction, phase, 
     combatMenu, activeCharacter, inventory, onSubAction, onBack,
     isPlayerTurn
 }) => {
@@ -114,34 +112,7 @@ const Controls: React.FC<ControlsProps> = ({
       )
   }
 
-  // EXPLORATION CONTROLS
-  return (
-    <div className="flex flex-row md:flex-col gap-4 w-full justify-between items-center md:items-stretch h-full">
-      {/* Menu Buttons */}
-      <div className="flex flex-col md:flex-row gap-2 shrink-0">
-          <button onClick={() => onAction('inventory')} className="text-[10px] font-bold bg-zinc-800 text-gray-300 hover:text-white border border-gray-600 hover:border-gray-400 py-2 px-3 rounded shadow-sm">INV</button>
-          <button onClick={() => onAction('skills')} className="text-[10px] font-bold bg-zinc-800 text-gray-300 hover:text-white border border-gray-600 hover:border-gray-400 py-2 px-3 rounded shadow-sm">SKILL</button>
-          <button onClick={() => onAction('stats')} className="text-[10px] font-bold bg-zinc-800 text-gray-300 hover:text-white border border-gray-600 hover:border-gray-400 py-2 px-3 rounded shadow-sm">STAT</button>
-          <button onClick={() => onAction('craft')} className="text-[10px] font-bold bg-amber-900 text-amber-200 hover:text-white border border-amber-700 hover:border-amber-500 py-2 px-3 rounded shadow-sm">CRAFT</button>
-      </div>
-
-      {/* D-Pad Area */}
-      <div className="grid grid-cols-3 gap-1 w-[140px] md:w-[160px] mx-auto">
-          <div className="col-start-2">
-            <button onClick={() => onMove(true)} className={`${btnClass} w-full`}>▲</button>
-          </div>
-          <div className="col-start-1 row-start-2">
-            <button onClick={() => onTurn(true)} className={`${btnClass} w-full`}>◀</button>
-          </div>
-          <div className="col-start-2 row-start-2">
-             <button onClick={() => onMove(false)} className={`${btnClass} w-full`}>▼</button>
-          </div>
-          <div className="col-start-3 row-start-2">
-            <button onClick={() => onTurn(false)} className={`${btnClass} w-full`}>▶</button>
-          </div>
-      </div>
-    </div>
-  );
+  return null;
 };
 
 export default Controls;

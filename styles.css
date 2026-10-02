@@ -7,12 +7,14 @@
   body,
   #root {
     width: 100%;
-    min-height: 100%;
+    height: 100%;
+    min-height: 100dvh;
     margin: 0;
   }
 
   body {
     overflow: hidden;
+    overscroll-behavior: none;
     background: #0f0f0f;
     color: #e0e0e0;
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -33,4 +35,18 @@
   ::-webkit-scrollbar-thumb:hover {
     background: #666;
   }
+}
+
+@layer components {
+  .hud-button {
+    @apply rounded-lg border border-white/20 bg-slate-900/80 px-3 py-2 text-[10px] font-bold text-white/80 transition-colors hover:bg-slate-700 active:scale-95;
+  }
+
+  .hud-button-accent {
+    @apply border-amber-200/30 bg-amber-800/85 text-amber-50 hover:bg-amber-700;
+  }
+}
+
+canvas {
+  touch-action: none;
 }
