@@ -1,6 +1,6 @@
 # Aether Crawl
 
-Aether Crawl is a local-first, retro fantasy dungeon crawler. Choose a three-character party, explore compact first-person dungeons, fight turn-based encounters, collect equipment, and descend through six themed biomes toward their guardians.
+Aether Crawl is a local-first, retro fantasy dungeon crawler. Choose a three-character party, explore compact first-person dungeons, fight semi-real-time tactical encounters, collect equipment, and descend through six themed biomes toward their guardians.
 
 The project is a playable browser vertical slice built with React, TypeScript, Vite, Tailwind CSS, and a Canvas raycaster. Gameplay, art, narrative text, saves, and audio work without an API key or network access after dependencies have been installed.
 
@@ -8,7 +8,7 @@ The project is a playable browser vertical slice built with React, TypeScript, V
 
 1. Choose three adventurers from eight classes.
 2. Explore a procedurally laid-out dungeon using the on-screen controls.
-3. Fight random encounters and guarded exits in turn-based combat.
+3. Fight random encounters and guarded exits in semi-real-time tactical combat.
 4. Gain XP, choose perks, collect loot, and spend scrap at the crafting menu.
 5. Defeat the guardian at each five-floor milestone and descend into the next biome.
 
@@ -20,7 +20,7 @@ Biomes are selected by dungeon level: Stone Dungeon (1–5), Moss (6–10), Cata
 
 **Mobile:** drag the left virtual stick to move and drag the right half of the view to look. Large touch buttons open Inventory, Skills, Party, Crafting, and the map; E interacts. Turn the device sideways for more room where possible.
 
-Combat remains turn-based. Use the on-screen actions to Attack, Defend, choose a Skill or Item, or Flee. Click an enemy sprite on desktop to select it. Intent badges show each enemy's next action; damage ranges are approximate and gear, Defend, and guard can lower the hit. Save and Menu remain available from the viewport HUD.
+Combat uses independent party/enemy action timers. Use Attack, timed Defend, Skills, potions or Flee when the selected hero is READY. Space toggles tactical pause; 1–4/F1–F4 or READY party cards select a hero. Touch has Party and Pause buttons. Skill/Item/Party selection slows combat to 20%. Enemy badges show announced casts and whether Stun can interrupt them. Click an enemy sprite to target it. Save after the encounter; Menu suspends combat.
 
 ## Requirements and setup
 
@@ -80,7 +80,7 @@ tests/                     Dungeon, gameplay, and asset registry tests
 4. Register new abilities in `data/enemyAbilities.ts`; use existing typed effects and status types when possible.
 5. Run `npm test`; registry tests check enemy sprites and referenced ability IDs.
 
-See [the combat system guide](docs/COMBAT_SYSTEM.md) for turn flow, intent rules, pilot behaviors, summons, and extension steps. [First-person exploration](docs/FIRST_PERSON_EXPLORATION.md) documents movement, input, interaction, and migration details.
+See [the combat system guide](docs/COMBAT_SYSTEM.md) for clock/readiness, intent/cast rules, pilot behaviors, summons, and extension steps. [First-person exploration](docs/FIRST_PERSON_EXPLORATION.md) documents movement, input, interaction, and migration details.
 
 ## Adding a new biome
 

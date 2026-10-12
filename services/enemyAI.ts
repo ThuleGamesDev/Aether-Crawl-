@@ -59,6 +59,9 @@ const buildIntent = (enemy: Enemy, ability: EnemyAbilityDefinition): EnemyIntent
     description: ability.description,
     abilityId: ability.id,
     interruptible: ability.interruptible,
+    castTimeMs: ability.castTimeMs ?? 400,
+    recoveryMs: ability.recoveryMs ?? 1800,
+    interruptResistance: ability.interruptResistance ?? enemy.stunResistance,
     ...damage,
   };
 };
@@ -73,7 +76,7 @@ const chooseWeighted = <T extends { weight: number }>(items: T[], random: () => 
   return items[items.length - 1];
 };
 
-/** Makes the intent part of enemy state before the next player phase begins. */
+/** Advertises the next action before that actor begins its cast. */
 export const planEnemyIntent = (enemy: Enemy, enemies: Enemy[], scrap: number, random: () => number = Math.random): Enemy => {
   if (enemy.hp <= 0) return enemy;
   const abilityCooldowns = { ...(enemy.abilityCooldowns ?? {}) };
@@ -96,6 +99,18 @@ export const planEnemyIntent = (enemy: Enemy, enemies: Enemy[], scrap: number, r
 export const planEnemyIntents = (enemies: Enemy[], scrap: number, random: () => number = Math.random): Enemy[] => {
   const living = enemies.filter(enemy => enemy.hp > 0);
   return enemies.map(enemy => enemy.hp > 0 ? planEnemyIntent(enemy, living, scrap, random) : enemy);
+};
+
+/** Cancels a live cast without ticking unrelated damage-over-time effects twice. */
+export const interruptEnemyIntent = (enemy: Enemy): Enemy => {
+  const ability = enemyAbilities[enemy.intent?.abilityId ?? 'basic_attack'] ?? enemyAbilities.basic_attack;
+  const cancelledFlag = ability.cancelFlagOnInterrupt ?? ability.consumeFlagOnResolve;
+  return withFlags({
+    ...enemy,
+    previousAbilityId: ability.id,
+    abilityCooldowns: { ...enemy.abilityCooldowns, [ability.id]: Math.max(1, ability.cooldown ?? 1) },
+    statusEffects: enemy.statusEffects.flatMap(effect => effect.type !== 'STUN' ? [effect] : effect.duration > 1 ? [{ ...effect, duration: effect.duration - 1 }] : []),
+  }, cancelledFlag);
 };
 
 export const activateEnemyPhases = (enemies: Enemy[]): { enemies: Enemy[]; logs: string[] } => {
@@ -170,7 +185,7 @@ export const resolveEnemyIntent = (
 
   const intent = actor.intent ?? buildIntent(actor, enemyAbilities.basic_attack);
   const ability = enemyAbilities[intent.abilityId] ?? enemyAbilities.basic_attack;
-  if (hadStun && (!actor.isBoss || intent.interruptible)) {
+  if (hadStun && (intent.interruptible === true || (!actor.isBoss && intent.interruptible !== false))) {
     wasStunned = true;
     const abilityCooldowns = Object.fromEntries(Object.entries(actor.abilityCooldowns ?? {})
       .map(([id, turns]) => [id, Math.max(0, turns - 1)]));

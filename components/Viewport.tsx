@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react';
+import type { CombatSnapshot } from '../services/combatRuntime';
 import { biomeVisuals, enemyVisuals, getDecorationAsset, shieldVisual, vfxVisuals, weaponVisuals } from '../data/assetRegistry';
 import { getWeaponVisualType } from '../data/weaponVisuals';
 import { getImageAsset } from '../services/assetLoader';
@@ -9,6 +10,7 @@ interface ViewportProps {
   map: number[][];
   decorations: number[][];
   transformRef: React.RefObject<PlayerTransform>;
+  combatSnapshotRef?: React.RefObject<CombatSnapshot | null>;
   biomeId: BiomeId;
   enemies: Enemy[];
   selectedEnemyId: string | null;
@@ -27,7 +29,7 @@ interface ViewportProps {
 type SpritePoint = { x: number; y: number; type: number; distance: number };
 
 const Viewport: React.FC<ViewportProps> = ({
-  map, decorations, transformRef, biomeId,
+  map, decorations, transformRef, combatSnapshotRef, biomeId,
   enemies, selectedEnemyId, onSelectEnemy, phase, vfx, player, activeCharIndex,
   isMoving, fallbackLookActive, onRequestPointerLock, onFallbackLook, onFallbackLookEnd,
 }) => {
@@ -158,7 +160,7 @@ const Viewport: React.FC<ViewportProps> = ({
 
       const targets = enemies.filter(enemy => enemy.hp > 0);
       const targetPositions = drawEnemySprites({
-        context, width, height, targets, selectedEnemyId, frame,
+        context, width, height, targets, selectedEnemyId, frame, snapshot: combatSnapshotRef?.current,
       });
 
       drawPlayerHands({ context, width, height, frame, player, activeCharIndex, moving: isMoving });
@@ -376,11 +378,12 @@ function drawEnemySprites(args: {
   context: CanvasRenderingContext2D;
   width: number;
   height: number;
+  snapshot?: CombatSnapshot | null;
   targets: Enemy[];
   selectedEnemyId: string | null;
   frame: number;
 }): Map<string, { x: number; y: number; size: number }> {
-  const { context, width, height, targets, selectedEnemyId, frame } = args;
+  const { context, width, height, targets, selectedEnemyId, frame, snapshot } = args;
   const positions = new Map<string, { x: number; y: number; size: number }>();
   targets.forEach((enemy, index) => {
     const visual = enemyVisuals[enemy.visualId];
@@ -435,9 +438,11 @@ function drawEnemySprites(args: {
 
     if (enemy.intent) {
       const intent = enemy.intent;
-      const text = intent.minDamage !== undefined && intent.maxDamage !== undefined
+      const cast = snapshot?.actors[enemy.id]?.casting;
+      const label = intent.minDamage !== undefined && intent.maxDamage !== undefined
         ? `${intent.icon} ${intent.minDamage}–${intent.maxDamage}`
         : `${intent.icon} ${intent.shortLabel}`;
+      const text = cast ? `${label} ${(cast.remainingMs / 1000).toFixed(1)}s ${cast.interruptible ? '⚡' : '🔒'}` : label;
       const badgeWidth = Math.min(slotWidth * 0.94, 150);
       const fontSize = Math.max(18, Math.min(22, badgeWidth / 8));
       context.save();
@@ -459,6 +464,11 @@ function drawEnemySprites(args: {
       context.textAlign = 'center';
       context.textBaseline = 'middle';
       context.fillText(text, centerX, pillY + pillHeight / 2, pillWidth - 6);
+      if (cast) {
+        context.fillStyle = '#29221e'; context.fillRect(pillX, pillY + pillHeight + 1, pillWidth, 4);
+        context.fillStyle = cast.interruptible ? '#ffa34e' : '#9e9ba8';
+        context.fillRect(pillX, pillY + pillHeight + 1, pillWidth * (1 - cast.remainingMs / Math.max(1, cast.totalMs)), 4);
+      }
       context.restore();
     }
   });
@@ -518,4 +528,4 @@ function drawVfx(args: {
   context.restore();
 }
 
-export default Viewport;
+

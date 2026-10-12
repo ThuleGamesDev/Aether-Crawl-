@@ -1,4 +1,5 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import Controls from './Controls';
 import { Character, CombatMenu, GamePhase, Item } from '../types';
 import { MovementInput } from '../services/firstPerson';
 
@@ -7,7 +8,10 @@ interface MobileControlsProps {
   combatMenu: CombatMenu;
   activeCharacter: Character | null;
   inventory: Item[];
-  isPlayerTurn: boolean;
+  actionReady: boolean;
+  paused: boolean;
+  onPause: () => void;
+  onCharacters: () => void;
   onMoveInput: (input: Pick<MovementInput, 'forward' | 'strafe'>) => void;
   onLook: (deltaX: number) => void;
   onInteract: () => void;
@@ -23,7 +27,7 @@ const MobileControls: React.FC<MobileControlsProps> = ({
   combatMenu,
   activeCharacter,
   inventory,
-  isPlayerTurn,
+  actionReady, paused, onPause, onCharacters,
   onMoveInput,
   onLook,
   onInteract,
@@ -36,6 +40,14 @@ const MobileControls: React.FC<MobileControlsProps> = ({
   const stickCenterRef = useRef({ x: 0, y: 0 });
   const lookPointerRef = useRef<number | null>(null);
   const lastLookXRef = useRef(0);
+  const moveCallbackRef = useRef(onMoveInput);
+  moveCallbackRef.current = onMoveInput;
+  useEffect(() => {
+    stickPointerRef.current = null;
+    lookPointerRef.current = null;
+    setStick(idleMove);
+    moveCallbackRef.current(idleMove);
+  }, [phase]);
 
   const updateStick = (event: React.PointerEvent<HTMLDivElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
@@ -104,6 +116,7 @@ const MobileControls: React.FC<MobileControlsProps> = ({
             }}
             onPointerUp={endStick}
             onPointerCancel={endStick}
+            onLostPointerCapture={endStick}
           >
             <span className="absolute h-1 w-1 rounded-full bg-white/60" />
             <span
@@ -142,58 +155,10 @@ const MobileControls: React.FC<MobileControlsProps> = ({
         </>
       )}
 
-      {phase === 'COMBAT' && combatMenu === 'MAIN' && (
-        <div className="pointer-events-auto absolute bottom-4 left-1/2 grid -translate-x-1/2 grid-cols-5 gap-1.5 rounded-2xl border border-white/20 bg-black/80 p-2 shadow-xl backdrop-blur-md">
-          {[
-            ['attack', 'HIT', 'bg-red-800'],
-            ['defend', 'GUARD', 'bg-blue-800'],
-            ['skill', 'SKILL', 'bg-purple-800'],
-            ['item', 'ITEM', 'bg-emerald-800'],
-            ['run', 'FLEE', 'bg-amber-800'],
-          ].map(([action, label, color]) => (
-            <button
-              key={action}
-              onClick={() => onAction(action)}
-              disabled={!isPlayerTurn}
-              className={'min-h-12 min-w-12 rounded-xl border border-white/20 px-1 text-[9px] font-black text-white shadow disabled:opacity-50 ' + color}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      )}
+      {phase === 'COMBAT' && <div className="pointer-events-auto absolute bottom-4 left-1/2 w-[min(94vw,520px)] -translate-x-1/2 rounded-xl border border-white/20 bg-black/80 p-2 shadow-xl backdrop-blur-md">
+        <Controls phase={phase} combatMenu={combatMenu} activeCharacter={activeCharacter} inventory={inventory} actionReady={actionReady} paused={paused} onPause={onPause} onCharacters={onCharacters} onAction={onAction} onSubAction={onSubAction} onBack={onBack} />
+      </div>}
 
-      {phase === 'COMBAT' && combatMenu !== 'MAIN' && (
-        <div className="pointer-events-auto absolute bottom-4 left-1/2 flex max-h-[45dvh] w-[min(92vw,420px)] -translate-x-1/2 flex-col rounded-2xl border border-white/20 bg-slate-950/95 p-3 shadow-xl backdrop-blur-md">
-          <div className="mb-2 flex items-center justify-between">
-            <span className="text-xs font-bold uppercase text-amber-200">{combatMenu === 'SKILLS' ? 'Choose a skill' : 'Use an item'}</span>
-            <button onClick={onBack} className="rounded border border-white/20 px-3 py-1 text-[10px] text-white/75">BACK</button>
-          </div>
-          <div className="space-y-1 overflow-y-auto">
-            {combatMenu === 'SKILLS' && activeCharacter?.skills.map(skill => (
-              <button
-                key={skill.id}
-                onClick={() => onSubAction('skill', skill.id)}
-                disabled={!isPlayerTurn}
-                className="flex w-full items-center justify-between gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-left text-xs disabled:opacity-50"
-              >
-                <span className="truncate text-white">{skill.name}</span><span className="shrink-0 text-blue-200">{skill.cost} MP</span>
-              </button>
-            ))}
-            {combatMenu === 'ITEMS' && consumables.map(item => (
-              <button
-                key={item.id}
-                onClick={() => onSubAction('item', item.id)}
-                disabled={!isPlayerTurn}
-                className="flex w-full items-center justify-between gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-left text-xs disabled:opacity-50"
-              >
-                <span className="truncate text-white">{item.icon} {item.name}</span><span className="shrink-0 text-white/60">x{item.quantity}</span>
-              </button>
-            ))}
-            {combatMenu === 'ITEMS' && consumables.length === 0 && <p className="py-4 text-center text-xs text-white/50">No usable items.</p>}
-          </div>
-        </div>
-      )}
     </div>
   );
 };

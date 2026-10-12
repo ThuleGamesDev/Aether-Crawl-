@@ -9,14 +9,13 @@ import { normalizePlayerWeaponVisuals } from './data/weaponVisuals';
 import { TEXT, LanguageType } from './data/translations';
 import { preloadAssets } from './services/assetLoader';
 import { generatePerksForCharacter } from './services/progression';
-import { calculatePlayerAttack, calculateSkillPower, createStatusEffect, damageEnemies, resolveStatusTurn, upsertStatusEffect } from './services/combat';
-import { activateEnemyPhases, planEnemyIntents, resolveEnemyIntent, settleDefeatedEnemyTheft } from './services/enemyAI';
+import { useCombatRuntime } from './hooks/useCombatRuntime';
+import CombatPartyPicker from './components/CombatPartyPicker';
 import Viewport from './components/Viewport';
 import Controls from './components/Controls';
-import Log from './components/Log';
 import Minimap from './components/Minimap';
 import MobileControls from './components/MobileControls';
-import { Player, PlayerTransform, Character, TileType, GamePhase, LogEntry, BiomeId, Enemy, CombatMenu, VFXEvent, VFXType, Item, HighScore, Perk, ClassType, StatusType, Skill } from './types';
+import { Player, PlayerTransform, Character, TileType, GamePhase, LogEntry, BiomeId, Enemy, CombatMenu, VFXEvent, VFXType, Item, HighScore, Perk, ClassType, Skill } from './types';
 import { CLASSES, MAP_SIZE, MASTER_SKILL_POOL } from './constants';
 import { DEFAULT_MOUSE_SENSITIVITY, MovementInput, angleToDirection, getLookInteraction, getTileCell, hasEnteredNewTile, moveFirstPerson, normalizeAngle, normalizePlayerTransform } from './services/firstPerson';
 
@@ -73,7 +72,7 @@ const App: React.FC = () => {
   const [selectedEnemyId, setSelectedEnemyId] = useState<string | null>(null);
   const [vfx, setVfx] = useState<VFXEvent | null>(null);
   const [dungeonLevel, setDungeonLevel] = useState(1);
-  const [isPlayerTurn, setIsPlayerTurn] = useState(true);
+  const [characterSelectOpen, setCharacterSelectOpen] = useState(false);
   const [canContinue, setCanContinue] = useState(false);
   
   // Party Combat State
@@ -110,6 +109,39 @@ const App: React.FC = () => {
   const walkingDistanceRef = useRef(0);
   const stepCounterRef = useRef(0);
   const movingRef = useRef(false);
+
+  const combat = useCombatRuntime(phase === 'COMBAT' && !mapOpen, update => {
+    if (update.changed) {
+      playerRef.current = update.player;
+      enemiesRef.current = update.enemies;
+      setPlayer(update.player);
+      setEnemies(update.enemies);
+      setSelectedEnemyId(current => update.enemies.some(e => e.id === current && e.hp > 0)
+        ? current : update.enemies.find(e => e.hp > 0)?.id ?? null);
+    }
+    update.logs.forEach(line => addLog(line, 'combat'));
+    update.vfx.forEach(effect => triggerVfx(effect.type, effect.targetId));
+    if (update.sound === 'attack') audioService.playAttack();
+    if (update.sound === 'defend') audioService.playDefend();
+    if (update.sound === 'heal') audioService.playHeal();
+    if (update.outcome === 'escaped') {
+      combat.stop();
+      encounterPendingRef.current = false;
+      setCharacterSelectOpen(false);
+      setEnemies([]); enemiesRef.current = [];
+      setPhase('EXPLORE'); audioService.startMusic();
+    } else if (update.outcome) endCombat(update.outcome === 'victory');
+  });
+  const actionReady = Boolean(combat.snapshot?.actors[player.party[activeCharIndex]?.id]?.ready);
+  const combatPaused = combat.snapshot?.clock.paused ?? false;
+  const selectCombatCharacter = (index: number) => {
+    const character = playerRef.current.party[index];
+    if (phase !== 'COMBAT' || !character || !combat.runtimeRef.current?.isReady(character.id)) return;
+    setActiveCharIndex(index); setCharacterSelectOpen(false); setCombatMenu('MAIN');
+  };
+  useEffect(() => {
+    combat.setSlowdown(combatMenu !== 'MAIN' || characterSelectOpen);
+  }, [combatMenu, characterSelectOpen, combat.setSlowdown, phase]);
 
   useEffect(() => {
     playerRef.current = { ...player, transform: transformRef.current };
@@ -186,6 +218,7 @@ const App: React.FC = () => {
   };
   
   const handleReturnToMenu = () => {
+      combat.stop();
       setMapOpen(false);
       setPrevPhase('MENU');
       setPhase('MENU');
@@ -384,6 +417,7 @@ const App: React.FC = () => {
   };
 
   const handleSaveGame = () => {
+      if (phase === 'COMBAT' || (phase === 'OPTIONS' && prevPhase === 'COMBAT')) { addLog('Save after the encounter.', 'info'); return; }
       const saved = saveGame({
           player: { ...playerRef.current, transform: transformRef.current }, map, decorations, explored, dungeonLevel, logs, date: Date.now(), 
           levelBossDefeated, 
@@ -400,29 +434,6 @@ const App: React.FC = () => {
 
   const addLog = (text: string, type: LogEntry['type'] = 'info') => {
     setLogs(prev => [...prev, { id: Date.now() + Math.random(), text, type }]);
-  };
-
-  const commitEnemies = (nextEnemies: Enemy[], syncScrapRefund = true): { enemies: Enemy[]; refundedScrap: number } => {
-      const phaseUpdate = activateEnemyPhases(nextEnemies);
-      phaseUpdate.logs.forEach(line => addLog(line, 'combat'));
-      const newlyPhasedNecromancer = phaseUpdate.logs.length
-          ? phaseUpdate.enemies.find(enemy => enemy.definitionId === 'the_necromancer' && enemy.phase === 2)
-          : undefined;
-      if (newlyPhasedNecromancer) triggerVfx('DARK', newlyPhasedNecromancer.id);
-      const theft = settleDefeatedEnemyTheft(phaseUpdate.enemies);
-      const committed = theft.enemies;
-      const refundedScrap = theft.refundedScrap;
-      theft.logs.forEach(line => addLog(line, 'loot'));
-      enemiesRef.current = committed;
-      setEnemies(committed);
-      if (selectedEnemyId && !committed.some(enemy => enemy.id === selectedEnemyId && enemy.hp > 0)) {
-          setSelectedEnemyId(committed.find(enemy => enemy.hp > 0)?.id ?? null);
-      }
-      if (syncScrapRefund && refundedScrap > 0) {
-          playerRef.current = { ...playerRef.current, scrap: playerRef.current.scrap + refundedScrap };
-          setPlayer(player => ({ ...player, scrap: player.scrap + refundedScrap }));
-      }
-      return { enemies: committed, refundedScrap };
   };
 
   const addToInventory = (item: Item) => {
@@ -467,52 +478,6 @@ const App: React.FC = () => {
            addLog(`Crafted ${recipe.name}.`, 'loot');
       }
   };
-
-  // --- STATUS EFFECTS ---
-  const applyStatus = (target: Character | Enemy, type: StatusType, duration: number, val: number, isPlayer: boolean) => {
-      if (!isPlayer && type === 'STUN' && 'isBoss' in target && target.isBoss && Math.random() < (target.stunResistance ?? 0.5)) {
-          addLog(`${target.name} resists the stun.`, 'combat');
-          return;
-      }
-      const newEffect = createStatusEffect(type, duration, val);
-
-      if (isPlayer) {
-          setPlayer(p => {
-              const newParty = p.party.map(c => {
-                  if (c.id === target.id) {
-                      return { ...c, statusEffects: upsertStatusEffect(c.statusEffects, newEffect) };
-                  }
-                  return c;
-              });
-              return { ...p, party: newParty };
-          });
-      } else {
-          const updatedEnemies = enemiesRef.current.map(e => e.id === target.id
-              ? { ...e, statusEffects: upsertStatusEffect(e.statusEffects || [], newEffect) }
-              : e);
-          commitEnemies(updatedEnemies);
-      }
-      addLog(`${target.name} gained ${type}!`, 'combat');
-  };
-
-  const processStatusEffects = (character: Character): boolean => {
-      const result = resolveStatusTurn(character.stats.hp, character.stats.maxHp, character.statusEffects);
-
-      result.ticks.forEach(({ type, value }) => {
-          if (type === 'POISON') { addLog(`${character.name} takes ${value} poison dmg.`, 'combat'); triggerVfx('POISON', character.id); }
-          if (type === 'BURN') { addLog(`${character.name} burns for ${value}.`, 'combat'); triggerVfx('FIREBALL', character.id); }
-          if (type === 'REGEN') { addLog(`${character.name} regenerates ${value}.`, 'combat'); triggerVfx('HEAL', character.id); }
-      });
-
-      setPlayer(p => ({
-          ...p,
-          party: p.party.map(c => c.id === character.id
-              ? { ...c, stats: { ...c.stats, hp: result.hp }, statusEffects: result.statusEffects }
-              : c),
-      }));
-      return result.defeated;
-  };
-
 
   // --- LEVEL UP ---
   const triggerLevelUp = (currentParty?: Character[]) => {
@@ -588,99 +553,21 @@ const App: React.FC = () => {
   // --- COMBAT SYSTEM ---
 
   const startCombat = (isBoss = false) => {
-      // CLEAR OLD ENEMIES TO PREVENT DOUBLE SPAWNS
-      setEnemies([]);
-      enemiesRef.current = [];
-      setSelectedEnemyId(null);
-      
-      setPhase('COMBAT');
-      setCombatMenu('MAIN');
-      setIsPlayerTurn(false);
-      setActiveCharIndex(0);
-      if (isBoss) { addLog("BOSS BATTLE INITIATED!", 'combat'); audioService.stopMusic(); } else { addLog("Enemies approaching!", 'combat'); }
+      setPhase('COMBAT'); setCombatMenu('MAIN'); setCharacterSelectOpen(false);
+      setActiveCharIndex(playerRef.current.party.findIndex(c => c.stats.hp > 0));
+      const encounter = isBoss ? [createBoss(dungeonLevel, dungeonLevel % 5 === 0)] : createEnemyEncounter(dungeonLevel);
+      const runtime = combat.start(playerRef.current, encounter);
+      playerRef.current = runtime.player; setPlayer(runtime.player);
+      enemiesRef.current = runtime.enemies; setEnemies(runtime.enemies);
+      setSelectedEnemyId(runtime.enemies[0]?.id ?? null);
+      addLog(isBoss ? 'BOSS BATTLE INITIATED!' : 'Enemies approaching!', 'combat');
+      if (isBoss) audioService.stopMusic();
       audioService.playBump();
-      
-      const encounter: Enemy[] = isBoss
-          ? [createBoss(dungeonLevel, dungeonLevel % 5 === 0)]
-          : createEnemyEncounter(dungeonLevel);
-      const newEnemies = planEnemyIntents(encounter, playerRef.current.scrap);
-      setEnemies(newEnemies);
-      enemiesRef.current = newEnemies; 
-      setSelectedEnemyId(newEnemies[0].id);
-      setTimeout(() => startPlayerTurn(0), 420);
-  };
-
-  const startPlayerTurn = (charIndex: number) => {
-      const currentEnemies = enemiesRef.current; 
-      if (currentEnemies.length > 0 && currentEnemies.every(e => e.hp <= 0)) { endCombat(true); return; }
-      if (charIndex >= player.party.length) { enemyTurn(); return; }
-      const character = player.party[charIndex];
-      if (character.stats.hp <= 0) { startPlayerTurn(charIndex + 1); return; }
-      const isStunned = character.statusEffects.some(e => e.type === 'STUN');
-      const died = processStatusEffects(character);
-      if (died) { startPlayerTurn(charIndex + 1); return; }
-      if (isStunned) {
-          addLog(`${character.name} is stunned!`, 'combat');
-          setTimeout(() => startPlayerTurn(charIndex + 1), 350);
-          return;
-      }
-      setActiveCharIndex(charIndex);
-      setIsPlayerTurn(true);
-      setCombatMenu('MAIN');
-      setPlayer(p => {
-          const np = [...p.party];
-          np[charIndex].isDefending = false;
-          return { ...p, party: np };
-      });
-  };
-
-  const enemyTurn = async () => {
-      const activeEnemyIds = enemiesRef.current.filter(enemy => enemy.hp > 0).map(enemy => enemy.id);
-      if (activeEnemyIds.length === 0) { endCombat(true); return; }
-      setIsPlayerTurn(false);
-
-      for (const enemyId of activeEnemyIds) {
-          const enemy = enemiesRef.current.find(candidate => candidate.id === enemyId);
-          if (!enemy || enemy.hp <= 0) continue;
-          await new Promise(r => setTimeout(r, 330));
-
-          const currentPlayer = playerRef.current;
-          if (!currentPlayer.party.some(character => character.stats.hp > 0)) {
-              endCombat(false);
-              return;
-          }
-          const previousParty = currentPlayer.party;
-          const resolution = resolveEnemyIntent(enemyId, enemiesRef.current, previousParty, currentPlayer.scrap);
-          const committed = commitEnemies(resolution.enemies, false);
-          const nextPlayer = {
-              ...currentPlayer,
-              party: resolution.party,
-              scrap: resolution.scrap + committed.refundedScrap,
-          };
-          playerRef.current = nextPlayer;
-          setPlayer(nextPlayer);
-
-          resolution.logs.forEach(line => addLog(line, 'combat'));
-          resolution.vfx.forEach(effect => triggerVfx(effect.type, effect.targetId));
-          if (resolution.acted && resolution.vfx.some(effect => effect.type === 'DAMAGE')) audioService.playAttack();
-          resolution.party.forEach(character => {
-              const previous = previousParty.find(candidate => candidate.id === character.id);
-              if (previous && previous.stats.hp > 0 && character.stats.hp <= 0) addLog(`${character.name} collapsed!`, 'combat');
-          });
-
-          if (!resolution.party.some(character => character.stats.hp > 0)) {
-              endCombat(false);
-              return;
-          }
-      }
-
-      const remainingEnemies = enemiesRef.current.filter(enemy => enemy.hp > 0);
-      if (!remainingEnemies.length) { endCombat(true); return; }
-      commitEnemies(planEnemyIntents(enemiesRef.current, playerRef.current.scrap));
-      startPlayerTurn(0);
   };
 
   const endCombat = (victory: boolean) => {
+       combat.stop();
+       setCharacterSelectOpen(false); setCombatMenu('MAIN');
        encounterPendingRef.current = false;
        if (victory) {
            addLog("Victory!", 'combat');
@@ -741,6 +628,7 @@ const App: React.FC = () => {
           addLog('You open the door.', 'story');
           audioService.playBump();
       } else if (target.kind === 'exit') {
+          if (encounterPendingRef.current) return;
           if (!levelBossDefeated && !encounterPendingRef.current) {
               encounterPendingRef.current = true;
               addLog('A powerful foe guards the exit!', 'story');
@@ -749,7 +637,7 @@ const App: React.FC = () => {
               generateLevel(dungeonLevel + 1);
           }
       } else {
-          const decorationType = decorations[target.y]?.[target.x] ?? target.decorationType;
+          const decorationType = decorations[target.y]?.[target.x] ?? ('decorationType' in target ? target.decorationType : 0);
           if (decorationType <= 1) return;
           setDecorations(previous => {
               const next = previous.map(row => [...row]);
@@ -790,6 +678,7 @@ const App: React.FC = () => {
   const handleTileEntered = (x: number, y: number) => {
       const tile = map[y]?.[x];
       if (tile === TileType.EXIT) {
+          if (encounterPendingRef.current) return;
           if (!levelBossDefeated && !encounterPendingRef.current) {
               encounterPendingRef.current = true;
               addLog('A powerful foe guards the exit!', 'story');
@@ -833,164 +722,21 @@ const App: React.FC = () => {
       }
       
       if (phase === 'COMBAT') {
-          if (!isPlayerTurn) return;
-          if (action === 'attack') {
-             const target = enemiesRef.current.find(e => e.id === selectedEnemyId && e.hp > 0) || enemiesRef.current.find(e => e.hp > 0);
-             if (!target) return;
-             
-             const char = player.party[activeCharIndex];
-             const { damage: dmg, critical: isCrit } = calculatePlayerAttack(char);
-             const newEnemies = damageEnemies(enemiesRef.current, target.id, dmg);
-             commitEnemies(newEnemies);
-
-             addLog(`${char.name} attacks ${target.name} for ${dmg}${isCrit ? ' (CRIT!)' : ''}.`, 'combat');
-             triggerVfx(isCrit ? 'CRITICAL' : 'ATTACK', target.id);
-             audioService.playAttack();
-             
-             if (newEnemies.find(enemy => enemy.id === target.id)?.hp === 0) {
-                 addLog(`${target.name} died!`, 'combat');
-                 triggerVfx('ENEMY_DEATH', target.id);
-                 
-                 // Auto-Target Next Enemy
-                 const nextTarget = newEnemies.find(e => e.hp > 0 && e.id !== target.id);
-                 if (nextTarget) setSelectedEnemyId(nextTarget.id);
-                 else setSelectedEnemyId(null);
-             }
-             startPlayerTurn(activeCharIndex + 1);
-          }
-          if (action === 'defend') {
-              setPlayer(p => { const np = [...p.party]; np[activeCharIndex].isDefending = true; return { ...p, party: np }; });
-              addLog(`${player.party[activeCharIndex].name} defends.`, 'combat');
-              audioService.playDefend();
-              startPlayerTurn(activeCharIndex + 1);
-          }
-          if (action === 'skill') { setCombatMenu('SKILLS'); }
-          if (action === 'item') { setCombatMenu('ITEMS'); }
-          if (action === 'run') {
-              if (Math.random() > 0.5 && !enemiesRef.current.some(e => e.isBoss)) {
-                  addLog("Escaped safely!", 'combat');
-                  endCombat(false);
-                  setPhase('EXPLORE');
-                  audioService.startMusic();
-              } else {
-                  addLog("Couldn't escape!", 'combat');
-                  startPlayerTurn(activeCharIndex + 1);
-              }
-          }
+          if (action === 'skill') { setCombatMenu('SKILLS'); return; }
+          if (action === 'item') { setCombatMenu('ITEMS'); return; }
+          const character = playerRef.current.party[activeCharIndex];
+          if (!character || !['attack', 'defend', 'run'].includes(action)) return;
+          combat.act({ actorId: character.id, targetId: selectedEnemyId, type: action as 'attack' | 'defend' | 'run' });
       }
   };
 
   const handleSubAction = (type: 'skill' | 'item', id: string) => {
-      const char = player.party[activeCharIndex];
-      const targetEnemy = enemiesRef.current.find(e => e.id === selectedEnemyId && e.hp > 0) || enemiesRef.current.find(e => e.hp > 0);
-      
-      if (type === 'skill') {
-          const skill = char.skills.find(s => s.id === id);
-          if (!skill) return;
-          if (char.stats.mp < skill.cost && skill.id !== 'soul_pact') { addLog("Not enough MP!", 'combat'); return; }
-          
-          if (skill.id === 'soul_pact') {
-              // Custom Logic for Soul Pact (HP -> MP)
-              const hpCost = 20;
-              if (char.stats.hp <= hpCost) { addLog("Not enough HP!", 'combat'); return; }
-               setPlayer(p => { 
-                   const np = [...p.party]; 
-                   np[activeCharIndex].stats.hp -= hpCost; 
-                   np[activeCharIndex].stats.mp = Math.min(np[activeCharIndex].stats.maxMp, np[activeCharIndex].stats.mp + 40); 
-                   return { ...p, party: np }; 
-               });
-               addLog(`${char.name} trades life for power.`, 'combat');
-               triggerVfx('DARK', char.id);
-               startPlayerTurn(activeCharIndex + 1);
-               return;
-          } else if (skill.id === 'sacrifice') {
-               const hpCost = 15;
-               if (char.stats.hp <= hpCost) { addLog("Too weak to sacrifice!", 'combat'); return; }
-               setPlayer(p => { const np = [...p.party]; np[activeCharIndex].stats.hp -= hpCost; return { ...p, party: np }; });
-          } else {
-               setPlayer(p => { const np = [...p.party]; np[activeCharIndex].stats.mp -= skill.cost; return { ...p, party: np }; });
-          }
-
-          const power = calculateSkillPower(char, skill);
-
-          if (skill.type === 'HEAL' || skill.type === 'BUFF') {
-               let targetAlly = char;
-               if (skill.targetType === 'ALLY') {
-                   const sorted = [...player.party].sort((a,b) => (a.stats.hp/a.stats.maxHp) - (b.stats.hp/b.stats.maxHp));
-                   targetAlly = sorted[0];
-               }
-               if (skill.type === 'HEAL') {
-                   setPlayer(p => { const np = p.party.map(c => c.id === targetAlly.id ? { ...c, stats: { ...c.stats, hp: Math.min(c.stats.maxHp, c.stats.hp + power) } } : c); return { ...p, party: np }; });
-                   addLog(`${char.name} heals ${targetAlly.name} for ${power}.`, 'combat');
-                   triggerVfx('HEAL', targetAlly.id);
-                   audioService.playHeal();
-               } 
-               else if (skill.type === 'BUFF' && skill.effect) {
-                   applyStatus(targetAlly, skill.effect.type, skill.effect.duration, skill.effect.val, true);
-                   triggerVfx('BUFF', targetAlly.id);
-               }
-          } else if (skill.type === 'DRAIN') {
-              if (targetEnemy) {
-                   const newEnemies = damageEnemies(enemiesRef.current, targetEnemy.id, power);
-                   commitEnemies(newEnemies);
-                   // Heal Self
-                   const healAmt = Math.floor(power * 0.8);
-                   setPlayer(p => { const np = [...p.party]; np[activeCharIndex].stats.hp = Math.min(np[activeCharIndex].stats.maxHp, np[activeCharIndex].stats.hp + healAmt); return { ...p, party: np }; });
-                   addLog(`${char.name} drains ${power} life from ${targetEnemy.name}.`, 'combat');
-                   triggerVfx('DARK', targetEnemy.id);
-                   triggerVfx('HEAL', char.id);
-                   
-                   if (targetEnemy && newEnemies.find(e => e.id === targetEnemy.id && e.hp <= 0)) {
-                       const nextTarget = newEnemies.find(e => e.hp > 0 && e.id !== targetEnemy.id);
-                       if (nextTarget) setSelectedEnemyId(nextTarget.id); else setSelectedEnemyId(null);
-                   }
-              }
-          } else {
-              if (targetEnemy) {
-                   const newEnemies = damageEnemies(enemiesRef.current, targetEnemy.id, power, skill.targetType === 'MULTI');
-                   commitEnemies(newEnemies);
-                   addLog(`${char.name} casts ${skill.name} for ${power} dmg!`, 'combat');
-                   triggerVfx(skill.vfxType, targetEnemy.id);
-                   audioService.playAttack();
-                   if (skill.effect) {
-                       const chance = Math.random();
-                       if (chance < (skill.effect.chance || 1)) {
-                           const t = skill.targetType === 'MULTI' ? enemiesRef.current : [targetEnemy];
-                           t.forEach(e => { if (e.hp > 0) applyStatus(e, skill.effect!.type, skill.effect!.duration, skill.effect!.val, false); });
-                       }
-                   }
-                   
-                   // Check death for sub-action
-                   if (skill.targetType === 'SINGLE' && targetEnemy && newEnemies.find(e => e.id === targetEnemy.id && e.hp <= 0)) {
-                       const nextTarget = newEnemies.find(e => e.hp > 0 && e.id !== targetEnemy.id);
-                       if (nextTarget) setSelectedEnemyId(nextTarget.id);
-                       else setSelectedEnemyId(null);
-                   }
-              }
-          }
-      } else {
-          const item = player.inventory.find(i => i.id === id);
-          if (!item) return;
-          if (item.quantity > 0) {
-               if (item.type === 'POTION') {
-                   setPlayer(p => {
-                       const np = [...p.party];
-                       if (item.id.includes('hp')) np[activeCharIndex].stats.hp = Math.min(np[activeCharIndex].stats.maxHp, np[activeCharIndex].stats.hp + item.value);
-                       if (item.id.includes('mp')) np[activeCharIndex].stats.mp = Math.min(np[activeCharIndex].stats.maxMp, np[activeCharIndex].stats.mp + item.value);
-                       const nInv = [...p.inventory];
-                       const idx = nInv.findIndex(i => i.id === id);
-                       if(idx > -1) { nInv[idx].quantity--; if(nInv[idx].quantity <= 0) nInv.splice(idx, 1); }
-                       return { ...p, party: np, inventory: nInv };
-                   });
-                   addLog(`${char.name} used ${item.name}.`, 'combat');
-                   triggerVfx('HEAL', char.id);
-                   audioService.playHeal();
-               }
-          }
-      }
-      startPlayerTurn(activeCharIndex + 1);
+      const character = playerRef.current.party[activeCharIndex];
+      if (phase !== 'COMBAT' || !character || !combat.runtimeRef.current?.isReady(character.id)) return;
+      combat.act({ actorId: character.id, targetId: selectedEnemyId, type, id });
+      setCombatMenu('MAIN');
   };
-  
+
   const handleEquip = (itemId: string, charIndex: number) => {
       setPlayer(p => {
           const inv = [...p.inventory];
@@ -1106,6 +852,11 @@ const App: React.FC = () => {
       const onKeyDown = (event: KeyboardEvent) => {
           if (isTextEntry(event.target)) return;
           const code = event.code;
+          if (phase === 'COMBAT' && code === 'Space') { event.preventDefault(); if (!event.repeat) combat.togglePause(); return; }
+          if (phase === 'COMBAT' && /^(Digit[1-4]|F[1-4])$/.test(code)) {
+              event.preventDefault(); if (!event.repeat) selectCombatCharacter(Number(code.slice(-1)) - 1); return;
+          }
+
 
           if (code === 'Escape') {
               event.preventDefault();
@@ -1114,6 +865,8 @@ const App: React.FC = () => {
               else if (phase === 'OPTIONS' && (prevPhase === 'EXPLORE' || prevPhase === 'COMBAT')) closeModal();
               else if (document.pointerLockElement && typeof document.exitPointerLock === 'function') document.exitPointerLock();
               else if (fallbackLookActive) setFallbackLookActive(false);
+              else if (phase === 'COMBAT' && characterSelectOpen) setCharacterSelectOpen(false);
+              else if (phase === 'COMBAT' && combatMenu !== 'MAIN') setCombatMenu('MAIN');
               else if (phase === 'EXPLORE' || phase === 'COMBAT') openModal('OPTIONS');
               return;
           }
@@ -1153,7 +906,7 @@ const App: React.FC = () => {
           window.removeEventListener('keyup', onKeyUp);
           window.removeEventListener('blur', clearKeys);
       };
-  }, [phase, mapOpen, prevPhase, fallbackLookActive, handleInteract, handleAction, closeModal, openModal]);
+  }, [phase, mapOpen, prevPhase, fallbackLookActive, handleInteract, handleAction, closeModal, openModal, combat.togglePause, characterSelectOpen, combatMenu, selectCombatCharacter]);
 
   useEffect(() => {
       if (phase !== 'EXPLORE' || mapOpen || !map.length) return;
@@ -1299,6 +1052,7 @@ const App: React.FC = () => {
             map={map}
             decorations={decorations}
             transformRef={transformRef}
+            combatSnapshotRef={combat.snapshotRef}
             biomeId={biomeId}
             enemies={enemies}
             selectedEnemyId={selectedEnemyId}
@@ -1320,16 +1074,18 @@ const App: React.FC = () => {
               <div className="mt-0.5 text-[10px] text-white/65">SCRAP {player.scrap}</div>
             </div>
             <div className="pointer-events-auto flex gap-2">
-              <button onClick={handleSaveGame} className="rounded-lg border border-white/15 bg-black/55 px-3 py-2 text-[10px] font-bold text-white/80 backdrop-blur-md hover:bg-black/75">SAVE</button>
+              <button disabled={gameplayPhase === 'COMBAT'} onClick={handleSaveGame} className="rounded-lg border border-white/15 bg-black/55 px-3 py-2 text-[10px] font-bold text-white/80 backdrop-blur-md hover:bg-black/75">SAVE</button>
               <button onClick={() => phase === 'EXPLORE' || phase === 'COMBAT' ? openModal('OPTIONS') : null} className="rounded-lg border border-white/15 bg-black/55 px-3 py-2 text-[10px] font-bold text-white/80 backdrop-blur-md hover:bg-black/75">MENU</button>
             </div>
           </div>
 
-          <div className="pointer-events-none absolute left-3 top-16 z-10 flex max-w-[44vw] flex-col gap-1 md:left-4 md:top-20 md:max-w-[270px]">
-            {player.party.map((character) => {
+          <div className={"pointer-events-none absolute z-10 flex gap-1 " + (gameplayPhase === 'COMBAT' ? 'inset-x-3 bottom-[172px] flex-row lg:inset-x-auto lg:bottom-auto lg:left-4 lg:top-20 lg:max-w-[270px] lg:flex-col' : 'left-3 top-16 max-w-[44vw] flex-col md:left-4 md:top-20 md:max-w-[270px]')}>
+            {player.party.map((character, characterIndex) => {
+              const actor = combat.snapshot?.actors[character.id];
+              const selected = characterIndex === activeCharIndex;
               const hpPercent = character.stats.maxHp > 0 ? Math.max(0, Math.min(100, (character.stats.hp / character.stats.maxHp) * 100)) : 0;
               return (
-                <div key={character.id} className="rounded-md border border-white/10 bg-black/50 px-2 py-1.5 shadow-md backdrop-blur-md">
+                <button key={character.id} onClick={() => selectCombatCharacter(characterIndex)} disabled={phase !== 'COMBAT' || !actor?.ready} className={"pointer-events-auto min-w-0 flex-1 rounded-md border bg-black/50 px-2 py-1.5 text-left shadow-md backdrop-blur-md " + (gameplayPhase === 'COMBAT' && selected ? 'border-amber-200/70' : 'border-white/10')}>
                   <div className="mb-1 flex items-center justify-between gap-2 text-[10px] md:text-xs">
                     <span className="truncate font-bold text-white/90">{character.name}</span>
                     <span className="shrink-0 font-mono text-white/70">{character.stats.hp}/{character.stats.maxHp}</span>
@@ -1341,12 +1097,17 @@ const App: React.FC = () => {
                     <span>MP {character.stats.mp}/{character.stats.maxMp}</span>
                     <span className="flex gap-1 text-xs">{character.statusEffects.map(effect => <span key={effect.id} title={effect.type}>{effect.icon}</span>)}</span>
                   </div>
-                </div>
+                  {gameplayPhase === 'COMBAT' && <div className="mt-1 text-[9px] text-amber-100">
+                    {character.stats.hp <= 0 ? 'DEFEATED' : actor?.ready ? 'READY' : `RECOVERING ${((actor?.remainingMs ?? 0) / 1000).toFixed(1)}s`}
+                    {actor && actor.guardUntil > (combat.snapshot?.clock.elapsedMs ?? 0) && <span className="ml-1 text-cyan-200">GUARD</span>}
+                    <div className="mt-1 h-1 rounded bg-white/15"><div className="h-full rounded bg-amber-300" style={{ width: actor ? (actor.ready ? 100 : 100 * (1 - actor.remainingMs / actor.recoveryMs)) + '%' : '0%' }} /></div>
+                  </div>}
+                </button>
               );
             })}
           </div>
 
-          <div className="absolute right-3 top-16 z-10 md:right-4 md:top-20">
+          <div className={"absolute right-3 top-16 z-10 md:right-4 md:top-20 " + (gameplayPhase === 'COMBAT' ? 'hidden lg:block' : '')}>
             <Minimap map={map} explored={explored} transformRef={transformRef} size={124} />
             <button onClick={() => setMapOpen(true)} className="mt-1 w-full rounded border border-white/15 bg-black/55 py-1 text-[9px] font-bold text-white/70 backdrop-blur-md">TAB · MAP</button>
           </div>
@@ -1354,9 +1115,11 @@ const App: React.FC = () => {
           {gameplayPhase === 'COMBAT' && selectedEnemyId && (() => {
             const target = enemies.find(enemy => enemy.id === selectedEnemyId);
             if (!target || target.hp <= 0) return null;
+            const actor = combat.snapshot?.actors[target.id];
+            const cast = actor?.casting;
             const hpPercent = Math.max(0, Math.min(100, (target.hp / target.maxHp) * 100));
             return (
-              <div className="pointer-events-none absolute left-1/2 top-3 z-10 w-[min(420px,48vw)] -translate-x-1/2 rounded-lg border border-red-300/30 bg-black/70 p-2 text-center shadow-lg backdrop-blur-md">
+              <div className="pointer-events-none absolute left-1/2 top-14 z-10 w-[min(420px,80vw)] lg:top-3 lg:w-[min(420px,48vw)] -translate-x-1/2 rounded-lg border border-red-300/30 bg-black/70 p-2 text-center shadow-lg backdrop-blur-md">
                 <div className="text-xs font-bold uppercase tracking-wide text-amber-300">
                   {target.name}{target.definitionId === 'the_necromancer' && target.phase === 2 ? ' · PHASE II' : ''}
                 </div>
@@ -1366,9 +1129,10 @@ const App: React.FC = () => {
                 <div className="mt-1 flex items-center justify-center gap-2 text-[9px] text-white/80">
                   <span>{target.hp}/{target.maxHp} HP</span>
                   {(target.guard ?? 0) > 0 && <span className="text-cyan-200">GUARD {target.guard}</span>}
-                  {target.intent && <span>{target.intent.icon} {target.intent.shortLabel}</span>}
+                  {target.intent && <span>{target.intent.icon} {target.intent.shortLabel} {cast ? (cast.remainingMs / 1000).toFixed(1) + 's' : ' · preparing'}</span>}
                   {target.intent?.minDamage !== undefined && target.intent?.maxDamage !== undefined && <span>{target.intent.minDamage}–{target.intent.maxDamage}</span>}
                 </div>
+                {cast && <><div className="mt-1 h-1 rounded bg-white/15"><div className="h-full rounded bg-orange-400" style={{ width: (100 * (1 - cast.remainingMs / Math.max(1, cast.totalMs))) + '%' }} /></div><div className="mt-1 text-[9px] text-amber-100">{cast.interruptible ? `STUN INTERRUPTS${target.isBoss ? ' · resistance ' + Math.round((cast.intent.interruptResistance ?? 0.5) * 100) + '%' : ''}` : 'UNINTERRUPTIBLE'}</div></>}
               </div>
             );
           })()}
@@ -1414,7 +1178,7 @@ const App: React.FC = () => {
               </>
             ) : (
               <div className="w-[min(520px,55vw)]">
-                <Controls onAction={handleAction} phase="COMBAT" combatMenu={combatMenu} activeCharacter={player.party[activeCharIndex] ?? null} inventory={player.inventory} onSubAction={handleSubAction} onBack={() => setCombatMenu('MAIN')} isPlayerTurn={isPlayerTurn} />
+                <Controls onAction={handleAction} phase="COMBAT" combatMenu={combatMenu} activeCharacter={player.party[activeCharIndex] ?? null} inventory={player.inventory} onSubAction={handleSubAction} onBack={() => setCombatMenu('MAIN')} actionReady={actionReady} paused={combatPaused} onPause={combat.togglePause} onCharacters={() => setCharacterSelectOpen(value => !value)} />
               </div>
             )}
           </div>
@@ -1425,7 +1189,7 @@ const App: React.FC = () => {
               combatMenu={combatMenu}
               activeCharacter={player.party[activeCharIndex] ?? null}
               inventory={player.inventory}
-              isPlayerTurn={isPlayerTurn}
+              actionReady={actionReady} paused={combatPaused} onPause={combat.togglePause} onCharacters={() => setCharacterSelectOpen(value => !value)}
               onMoveInput={setTouchMovement}
               onLook={applyMouseLook}
               onInteract={handleInteract}
@@ -1436,6 +1200,11 @@ const App: React.FC = () => {
           )}
         </div>
       )}
+
+      {phase === 'COMBAT' && <div className="pointer-events-none absolute bottom-[160px] left-1/2 z-30 hidden lg:block -translate-x-1/2 rounded-full bg-black/70 px-3 py-1 text-[10px] text-amber-100">
+        {combatPaused ? 'TACTICAL PAUSE · resume to advance timers' : combat.snapshot?.clock.timeScale === 0.2 ? 'TACTICAL SLOWDOWN · 20%' : 'REAL TIME · SPACE to pause'}
+      </div>}
+      {phase === 'COMBAT' && characterSelectOpen && <CombatPartyPicker party={player.party} snapshot={combat.snapshot} onSelect={selectCombatCharacter} onClose={() => setCharacterSelectOpen(false)} />}
 
       {mapOpen && isGameplayVisible && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-4 backdrop-blur-md">
