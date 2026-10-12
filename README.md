@@ -96,3 +96,7 @@ Saves remain in browser `localStorage` under the existing Aether Crawl save key.
 ## Direct combat controls (2.5B)
 
 Select a living hero with 1–4/F1–F4. LMB attacks; Q/E/R/F use its first four skills; V guards; G uses the bound potion; Tab/Shift+Tab cycles living enemies; Space pauses. B toggles inactive-hero Auto Basic (OFF by default). Skills can buffer in the last 250 ms before READY; Esc/right-click cancels. Touch uses the shared Attack/skill/Guard/Potion/Target/Party/Pause dock; hold a skill for details. More offers all skills, potion binding, Flee and the explicit Auto toggle. See `docs/COMBAT_SYSTEM.md` for timing and resource rules.
+
+## Dungeon Gameplay 2.0
+
+Floors now contain marked patrols, guaranteed treasure choices, one-use camps, sealed side vaults and changing shrine/hazard/event/secret content. E inspects, opens, prays, rests and challenges. Keys are earned locally and expire on descent; the main path never needs them. Room claims and gate/discovery state persist in saves. Guardian victory stays on the current floor until E descends, allowing remaining side content to be explored. See [Dungeon Gameplay](docs/DUNGEON_GAMEPLAY.md) for first-five-floor budgets, prices, risk previews and migration rules.

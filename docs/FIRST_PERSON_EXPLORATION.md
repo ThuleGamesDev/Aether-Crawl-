@@ -20,7 +20,7 @@ Mobile uses a virtual analog stick on the left side and horizontal drag on the r
 
 ## Interaction and map
 
-E casts a short forward ray and picks the nearest visible door, exit, or floor prop. A wall stops the ray. Props now require E rather than being collected merely by walking over them. Exits still start their guardian encounter on entry; after the guardian is defeated, E can descend while looking at the exit.
+E casts a short forward ray and picks the nearest visible door, exit, or floor prop. A wall stops the ray. Props now require E rather than being collected merely by walking over them. Exits now require E to challenge their guardian; after victory E descends. Room anchors take priority for E choices, sealed side gates block movement until resolved, and choice/results dialogs stop exploration input.
 
 The minimap uses the player's fractional position and angle. Fog of war is updated on tile entry, while the facing arrow is refreshed independently. Tab opens the larger map.
 

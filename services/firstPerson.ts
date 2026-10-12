@@ -1,3 +1,4 @@
+import { isClosedTile } from './dungeonPlan';
 import { Direction, PlayerTransform, TileType } from '../types';
 
 export interface MovementInput {
@@ -11,6 +12,7 @@ export interface MovementInput {
 
 export type InteractionTarget =
   | { kind: 'door' | 'exit'; x: number; y: number }
+  | { kind: 'room'; x: number; y: number; roomId: string; label: string }
   | { kind: 'prop'; x: number; y: number; decorationType: number };
 
 export const PLAYER_RADIUS = 0.18;
@@ -87,7 +89,7 @@ export const hasEnteredNewTile = (
 ): boolean => !previous || previous.x !== current.x || previous.y !== current.y;
 
 const isSolid = (map: number[][], x: number, y: number): boolean =>
-  y < 0 || y >= map.length || x < 0 || x >= (map[y]?.length ?? 0) || map[y][x] === TileType.WALL;
+  y < 0 || y >= map.length || x < 0 || x >= (map[y]?.length ?? 0) || isClosedTile(map[y][x]);
 
 /** Circle-versus-grid collision, including the dungeon boundary. */
 export const canOccupyPosition = (
@@ -173,7 +175,7 @@ export const getLookInteraction = (
     if (y < 0 || y >= map.length || x < 0 || x >= (map[y]?.length ?? 0)) return null;
 
     const tile = map[y][x];
-    if (tile === TileType.WALL) return null;
+    if (isClosedTile(tile)) return null;
     if (tile === TileType.DOOR) return { kind: 'door', x, y };
     if (tile === TileType.EXIT) return { kind: 'exit', x, y };
 
