@@ -1,5 +1,11 @@
 
 import React, { useState, useEffect, useRef } from 'react';
+import { useDungeonGameplay } from './hooks/useDungeonGameplay';
+import DungeonDecision from './components/DungeonDecision';
+import RoomEventModal from './components/RoomEventModal';
+import { migrateFloor } from './services/dungeonPlan';
+import { roomInteraction } from './services/dungeonGameplay';
+import { roomPresentation, roomTitle } from './data/dungeonRooms';
 import { generateDungeon } from './services/dungeonGenerator';
 import { audioService } from './services/audioService';
 import { generateLoot, XP_THRESHOLD, getLeaderboard, saveHighScore, saveGame, loadGame, hasSaveGame, createBoss, createEnemyEncounter, CRAFTING_RECIPES } from './services/gameLogic';
@@ -109,6 +115,13 @@ const App: React.FC = () => {
   const stepCounterRef = useRef(0);
   const movingRef = useRef(false);
 
+  const dungeon = useDungeonGameplay({ playerRef, setPlayer, setMap, setDecorations, onLog: text => addLog(text, 'story'), onEncounter: enemies => startCombat(false, enemies), onDefeat: () => setPhase('GAME_OVER') });
+  useEffect(() => {
+    if (!dungeon.blocking) return;
+    if (document.pointerLockElement) document.exitPointerLock?.();
+    setFallbackLookActive(false); pressedKeysRef.current.clear();
+    keyboardInputRef.current = { forward: 0, strafe: 0, turn: 0 }; touchInputRef.current = { forward: 0, strafe: 0 };
+  }, [dungeon.blocking]);
   const feedback = useCombatFeedback();
   const combat = useCombatRuntime(phase === 'COMBAT' && !mapOpen, update => {
     if (update.changed) {
@@ -123,6 +136,7 @@ const App: React.FC = () => {
     update.vfx.forEach(effect => triggerVfx(effect.type, effect.targetId));
     feedback.publish(update.events);
     if (update.outcome === 'escaped') {
+      dungeon.finishEncounter(false);
       combat.stop();
       encounterPendingRef.current = false;
       control.reset();
@@ -231,7 +245,7 @@ const App: React.FC = () => {
   };
 
   const applyMouseLook = (deltaX: number) => {
-      if (!Number.isFinite(deltaX) || phase !== 'EXPLORE') return;
+      if (!Number.isFinite(deltaX) || phase !== 'EXPLORE' || dungeon.blocking) return;
       const transform = { ...transformRef.current, angle: normalizeAngle(transformRef.current.angle + deltaX * mouseSensitivity) };
       transformRef.current = transform;
       playerRef.current = { ...playerRef.current, transform };
@@ -292,7 +306,7 @@ const App: React.FC = () => {
       pendingLevelChangeRef.current = false;
       setClearedTiles(new Set()); // Reset cleared tiles for new level
       
-      const { map: newMap, decorations: newDecorations } = generateDungeon(nextBiome);
+      const { map: newMap, decorations: newDecorations, floor: newFloor } = generateDungeon(nextBiome, Math.floor(Math.random() * 4294967296), level);
       setMap(newMap);
       setDecorations(newDecorations);
 
@@ -309,6 +323,7 @@ const App: React.FC = () => {
       let initExplored = Array(MAP_SIZE).fill(false).map(() => Array(MAP_SIZE).fill(false));
       initExplored = updateExplored({x: sx, y: sy}, initExplored);
       setExplored(initExplored);
+      if (newFloor) dungeon.reset(newFloor, { x: sx, y: sy }, initExplored);
 
       setPhase('EXPLORE');
       setAssetsLoaded(true);
@@ -387,6 +402,9 @@ const App: React.FC = () => {
       keyboardInputRef.current = { forward: 0, strafe: 0, turn: 0 };
       touchInputRef.current = { forward: 0, strafe: 0 };
       setPlayer({ ...restoredPlayer, pos: getTileCell(restoredTransform), transform: restoredTransform });
+      const restoredFloor = saved.floor ?? migrateFloor(saved.map, saved.decorations, saved.dungeonLevel, getBiomeIdForLevel(saved.dungeonLevel));
+      if (saved.levelBossDefeated) restoredFloor.rooms = restoredFloor.rooms.map(r => r.type === 'BOSS' ? { ...r, resolved: true, discovered: true } : r);
+      dungeon.reset(restoredFloor, getTileCell(restoredTransform), saved.explored);
       setMap(saved.map);
       setDecorations(saved.decorations);
       setExplored(saved.explored);
@@ -406,10 +424,10 @@ const App: React.FC = () => {
   };
 
   const handleSaveGame = () => {
-      if (phase === 'COMBAT' || (phase === 'OPTIONS' && prevPhase === 'COMBAT')) { addLog('Save after the encounter.', 'info'); return; }
+      if (dungeon.floorRef.current?.pendingEncounterId || phase === 'COMBAT' || (phase === 'OPTIONS' && prevPhase === 'COMBAT')) { addLog('Save after the encounter.', 'info'); return; }
       const saved = saveGame({
           player: { ...playerRef.current, transform: transformRef.current }, map, decorations, explored, dungeonLevel, logs, date: Date.now(), 
-          levelBossDefeated, 
+          levelBossDefeated, floor: dungeon.floorRef.current ?? undefined,
           clearedTiles: Array.from(clearedTiles) 
       });
       if (!saved) {
@@ -541,11 +559,11 @@ const App: React.FC = () => {
 
   // --- COMBAT SYSTEM ---
 
-  const startCombat = (isBoss = false) => {
+  const startCombat = (isBoss = false, customEncounter?: Enemy[]) => {
       setPhase('COMBAT'); control.reset(); feedback.clear();
       setActiveCharIndex(playerRef.current.party.findIndex(c => c.stats.hp > 0));
-      const encounter = isBoss ? [createBoss(dungeonLevel, dungeonLevel % 5 === 0)] : createEnemyEncounter(dungeonLevel);
-      const runtime = combat.start(playerRef.current, encounter);
+      const encounter = customEncounter ?? (isBoss ? [createBoss(dungeonLevel, dungeonLevel % 5 === 0)] : createEnemyEncounter(dungeonLevel));
+      const runtime = combat.start(dungeon.prepareEncounter(), encounter);
       playerRef.current = runtime.player; setPlayer(runtime.player);
       enemiesRef.current = runtime.enemies; setEnemies(runtime.enemies);
       setSelectedEnemyId(runtime.enemies[0]?.id ?? null);
@@ -559,6 +577,7 @@ const App: React.FC = () => {
        control.reset();
        encounterPendingRef.current = false;
        if (victory) {
+           const eliteReward = dungeon.finishEncounter(true, enemiesRef.current.some(e => e.isBoss));
            addLog("Victory!", 'combat');
            let totalXp = 0;
            enemiesRef.current.forEach(e => totalXp += e.xpReward);
@@ -578,14 +597,14 @@ const App: React.FC = () => {
            
            addLog(`Party gained ${xpPerChar} XP each.`, 'loot');
            enemiesRef.current.forEach(e => {
-               if (e.isSummoned || e.xpReward <= 0) return;
+               if (eliteReward || e.isSummoned || e.xpReward <= 0) return;
                const loot = generateLoot(dungeonLevel, e.isBoss);
                if (loot) { addToInventory(loot); addLog(`Found ${loot.name}!`, 'loot'); }
            });
            const boss = enemiesRef.current.find(e => e.isBoss);
            if (boss) {
                setLevelBossDefeated(true);
-               pendingLevelChangeRef.current = true;
+               pendingLevelChangeRef.current = false;
                if (dungeonLevel % 5 === 0) { addLog(`The ${boss.name} is defeated! The way down is open.`, 'story'); } 
                else { addLog(`The dungeon guardian falls. The exit is clear.`, 'story'); }
            }
@@ -604,9 +623,11 @@ const App: React.FC = () => {
   // --- ACTIONS ---
 
   const handleInteract = () => {
-      if (phase !== 'EXPLORE') return;
+      if (phase !== 'EXPLORE' || dungeon.blocking) return;
+      if (dungeon.interact(map, transformRef.current)) return;
       const target = getLookInteraction(map, decorations, transformRef.current);
       if (!target) return;
+      if (target.kind === 'prop' && dungeon.floorRef.current?.rooms.some(r => r.type !== 'NORMAL' && r.anchor.x === target.x && r.anchor.y === target.y)) { addLog('This expedition site is spent.', 'info'); return; }
 
       if (target.kind === 'door') {
           setMap(previous => {
@@ -665,18 +686,10 @@ const App: React.FC = () => {
   };
 
   const handleTileEntered = (x: number, y: number) => {
+      dungeon.visit({ x, y }, updateExplored({ x, y }, explored), map);
+      if (dungeon.floorRef.current?.pendingEncounterId) return;
       const tile = map[y]?.[x];
-      if (tile === TileType.EXIT) {
-          if (encounterPendingRef.current) return;
-          if (!levelBossDefeated && !encounterPendingRef.current) {
-              encounterPendingRef.current = true;
-              addLog('A powerful foe guards the exit!', 'story');
-              startCombat(true);
-          } else {
-              generateLevel(dungeonLevel + 1);
-          }
-          return;
-      }
+      if (tile === TileType.EXIT) return; // Guardians and descent are deliberate E interactions.
 
       stepCounterRef.current += 1;
       const neighbors = [map[y]?.[x + 1], map[y]?.[x - 1], map[y + 1]?.[x], map[y - 1]?.[x]];
@@ -695,7 +708,7 @@ const App: React.FC = () => {
       }
 
       const tileKey = x + ',' + y;
-      if (!encounterPendingRef.current && !levelBossDefeated && !clearedTiles.has(tileKey) && Math.random() < 0.05) {
+      if (!dungeon.floorRef.current && !encounterPendingRef.current && !levelBossDefeated && !clearedTiles.has(tileKey) && Math.random() < 0.05) {
           encounterPendingRef.current = true;
           startCombat();
       }
@@ -827,6 +840,7 @@ const App: React.FC = () => {
       };
       const onKeyDown = (event: KeyboardEvent) => {
           if (isTextEntry(event.target)) return;
+          if (dungeon.blocking) { if (event.code === 'Escape') { event.preventDefault(); dungeon.close(); } return; }
           const code = event.code;
           if (phase === 'COMBAT' && event.repeat) { event.preventDefault(); return; }
           if (phase === 'COMBAT' && !mapOpen && !event.altKey && !event.ctrlKey && !event.metaKey && control.key(code, event.shiftKey)) { event.preventDefault(); return; }
@@ -876,10 +890,10 @@ const App: React.FC = () => {
           window.removeEventListener('keyup', onKeyUp);
           window.removeEventListener('blur', clearKeys);
       };
-  }, [phase, mapOpen, prevPhase, fallbackLookActive, handleInteract, handleAction, closeModal, openModal, control]);
+  }, [phase, mapOpen, prevPhase, fallbackLookActive, handleInteract, handleAction, closeModal, openModal, control, dungeon.blocking]);
 
   useEffect(() => {
-      if (phase !== 'EXPLORE' || mapOpen || !map.length) return;
+      if (phase !== 'EXPLORE' || dungeon.blocking || mapOpen || !map.length) return;
       let frame = 0;
       let previousTime = 0;
       let interactionTimer = 0;
@@ -934,8 +948,9 @@ const App: React.FC = () => {
           interactionTimer += delta;
           if (interactionTimer >= 0.1) {
               interactionTimer = 0;
-              const target = getLookInteraction(map, decorations, nextTransform);
-              const targetKey = target ? target.kind + ':' + target.x + ',' + target.y : '';
+              const room = roomInteraction(dungeon.floorRef.current, map, nextTransform);
+              const target = room ? { kind: 'room' as const, x: room.anchor.x, y: room.anchor.y, roomId: room.id, label: roomPresentation[room.type].verb + ' · ' + roomTitle(room) } : getLookInteraction(map, decorations, nextTransform);
+              const targetKey = target ? target.kind + ':' + ('roomId' in target ? target.roomId : '') + ':' + target.x + ',' + target.y : '';
               if (targetKey !== lastInteractionKeyRef.current) {
                   lastInteractionKeyRef.current = targetKey;
                   setCurrentInteraction(target);
@@ -946,7 +961,7 @@ const App: React.FC = () => {
 
       frame = requestAnimationFrame(tick);
       return () => cancelAnimationFrame(frame);
-  }, [phase, map, mapOpen, decorations, levelBossDefeated, dungeonLevel, clearedTiles]);
+  }, [phase, dungeon.blocking, map, mapOpen, decorations, levelBossDefeated, dungeonLevel, clearedTiles]);
 
   const handleFallbackLook = (deltaX: number) => applyMouseLook(deltaX);
   const endFallbackLook = () => setFallbackLookActive(false);
@@ -1024,6 +1039,7 @@ const App: React.FC = () => {
             transformRef={transformRef}
             combatSnapshotRef={combat.snapshotRef}
             combatFeedbackRef={feedback.eventsRef}
+            floor={dungeon.floor}
             biomeId={biomeId}
             enemies={enemies}
             selectedEnemyId={selectedEnemyId}
@@ -1076,7 +1092,7 @@ const App: React.FC = () => {
 </>}
 
           <div className={"absolute right-3 top-16 z-10 md:right-4 md:top-20 " + (gameplayPhase === 'COMBAT' ? 'hidden lg:block' : '')}>
-            <Minimap map={map} explored={explored} transformRef={transformRef} size={124} />
+            <Minimap floor={dungeon.floor} map={map} explored={explored} transformRef={transformRef} size={124} />
             <button onClick={() => setMapOpen(true)} className="mt-1 w-full rounded border border-white/15 bg-black/55 py-1 text-[9px] font-bold text-white/70 backdrop-blur-md">TAB · MAP</button>
           </div>
 
@@ -1087,7 +1103,7 @@ const App: React.FC = () => {
             </span>
             {gameplayPhase === 'EXPLORE' && currentInteraction && (
               <span className="mt-3 rounded-full border border-amber-200/30 bg-black/75 px-3 py-1 text-[10px] font-bold uppercase tracking-wide text-amber-100 shadow-lg">
-                E · {currentInteraction.kind === 'door' ? 'Open door' : currentInteraction.kind === 'exit' ? (levelBossDefeated ? 'Descend' : 'Challenge guardian') : 'Search'}
+                E · {currentInteraction.kind === 'room' ? currentInteraction.label : currentInteraction.kind === 'door' ? 'Open door' : currentInteraction.kind === 'exit' ? (levelBossDefeated ? 'Descend' : 'Challenge guardian') : 'Search'}
               </span>
             )}
           </div>
@@ -1135,6 +1151,8 @@ const App: React.FC = () => {
         </div>
       )}
 
+      {phase === 'EXPLORE' && dungeon.room && dungeon.decision && <DungeonDecision decision={dungeon.decision(map)} onChoose={choice => dungeon.choose(map, dungeon.room!.id, choice)} onClose={dungeon.close} />}
+      {phase === 'EXPLORE' && dungeon.hazard && <RoomEventModal activeEvent={dungeon.hazard} party={player.party} onResolve={dungeon.close} />}
       {phase === 'COMBAT' && <CombatHud combat={combat} control={control} activeCharIndex={activeCharIndex} selectedEnemyId={selectedEnemyId} />}
 
       {mapOpen && isGameplayVisible && (
@@ -1142,13 +1160,13 @@ const App: React.FC = () => {
           <div className="w-full max-w-xl rounded-2xl border border-amber-100/25 bg-slate-950/95 p-4 shadow-2xl">
             <div className="mb-3 flex items-center justify-between">
               <div>
-                <h2 className="font-bold tracking-wide text-amber-200">DUNGEON MAP</h2>
+                <h2 className="font-bold tracking-wide text-amber-200">DUNGEON MAP</h2><p className="mt-1 text-[10px] text-amber-100">Keys {dungeon.floor?.keys ?? 0} · bright: visited · dim: seen · R rest · S shrine · B guardian · ! elite · ? discovered secret</p>
                 <p className="mt-1 text-[10px] text-white/45">Explored passages and your current facing</p>
               </div>
               <button onClick={() => setMapOpen(false)} className="rounded-lg border border-white/15 px-3 py-2 text-xs text-white/75 hover:bg-white/10">CLOSE · TAB</button>
             </div>
             <div className="flex justify-center overflow-auto">
-              <Minimap map={map} explored={explored} transformRef={transformRef} size={Math.min(480, Math.max(240, Math.floor(Math.min(window.innerWidth * 0.72, window.innerHeight * 0.66))))} />
+              <Minimap floor={dungeon.floor} map={map} explored={explored} transformRef={transformRef} size={Math.min(480, Math.max(240, Math.floor(Math.min(window.innerWidth * 0.72, window.innerHeight * 0.66))))} />
             </div>
           </div>
         </div>

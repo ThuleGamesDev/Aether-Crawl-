@@ -1,8 +1,11 @@
 
+import { floorRandom } from './floorRandom';
+import { buildFloorPlan } from './dungeonPlan';
 import { MAP_SIZE } from '../constants';
 import { BiomeId, DungeonData, Position, TileType } from '../types';
 
-export const generateDungeon = (_biome: BiomeId = 'dungeon'): DungeonData => {
+export const generateDungeon = (_biome: BiomeId = 'dungeon', seed = Math.floor(Math.random() * 4294967296), level = 1): DungeonData => {
+  const random = floorRandom(seed);
   const map = Array(MAP_SIZE).fill(0).map(() => Array(MAP_SIZE).fill(TileType.WALL));
   const decorations = Array(MAP_SIZE).fill(0).map(() => Array(MAP_SIZE).fill(0));
 
@@ -26,7 +29,7 @@ export const generateDungeon = (_biome: BiomeId = 'dungeon'): DungeonData => {
 
     // Shuffle directions
     for (let i = dirs.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
+        const j = Math.floor(random() * (i + 1));
         [dirs[i], dirs[j]] = [dirs[j], dirs[i]];
     }
 
@@ -69,8 +72,8 @@ export const generateDungeon = (_biome: BiomeId = 'dungeon'): DungeonData => {
 
   // Add Loops (remove some walls to make it less linear)
   for(let i=0; i<5; i++) {
-      const rx = Math.floor(Math.random() * (MAP_SIZE - 2)) + 1;
-      const ry = Math.floor(Math.random() * (MAP_SIZE - 2)) + 1;
+      const rx = Math.floor(random() * (MAP_SIZE - 2)) + 1;
+      const ry = Math.floor(random() * (MAP_SIZE - 2)) + 1;
       if (map[ry][rx] === TileType.WALL) {
           // check if it connects two empty spaces
           let connections = 0;
@@ -94,7 +97,7 @@ export const generateDungeon = (_biome: BiomeId = 'dungeon'): DungeonData => {
                   map[y+1][x] === TileType.EMPTY || map[y-1][x] === TileType.EMPTY || 
                   map[y][x+1] === TileType.EMPTY || map[y][x-1] === TileType.EMPTY;
               
-              if (hasFloorNeighbor && Math.random() < 0.15) {
+              if (hasFloorNeighbor && random() < 0.15) {
                   decorations[y][x] = 1; // Torch
               }
           }
@@ -103,7 +106,7 @@ export const generateDungeon = (_biome: BiomeId = 'dungeon'): DungeonData => {
               // Don't block start or exit
               if ((x === start.x && y === start.y) || (x === exitPos.x && y === exitPos.y)) continue;
 
-              const rand = Math.random();
+              const rand = random();
               if (rand < 0.05) decorations[y][x] = 2; // Barrel
               else if (rand < 0.1) decorations[y][x] = 3; // Crate
               else if (rand < 0.13) decorations[y][x] = 4; // Bones
@@ -113,5 +116,6 @@ export const generateDungeon = (_biome: BiomeId = 'dungeon'): DungeonData => {
       }
   }
 
-  return { map, decorations };
+  const floor = buildFloorPlan(map, decorations, level, _biome, seed);
+  return { map, decorations, floor };
 };

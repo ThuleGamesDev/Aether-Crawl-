@@ -1,4 +1,5 @@
 
+import { isValidFloorState } from './dungeonSave';
 import { Item, HighScore, SaveData, Enemy } from '../types';
 import { normalizePlayerTransform } from './firstPerson';
 import { enemyDefinitions, normalEnemyDefinitions, miniBossDefinitions, biomeBossDefinitions } from '../data/enemies';
@@ -118,6 +119,7 @@ export const saveHighScore = (score: HighScore) => {
 
 export const saveGame = (data: SaveData) => {
     try {
+        if (data.floor?.pendingEncounterId) return false;
         const player = normalizePlayerWeaponVisuals(data.player);
         const savedPlayer = {
             ...player,
@@ -147,6 +149,9 @@ export const loadGame = (): SaveData | null => {
         if (!data) return null;
         const parsed = JSON.parse(data) as Partial<SaveData>;
         if (!parsed.player || !Array.isArray(parsed.map)) return null;
+        if (parsed.floor !== undefined && (!isValidFloorState(parsed.floor, parsed.map) || parsed.floor.pendingEncounterId !== null || parsed.floor.level !== parsed.dungeonLevel)) return null;
+        const restoredMap = parsed.map.map(row => [...row]);
+        for (const room of parsed.floor?.rooms ?? []) if (room.gate && (room.unlocked || room.type === 'SECRET' && room.discovered)) restoredMap[room.gate.y][room.gate.x] = 0;
         return {
             ...parsed,
             player: normalizePlayerWeaponVisuals({
@@ -158,7 +163,7 @@ export const loadGame = (): SaveData | null => {
                 inventory: Array.isArray(parsed.player.inventory) ? parsed.player.inventory : [],
                 scrap: Number.isFinite(parsed.player.scrap) ? parsed.player.scrap : 0,
             } as SaveData['player']),
-            map: parsed.map,
+            map: restoredMap,
             decorations: Array.isArray(parsed.decorations) ? parsed.decorations : [],
             explored: Array.isArray(parsed.explored) ? parsed.explored : [],
             clearedTiles: Array.isArray(parsed.clearedTiles) ? parsed.clearedTiles : [],

@@ -1,8 +1,10 @@
 import React, { useEffect, useRef } from 'react';
-import { PlayerTransform, TileType } from '../types';
+import { PlayerTransform, TileType, FloorState } from '../types';
+import { roomPresentation } from '../data/dungeonRooms';
 import { MAP_SIZE } from '../constants';
 
 interface MinimapProps {
+  floor?: FloorState | null;
   map: number[][];
   explored: boolean[][];
   transformRef: React.RefObject<PlayerTransform>;
@@ -12,6 +14,7 @@ interface MinimapProps {
 
 const Minimap: React.FC<MinimapProps> = ({
   map,
+  floor,
   explored,
   transformRef,
   size = 120,
@@ -39,11 +42,14 @@ const Minimap: React.FC<MinimapProps> = ({
       for (let y = 0; y < Math.min(MAP_SIZE, map.length); y += 1) {
         for (let x = 0; x < Math.min(MAP_SIZE, map[y]?.length ?? 0); x += 1) {
           if (!explored[y]?.[x]) continue;
-          const tile = map[y][x];
+          const secret = floor?.rooms.find(r => r.type === 'SECRET' && !r.discovered && r.cells.some(p => p.x === x && p.y === y));
+          if (secret && (secret.gate?.x !== x || secret.gate.y !== y)) continue;
+          const tile = secret ? TileType.WALL : map[y][x];
           if (tile === TileType.WALL) ctx.fillStyle = '#74716b';
+          else if (tile === TileType.LOCKED) ctx.fillStyle = '#795e43';
           else if (tile === TileType.DOOR) ctx.fillStyle = '#b97840';
           else if (tile === TileType.EXIT) ctx.fillStyle = '#f1c85d';
-          else ctx.fillStyle = '#3a4147';
+          else ctx.fillStyle = floor?.visitedCells.includes(`${x},${y}`) ? '#586d79' : '#30373e';
           ctx.fillRect(x * tileSize, y * tileSize, tileSize, tileSize);
           ctx.fillStyle = 'rgba(0,0,0,0.18)';
           ctx.fillRect(x * tileSize, y * tileSize, Math.max(1, size / 120), tileSize);
@@ -51,6 +57,12 @@ const Minimap: React.FC<MinimapProps> = ({
         }
       }
 
+      for (const room of floor?.rooms ?? []) {
+        if (!room.discovered || room.type === 'NORMAL' || !explored[room.anchor.y]?.[room.anchor.x] && !(room.gate && explored[room.gate.y]?.[room.gate.x])) continue;
+        const marker = room.gate && (map[room.gate.y][room.gate.x] === TileType.LOCKED) ? room.gate : room.anchor;
+        const labels: Record<string,string> = { REST:'R', SHRINE:'S', BOSS:'B', BOSS_ANTECHAMBER:'Ω', SECRET:'?', ELITE:'!', COMBAT:'×', TREASURE:'◆', LOCKED:'L', TRAP:'⚠', EVENT:'▤' };
+        ctx.fillStyle = room.resolved ? '#71818b' : roomPresentation[room.type].color; ctx.font = `bold ${Math.max(7, tileSize * 0.75)}px monospace`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(labels[room.type] ?? '·', (marker.x + 0.5) * tileSize, (marker.y + 0.5) * tileSize);
+      }
       const transform = transformRef.current;
       if (!transform) return;
       const px = transform.x * tileSize;
@@ -82,7 +94,7 @@ const Minimap: React.FC<MinimapProps> = ({
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [map, explored, transformRef, size]);
+  }, [map, explored, floor, transformRef, size]);
 
   return (
     <canvas

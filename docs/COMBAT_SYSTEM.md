@@ -56,7 +56,7 @@ Poison/Burn/Regeneration and status durations still count the affected actor's o
 
 Dead actors are removed from the timeline immediately; enemy gameplay records remain for XP/loot accounting. Summons are initialized once, use canonical IDs/static sprites, respect five living enemies, and grant no XP/loot. Necromancer phase flags and soul harvest remain in the existing resolver.
 
-Victory, defeat and escape are latched; the hook delivers each encounter outcome once. App grants established XP/loot on victory, handles level-up or the next floor, and returns to the existing first-person exploration. Escape clears the encounter without granting victory rewards. A stopped/finished runtime cannot later execute delayed enemy actions.
+Victory, defeat and escape are latched; the hook delivers each encounter outcome once. App grants established XP/loot on victory, handles level-up and returns to first-person exploration on the current floor; E at a cleared exit explicitly descends. Dungeon Gameplay 2.0 settles one-time elite room rewards separately from ordinary loot. Escape clears the encounter without granting victory rewards. A stopped/finished runtime cannot later execute delayed enemy actions.
 
 Combat is not saved mid-encounter. Saving is disabled while fighting or in its Options overlay. No clock, cast, recovery or guard expiry values enter normal saves; the existing save key/schema and legacy transform migration remain.
 

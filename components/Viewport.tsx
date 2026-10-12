@@ -7,9 +7,12 @@ import { BiomeId, Enemy, GamePhase, Player, PlayerTransform, TileType, VFXEvent 
 import { MAP_SIZE, VIEW_DISTANCE } from '../constants';
 
 import type { FloatingCombatEvent } from '../hooks/useCombatFeedback';
+import { roomPresentation, roomTitle } from '../data/dungeonRooms';
+import type { FloorState } from '../types';
 import { eventLabel } from '../services/combatFeedback';
 
 interface ViewportProps {
+  floor: FloorState | null;
   map: number[][];
   decorations: number[][];
   transformRef: React.RefObject<PlayerTransform>;
@@ -35,7 +38,7 @@ interface ViewportProps {
 type SpritePoint = { x: number; y: number; type: number; distance: number };
 
 const Viewport: React.FC<ViewportProps> = ({
-  map, decorations, transformRef, combatSnapshotRef, biomeId,
+  map, floor, decorations, transformRef, combatSnapshotRef, biomeId,
   enemies, selectedEnemyId, onSelectEnemy, onBasicAttack, onCancelCombat, combatFeedbackRef, phase, vfx, player, activeCharIndex,
   isMoving, fallbackLookActive, onRequestPointerLock, onFallbackLook, onFallbackLookEnd,
 }) => {
@@ -172,6 +175,7 @@ const Viewport: React.FC<ViewportProps> = ({
         positionX, positionY, directionX, directionY, planeX, planeY, zBuffer,
       });
 
+      if (phase === 'EXPLORE') drawRoomAnchors(context, width, height, floor, transform, planeX, planeY, zBuffer, map);
       const targets = enemies.filter(enemy => enemy.hp > 0);
       const targetPositions = drawEnemySprites({
         context, width, height, targets, selectedEnemyId, frame, snapshot: combatSnapshotRef?.current,
@@ -186,7 +190,7 @@ const Viewport: React.FC<ViewportProps> = ({
 
     render();
     return () => cancelAnimationFrame(frameRef.current);
-  }, [map, decorations, transformRef, biomeId, enemies, selectedEnemyId, phase, vfx, player, activeCharIndex, isMoving]);
+  }, [map, floor, decorations, transformRef, biomeId, enemies, selectedEnemyId, phase, vfx, player, activeCharIndex, isMoving]);
 
   return (
     <canvas
@@ -309,7 +313,7 @@ function drawRaycastWalls(args: {
 
     const lineHeight = Math.floor(height / Math.max(0.05, wallDistance));
     const drawStart = -lineHeight / 2 + height / 2;
-    const texture = tileType === TileType.DOOR ? doorImage : tileType === TileType.EXIT ? exitImage : wallImage;
+    const texture = (tileType === TileType.DOOR || tileType === TileType.LOCKED) ? doorImage : tileType === TileType.EXIT ? exitImage : wallImage;
     const wallCoordinate = side === 0
       ? positionY + wallDistance * rayDirectionY
       : positionX + wallDistance * rayDirectionX;
@@ -566,4 +570,26 @@ function drawFloatingFeedback(context: CanvasRenderingContext2D, width: number, 
     const label = eventLabel(event); context.strokeText(label, x, y); context.fillText(label, x, y);
   }
   context.restore();
+}
+
+
+function drawRoomAnchors(ctx: CanvasRenderingContext2D, width: number, height: number, floor: FloorState | null, transform: PlayerTransform, planeX: number, planeY: number, z: Float32Array, map: number[][]) {
+  if (!floor) return;
+  const dirX = Math.cos(transform.angle), dirY = Math.sin(transform.angle), inv = 1 / (planeX * dirY - dirX * planeY);
+  ctx.save(); ctx.textAlign = 'center'; ctx.font = 'bold 14px monospace';
+  for (const room of floor.rooms) {
+    if (room.type === 'NORMAL' || room.type === 'COMBAT' && room.resolved) continue;
+    const sealed = room.gate && (map[room.gate.y][room.gate.x] === TileType.SECRET || map[room.gate.y][room.gate.x] === TileType.LOCKED);
+    const p = sealed ? room.gate! : room.anchor, dx = p.x + 0.5 - transform.x, dy = p.y + 0.5 - transform.y;
+    const depth = inv * (-planeY * dx + planeX * dy), side = inv * (dirY * dx - dirX * dy);
+    if (depth < 0.1 || depth > (room.type === 'SECRET' && !room.discovered ? 2 : 4)) continue;
+    const x = width / 2 * (1 + side / depth), column = Math.max(0, Math.min(width - 1, Math.floor(x)));
+    if (x < 12 || x > width - 12 || depth > z[column] + (sealed ? 0.6 : 0.05)) continue;
+    const presentation = roomPresentation[room.type], y = height * (sealed ? 0.5 : 0.52 + 0.19 / Math.max(1, depth));
+    const label = room.type === 'SECRET' && !room.discovered ? '⋮ Cold draft' : room.resolved ? `${presentation.icon} SPENT` : `${presentation.icon} ${roomTitle(room)}`;
+    const box = Math.min(220, ctx.measureText(label).width + 16);
+    ctx.fillStyle = 'rgba(10,9,12,.82)'; ctx.fillRect(x - box / 2, y - 13, box, 25); ctx.strokeStyle = presentation.color; ctx.strokeRect(x - box / 2, y - 13, box, 25);
+    ctx.fillStyle = room.resolved ? '#829099' : presentation.color; ctx.fillText(label, x, y + 4, box - 8);
+  }
+  ctx.restore();
 }

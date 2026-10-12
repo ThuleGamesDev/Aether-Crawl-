@@ -20,6 +20,8 @@ export enum TileType {
   WALL = 1,
   DOOR = 2,
   EXIT = 3,
+  LOCKED = 4,
+  SECRET = 5,
 }
 
 export interface Stats {
@@ -185,6 +187,7 @@ export interface VFXEvent {
 export interface DungeonData {
     map: number[][];
     decorations: number[][];
+    floor?: FloorState;
 }
 
 export type ClassType = 'BARBARIAN' | 'PALADIN' | 'SORCERER' | 'ROGUE' | 'RANGER' | 'CLERIC' | 'MONK' | 'NECROMANCER';
@@ -300,4 +303,33 @@ export interface SaveData {
     date: number;
     levelBossDefeated?: boolean;
     activeRoomEvent?: ActiveRoomEvent | null;
+    floor?: FloorState;
+}
+
+
+export type DungeonRoomType = 'NORMAL' | 'COMBAT' | 'ELITE' | 'TREASURE' | 'SHRINE' | 'TRAP' | 'SECRET' | 'REST' | 'LOCKED' | 'EVENT' | 'BOSS_ANTECHAMBER' | 'BOSS';
+export interface DungeonRoom {
+  id: string;
+  type: DungeonRoomType;
+  anchor: Position;
+  cells: Position[];
+  gate?: Position;
+  discovered: boolean;
+  visited: boolean;
+  resolved: boolean;
+  attempted?: boolean;
+  unlocked?: boolean;
+  shrine?: 'blood' | 'aether' | 'fortune';
+  hazardId?: string;
+}
+export interface FloorState {
+  version: 1;
+  seed: number;
+  level: number;
+  biome: BiomeId;
+  rooms: DungeonRoom[];
+  visitedCells: string[];
+  keys: number;
+  pendingEncounterId: string | null;
+  pendingEffects: Array<{ type: StatusType; value: number; duration: number }>;
 }
