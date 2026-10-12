@@ -10,12 +10,13 @@ import { TEXT, LanguageType } from './data/translations';
 import { preloadAssets } from './services/assetLoader';
 import { generatePerksForCharacter } from './services/progression';
 import { useCombatRuntime } from './hooks/useCombatRuntime';
-import CombatPartyPicker from './components/CombatPartyPicker';
+import { useCombatFeedback } from './hooks/useCombatFeedback';
+import { useCombatControls } from './hooks/useCombatControls';
+import CombatHud from './components/CombatHud';
 import Viewport from './components/Viewport';
-import Controls from './components/Controls';
 import Minimap from './components/Minimap';
 import MobileControls from './components/MobileControls';
-import { Player, PlayerTransform, Character, TileType, GamePhase, LogEntry, BiomeId, Enemy, CombatMenu, VFXEvent, VFXType, Item, HighScore, Perk, ClassType, Skill } from './types';
+import { Player, PlayerTransform, Character, TileType, GamePhase, LogEntry, BiomeId, Enemy, VFXEvent, VFXType, Item, HighScore, Perk, ClassType, Skill } from './types';
 import { CLASSES, MAP_SIZE, MASTER_SKILL_POOL } from './constants';
 import { DEFAULT_MOUSE_SENSITIVITY, MovementInput, angleToDirection, getLookInteraction, getTileCell, hasEnteredNewTile, moveFirstPerson, normalizeAngle, normalizePlayerTransform } from './services/firstPerson';
 
@@ -65,14 +66,12 @@ const App: React.FC = () => {
 
   const [phase, setPhase] = useState<GamePhase>('MENU');
   const [prevPhase, setPrevPhase] = useState<GamePhase>('MENU');
-  const [combatMenu, setCombatMenu] = useState<CombatMenu>('MAIN');
   const [biomeId, setBiomeId] = useState<BiomeId>('dungeon');
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [enemies, setEnemies] = useState<Enemy[]>([]);
   const [selectedEnemyId, setSelectedEnemyId] = useState<string | null>(null);
   const [vfx, setVfx] = useState<VFXEvent | null>(null);
   const [dungeonLevel, setDungeonLevel] = useState(1);
-  const [characterSelectOpen, setCharacterSelectOpen] = useState(false);
   const [canContinue, setCanContinue] = useState(false);
   
   // Party Combat State
@@ -110,6 +109,7 @@ const App: React.FC = () => {
   const stepCounterRef = useRef(0);
   const movingRef = useRef(false);
 
+  const feedback = useCombatFeedback();
   const combat = useCombatRuntime(phase === 'COMBAT' && !mapOpen, update => {
     if (update.changed) {
       playerRef.current = update.player;
@@ -121,27 +121,16 @@ const App: React.FC = () => {
     }
     update.logs.forEach(line => addLog(line, 'combat'));
     update.vfx.forEach(effect => triggerVfx(effect.type, effect.targetId));
-    if (update.sound === 'attack') audioService.playAttack();
-    if (update.sound === 'defend') audioService.playDefend();
-    if (update.sound === 'heal') audioService.playHeal();
+    feedback.publish(update.events);
     if (update.outcome === 'escaped') {
       combat.stop();
       encounterPendingRef.current = false;
-      setCharacterSelectOpen(false);
+      control.reset();
       setEnemies([]); enemiesRef.current = [];
       setPhase('EXPLORE'); audioService.startMusic();
     } else if (update.outcome) endCombat(update.outcome === 'victory');
   });
-  const actionReady = Boolean(combat.snapshot?.actors[player.party[activeCharIndex]?.id]?.ready);
-  const combatPaused = combat.snapshot?.clock.paused ?? false;
-  const selectCombatCharacter = (index: number) => {
-    const character = playerRef.current.party[index];
-    if (phase !== 'COMBAT' || !character || !combat.runtimeRef.current?.isReady(character.id)) return;
-    setActiveCharIndex(index); setCharacterSelectOpen(false); setCombatMenu('MAIN');
-  };
-  useEffect(() => {
-    combat.setSlowdown(combatMenu !== 'MAIN' || characterSelectOpen);
-  }, [combatMenu, characterSelectOpen, combat.setSlowdown, phase]);
+  const control = useCombatControls({ enabled: phase === 'COMBAT' && !mapOpen, combat, activeCharIndex, setActiveCharIndex, selectedEnemyId, setSelectedEnemyId });
 
   useEffect(() => {
     playerRef.current = { ...player, transform: transformRef.current };
@@ -553,7 +542,7 @@ const App: React.FC = () => {
   // --- COMBAT SYSTEM ---
 
   const startCombat = (isBoss = false) => {
-      setPhase('COMBAT'); setCombatMenu('MAIN'); setCharacterSelectOpen(false);
+      setPhase('COMBAT'); control.reset(); feedback.clear();
       setActiveCharIndex(playerRef.current.party.findIndex(c => c.stats.hp > 0));
       const encounter = isBoss ? [createBoss(dungeonLevel, dungeonLevel % 5 === 0)] : createEnemyEncounter(dungeonLevel);
       const runtime = combat.start(playerRef.current, encounter);
@@ -567,7 +556,7 @@ const App: React.FC = () => {
 
   const endCombat = (victory: boolean) => {
        combat.stop();
-       setCharacterSelectOpen(false); setCombatMenu('MAIN');
+       control.reset();
        encounterPendingRef.current = false;
        if (victory) {
            addLog("Victory!", 'combat');
@@ -721,20 +710,7 @@ const App: React.FC = () => {
           if (action === 'map') { setMapOpen(true); }
       }
       
-      if (phase === 'COMBAT') {
-          if (action === 'skill') { setCombatMenu('SKILLS'); return; }
-          if (action === 'item') { setCombatMenu('ITEMS'); return; }
-          const character = playerRef.current.party[activeCharIndex];
-          if (!character || !['attack', 'defend', 'run'].includes(action)) return;
-          combat.act({ actorId: character.id, targetId: selectedEnemyId, type: action as 'attack' | 'defend' | 'run' });
-      }
-  };
-
-  const handleSubAction = (type: 'skill' | 'item', id: string) => {
-      const character = playerRef.current.party[activeCharIndex];
-      if (phase !== 'COMBAT' || !character || !combat.runtimeRef.current?.isReady(character.id)) return;
-      combat.act({ actorId: character.id, targetId: selectedEnemyId, type, id });
-      setCombatMenu('MAIN');
+      if (phase === 'COMBAT') control.action(action);
   };
 
   const handleEquip = (itemId: string, charIndex: number) => {
@@ -852,12 +828,8 @@ const App: React.FC = () => {
       const onKeyDown = (event: KeyboardEvent) => {
           if (isTextEntry(event.target)) return;
           const code = event.code;
-          if (phase === 'COMBAT' && code === 'Space') { event.preventDefault(); if (!event.repeat) combat.togglePause(); return; }
-          if (phase === 'COMBAT' && /^(Digit[1-4]|F[1-4])$/.test(code)) {
-              event.preventDefault(); if (!event.repeat) selectCombatCharacter(Number(code.slice(-1)) - 1); return;
-          }
-
-
+          if (phase === 'COMBAT' && event.repeat) { event.preventDefault(); return; }
+          if (phase === 'COMBAT' && !mapOpen && !event.altKey && !event.ctrlKey && !event.metaKey && control.key(code, event.shiftKey)) { event.preventDefault(); return; }
           if (code === 'Escape') {
               event.preventDefault();
               if (mapOpen) setMapOpen(false);
@@ -865,8 +837,6 @@ const App: React.FC = () => {
               else if (phase === 'OPTIONS' && (prevPhase === 'EXPLORE' || prevPhase === 'COMBAT')) closeModal();
               else if (document.pointerLockElement && typeof document.exitPointerLock === 'function') document.exitPointerLock();
               else if (fallbackLookActive) setFallbackLookActive(false);
-              else if (phase === 'COMBAT' && characterSelectOpen) setCharacterSelectOpen(false);
-              else if (phase === 'COMBAT' && combatMenu !== 'MAIN') setCombatMenu('MAIN');
               else if (phase === 'EXPLORE' || phase === 'COMBAT') openModal('OPTIONS');
               return;
           }
@@ -906,7 +876,7 @@ const App: React.FC = () => {
           window.removeEventListener('keyup', onKeyUp);
           window.removeEventListener('blur', clearKeys);
       };
-  }, [phase, mapOpen, prevPhase, fallbackLookActive, handleInteract, handleAction, closeModal, openModal, combat.togglePause, characterSelectOpen, combatMenu, selectCombatCharacter]);
+  }, [phase, mapOpen, prevPhase, fallbackLookActive, handleInteract, handleAction, closeModal, openModal, control]);
 
   useEffect(() => {
       if (phase !== 'EXPLORE' || mapOpen || !map.length) return;
@@ -1053,10 +1023,13 @@ const App: React.FC = () => {
             decorations={decorations}
             transformRef={transformRef}
             combatSnapshotRef={combat.snapshotRef}
+            combatFeedbackRef={feedback.eventsRef}
             biomeId={biomeId}
             enemies={enemies}
             selectedEnemyId={selectedEnemyId}
             onSelectEnemy={setSelectedEnemyId}
+            onBasicAttack={control.basicAttack}
+            onCancelCombat={control.cancel}
             phase={phase}
             vfx={vfx}
             player={player}
@@ -1079,13 +1052,11 @@ const App: React.FC = () => {
             </div>
           </div>
 
-          <div className={"pointer-events-none absolute z-10 flex gap-1 " + (gameplayPhase === 'COMBAT' ? 'inset-x-3 bottom-[172px] flex-row lg:inset-x-auto lg:bottom-auto lg:left-4 lg:top-20 lg:max-w-[270px] lg:flex-col' : 'left-3 top-16 max-w-[44vw] flex-col md:left-4 md:top-20 md:max-w-[270px]')}>
+          {gameplayPhase !== 'COMBAT' && <>          <div className={"pointer-events-none absolute z-10 flex gap-1 " + 'left-3 top-16 max-w-[44vw] flex-col md:left-4 md:top-20 md:max-w-[270px]'}>
             {player.party.map((character, characterIndex) => {
-              const actor = combat.snapshot?.actors[character.id];
-              const selected = characterIndex === activeCharIndex;
               const hpPercent = character.stats.maxHp > 0 ? Math.max(0, Math.min(100, (character.stats.hp / character.stats.maxHp) * 100)) : 0;
               return (
-                <button key={character.id} onClick={() => selectCombatCharacter(characterIndex)} disabled={phase !== 'COMBAT' || !actor?.ready} className={"pointer-events-auto min-w-0 flex-1 rounded-md border bg-black/50 px-2 py-1.5 text-left shadow-md backdrop-blur-md " + (gameplayPhase === 'COMBAT' && selected ? 'border-amber-200/70' : 'border-white/10')}>
+                <button key={character.id} disabled className={"pointer-events-auto min-w-0 flex-1 rounded-md border bg-black/50 px-2 py-1.5 text-left shadow-md backdrop-blur-md " + 'border-white/10'}>
                   <div className="mb-1 flex items-center justify-between gap-2 text-[10px] md:text-xs">
                     <span className="truncate font-bold text-white/90">{character.name}</span>
                     <span className="shrink-0 font-mono text-white/70">{character.stats.hp}/{character.stats.maxHp}</span>
@@ -1097,45 +1068,18 @@ const App: React.FC = () => {
                     <span>MP {character.stats.mp}/{character.stats.maxMp}</span>
                     <span className="flex gap-1 text-xs">{character.statusEffects.map(effect => <span key={effect.id} title={effect.type}>{effect.icon}</span>)}</span>
                   </div>
-                  {gameplayPhase === 'COMBAT' && <div className="mt-1 text-[9px] text-amber-100">
-                    {character.stats.hp <= 0 ? 'DEFEATED' : actor?.ready ? 'READY' : `RECOVERING ${((actor?.remainingMs ?? 0) / 1000).toFixed(1)}s`}
-                    {actor && actor.guardUntil > (combat.snapshot?.clock.elapsedMs ?? 0) && <span className="ml-1 text-cyan-200">GUARD</span>}
-                    <div className="mt-1 h-1 rounded bg-white/15"><div className="h-full rounded bg-amber-300" style={{ width: actor ? (actor.ready ? 100 : 100 * (1 - actor.remainingMs / actor.recoveryMs)) + '%' : '0%' }} /></div>
-                  </div>}
+
                 </button>
               );
             })}
           </div>
+</>}
 
           <div className={"absolute right-3 top-16 z-10 md:right-4 md:top-20 " + (gameplayPhase === 'COMBAT' ? 'hidden lg:block' : '')}>
             <Minimap map={map} explored={explored} transformRef={transformRef} size={124} />
             <button onClick={() => setMapOpen(true)} className="mt-1 w-full rounded border border-white/15 bg-black/55 py-1 text-[9px] font-bold text-white/70 backdrop-blur-md">TAB · MAP</button>
           </div>
 
-          {gameplayPhase === 'COMBAT' && selectedEnemyId && (() => {
-            const target = enemies.find(enemy => enemy.id === selectedEnemyId);
-            if (!target || target.hp <= 0) return null;
-            const actor = combat.snapshot?.actors[target.id];
-            const cast = actor?.casting;
-            const hpPercent = Math.max(0, Math.min(100, (target.hp / target.maxHp) * 100));
-            return (
-              <div className="pointer-events-none absolute left-1/2 top-14 z-10 w-[min(420px,80vw)] lg:top-3 lg:w-[min(420px,48vw)] -translate-x-1/2 rounded-lg border border-red-300/30 bg-black/70 p-2 text-center shadow-lg backdrop-blur-md">
-                <div className="text-xs font-bold uppercase tracking-wide text-amber-300">
-                  {target.name}{target.definitionId === 'the_necromancer' && target.phase === 2 ? ' · PHASE II' : ''}
-                </div>
-                <div className="mt-1 h-2 overflow-hidden rounded bg-white/15">
-                  <div className={"h-full transition-all " + (hpPercent > 50 ? 'bg-emerald-500' : hpPercent > 25 ? 'bg-amber-400' : 'bg-red-500')} style={{ width: hpPercent + '%' }} />
-                </div>
-                <div className="mt-1 flex items-center justify-center gap-2 text-[9px] text-white/80">
-                  <span>{target.hp}/{target.maxHp} HP</span>
-                  {(target.guard ?? 0) > 0 && <span className="text-cyan-200">GUARD {target.guard}</span>}
-                  {target.intent && <span>{target.intent.icon} {target.intent.shortLabel} {cast ? (cast.remainingMs / 1000).toFixed(1) + 's' : ' · preparing'}</span>}
-                  {target.intent?.minDamage !== undefined && target.intent?.maxDamage !== undefined && <span>{target.intent.minDamage}–{target.intent.maxDamage}</span>}
-                </div>
-                {cast && <><div className="mt-1 h-1 rounded bg-white/15"><div className="h-full rounded bg-orange-400" style={{ width: (100 * (1 - cast.remainingMs / Math.max(1, cast.totalMs))) + '%' }} /></div><div className="mt-1 text-[9px] text-amber-100">{cast.interruptible ? `STUN INTERRUPTS${target.isBoss ? ' · resistance ' + Math.round((cast.intent.interruptResistance ?? 0.5) * 100) + '%' : ''}` : 'UNINTERRUPTIBLE'}</div></>}
-              </div>
-            );
-          })()}
 
           <div className="pointer-events-none absolute left-1/2 top-1/2 z-10 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center">
             <span className={"relative block h-4 w-4 rounded-full border " + (currentInteraction ? 'border-amber-200/90 bg-amber-200/20' : 'border-white/40')}>
@@ -1176,35 +1120,22 @@ const App: React.FC = () => {
                 <button onClick={handleInteract} className="hud-button hud-button-accent">E · USE</button>
                 <button onClick={handleReturnToMenu} className="hud-button">EXIT</button>
               </>
-            ) : (
-              <div className="w-[min(520px,55vw)]">
-                <Controls onAction={handleAction} phase="COMBAT" combatMenu={combatMenu} activeCharacter={player.party[activeCharIndex] ?? null} inventory={player.inventory} onSubAction={handleSubAction} onBack={() => setCombatMenu('MAIN')} actionReady={actionReady} paused={combatPaused} onPause={combat.togglePause} onCharacters={() => setCharacterSelectOpen(value => !value)} />
-              </div>
-            )}
+            ) : null}
           </div>
 
-          {(phase === 'EXPLORE' || phase === 'COMBAT') && (
+          {phase === 'EXPLORE' && (
             <MobileControls
               phase={phase}
-              combatMenu={combatMenu}
-              activeCharacter={player.party[activeCharIndex] ?? null}
-              inventory={player.inventory}
-              actionReady={actionReady} paused={combatPaused} onPause={combat.togglePause} onCharacters={() => setCharacterSelectOpen(value => !value)}
               onMoveInput={setTouchMovement}
               onLook={applyMouseLook}
               onInteract={handleInteract}
               onAction={handleAction}
-              onSubAction={handleSubAction}
-              onBack={() => setCombatMenu('MAIN')}
             />
           )}
         </div>
       )}
 
-      {phase === 'COMBAT' && <div className="pointer-events-none absolute bottom-[160px] left-1/2 z-30 hidden lg:block -translate-x-1/2 rounded-full bg-black/70 px-3 py-1 text-[10px] text-amber-100">
-        {combatPaused ? 'TACTICAL PAUSE · resume to advance timers' : combat.snapshot?.clock.timeScale === 0.2 ? 'TACTICAL SLOWDOWN · 20%' : 'REAL TIME · SPACE to pause'}
-      </div>}
-      {phase === 'COMBAT' && characterSelectOpen && <CombatPartyPicker party={player.party} snapshot={combat.snapshot} onSelect={selectCombatCharacter} onClose={() => setCharacterSelectOpen(false)} />}
+      {phase === 'COMBAT' && <CombatHud combat={combat} control={control} activeCharIndex={activeCharIndex} selectedEnemyId={selectedEnemyId} />}
 
       {mapOpen && isGameplayVisible && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-4 backdrop-blur-md">

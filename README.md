@@ -92,3 +92,7 @@ See [the combat system guide](docs/COMBAT_SYSTEM.md) for clock/readiness, intent
 ## Save data
 
 Saves remain in browser `localStorage` under the existing Aether Crawl save key. The save stores gameplay state only; visual URLs, image payloads, and derived weapon sprite types are excluded. Player position now stores continuous world coordinates and a horizontal angle. Older saves with integer `pos` and cardinal `dir` are migrated to the center of that tile while preserving the old facing; weapon visual types are still recovered from item names when loaded.
+
+## Direct combat controls (2.5B)
+
+Select a living hero with 1–4/F1–F4. LMB attacks; Q/E/R/F use its first four skills; V guards; G uses the bound potion; Tab/Shift+Tab cycles living enemies; Space pauses. B toggles inactive-hero Auto Basic (OFF by default). Skills can buffer in the last 250 ms before READY; Esc/right-click cancels. Touch uses the shared Attack/skill/Guard/Potion/Target/Party/Pause dock; hold a skill for details. More offers all skills, potion binding, Flee and the explicit Auto toggle. See `docs/COMBAT_SYSTEM.md` for timing and resource rules.

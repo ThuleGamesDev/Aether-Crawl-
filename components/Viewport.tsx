@@ -6,6 +6,9 @@ import { getImageAsset } from '../services/assetLoader';
 import { BiomeId, Enemy, GamePhase, Player, PlayerTransform, TileType, VFXEvent } from '../types';
 import { MAP_SIZE, VIEW_DISTANCE } from '../constants';
 
+import type { FloatingCombatEvent } from '../hooks/useCombatFeedback';
+import { eventLabel } from '../services/combatFeedback';
+
 interface ViewportProps {
   map: number[][];
   decorations: number[][];
@@ -15,6 +18,9 @@ interface ViewportProps {
   enemies: Enemy[];
   selectedEnemyId: string | null;
   onSelectEnemy: (id: string) => void;
+  onBasicAttack: (id?: string) => void;
+  onCancelCombat: () => boolean;
+  combatFeedbackRef: React.MutableRefObject<FloatingCombatEvent[]>;
   phase: GamePhase;
   vfx: VFXEvent | null;
   player: Player;
@@ -30,10 +36,19 @@ type SpritePoint = { x: number; y: number; type: number; distance: number };
 
 const Viewport: React.FC<ViewportProps> = ({
   map, decorations, transformRef, combatSnapshotRef, biomeId,
-  enemies, selectedEnemyId, onSelectEnemy, phase, vfx, player, activeCharIndex,
+  enemies, selectedEnemyId, onSelectEnemy, onBasicAttack, onCancelCombat, combatFeedbackRef, phase, vfx, player, activeCharIndex,
   isMoving, fallbackLookActive, onRequestPointerLock, onFallbackLook, onFallbackLookEnd,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const hitAreasRef = useRef(new Map<string, { x: number; y: number; size: number }>());
+  const pointerTypeRef = useRef('mouse');
+  const hitTarget = (clientX: number, clientY: number) => {
+    const canvas = canvasRef.current; if (!canvas) return undefined;
+    const rect = canvas.getBoundingClientRect();
+    const x = (clientX - rect.left) * canvas.width / rect.width;
+    const y = (clientY - rect.top) * canvas.height / rect.height;
+    return [...hitAreasRef.current].reverse().find(([, p]) => Math.abs(p.x - x) <= p.size / 2 && y >= p.y - p.size * 0.45 && y <= p.y + p.size * 0.55)?.[0];
+  };
   const frameRef = useRef(0);
   const frameCountRef = useRef(0);
   const missingAssetReportedRef = useRef(false);
@@ -69,6 +84,8 @@ const Viewport: React.FC<ViewportProps> = ({
   }, []);
 
   const handlePointerDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    pointerTypeRef.current = event.pointerType;
+    if (phase === 'COMBAT' && event.pointerType === 'mouse' && event.button === 0) { onBasicAttack(hitTarget(event.clientX, event.clientY)); return; }
     if (phase === 'EXPLORE' && event.pointerType === 'mouse' && event.button === 0 && canvasRef.current) {
       onRequestPointerLock(canvasRef.current);
     }
@@ -86,12 +103,9 @@ const Viewport: React.FC<ViewportProps> = ({
 
   const handleClick = (event: React.MouseEvent<HTMLCanvasElement>) => {
     if (phase !== 'COMBAT') return;
-    const rect = canvasRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const targets = enemies.filter(enemy => enemy.hp > 0);
-    if (!targets.length) return;
-    const index = Math.floor((event.clientX - rect.left) / (rect.width / targets.length));
-    if (targets[index]) onSelectEnemy(targets[index].id);
+    if (pointerTypeRef.current === 'mouse') return;
+    const target = hitTarget(event.clientX, event.clientY);
+    if (target && enemies.some(e => e.id === target && e.hp > 0)) onSelectEnemy(target);
   };
 
   useEffect(() => {
@@ -163,8 +177,10 @@ const Viewport: React.FC<ViewportProps> = ({
         context, width, height, targets, selectedEnemyId, frame, snapshot: combatSnapshotRef?.current,
       });
 
+      hitAreasRef.current = targetPositions;
       drawPlayerHands({ context, width, height, frame, player, activeCharIndex, moving: isMoving });
       drawVfx({ context, width, height, vfx, targetPositions });
+      drawFloatingFeedback(context, width, height, combatFeedbackRef.current, targetPositions, player);
       frameRef.current = requestAnimationFrame(render);
     };
 
@@ -175,6 +191,7 @@ const Viewport: React.FC<ViewportProps> = ({
   return (
     <canvas
       ref={canvasRef}
+      onContextMenu={event => { event.preventDefault(); if (phase === 'COMBAT') onCancelCombat(); }}
       onPointerDown={handlePointerDown}
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerUp}
@@ -440,8 +457,8 @@ function drawEnemySprites(args: {
       const intent = enemy.intent;
       const cast = snapshot?.actors[enemy.id]?.casting;
       const label = intent.minDamage !== undefined && intent.maxDamage !== undefined
-        ? `${intent.icon} ${intent.minDamage}–${intent.maxDamage}`
-        : `${intent.icon} ${intent.shortLabel}`;
+        ? `${intent.icon} ${intent.type === 'HEAVY_ATTACK' ? 'HEAVY' : 'ATTACK'} ${intent.minDamage}–${intent.maxDamage}`
+        : `${intent.icon} ${intent.type === 'HEAVY_ATTACK' ? 'HEAVY' : intent.type === 'SUMMON' ? 'SUMMON' : intent.type === 'BUFF' || intent.type === 'HEAL' ? intent.type : intent.shortLabel}`;
       const text = cast ? `${label} ${(cast.remainingMs / 1000).toFixed(1)}s ${cast.interruptible ? '⚡' : '🔒'}` : label;
       const badgeWidth = Math.min(slotWidth * 0.94, 150);
       const fontSize = Math.max(18, Math.min(22, badgeWidth / 8));
@@ -457,7 +474,9 @@ function drawEnemySprites(args: {
         : intent.type === 'PREPARE' || intent.type === 'SUMMON' ? 'rgba(69, 35, 91, 0.94)'
         : 'rgba(28, 24, 20, 0.94)';
       context.fillRect(pillX, pillY, pillWidth, pillHeight);
+      const urgent = cast && cast.remainingMs < 1000 && (intent.type === 'HEAVY_ATTACK' || intent.type === 'SUMMON');
       context.strokeStyle = intent.type === 'HEAVY_ATTACK' ? '#ff7b5a' : '#d3b46f';
+      if (urgent && !snapshot?.clock.paused) { context.shadowColor = '#e98550'; context.shadowBlur = 5 + 3 * Math.sin(Date.now() / 160); }
       context.lineWidth = 1;
       context.strokeRect(pillX, pillY, pillWidth, pillHeight);
       context.fillStyle = '#fff5dc';
@@ -529,3 +548,22 @@ function drawVfx(args: {
 }
 
 
+
+
+function drawFloatingFeedback(context: CanvasRenderingContext2D, width: number, height: number, events: FloatingCombatEvent[], targets: Map<string, { x: number; y: number; size: number }>, player: Player) {
+  const colors: Record<string, string> = { damage: '#ffb3a5', crit: '#ffd36e', heal: '#9bedaa', mana: '#91c9ff', block: '#a8daf8', guard: '#a8daf8', poison: '#a7cf6f', burn: '#ff995f', interrupt: '#efc1ff', phase: '#dab1ff', stun: '#dac2ff', buff: '#c6dcff' };
+  context.save(); context.textAlign = 'center'; context.font = 'bold 17px monospace';
+  const perTarget = new Map<string, number>();
+  for (const event of events) {
+    const age = Date.now() - event.createdAt; if (age < 0 || age > 1100) continue;
+    const target = targets.get(event.targetId);
+    const heroIndex = player.party.findIndex(h => h.id === event.targetId);
+    const stack = perTarget.get(event.targetId) ?? 0; perTarget.set(event.targetId, stack + 1);
+    const x = target?.x ?? (heroIndex >= 0 ? width * (heroIndex + 1) / (player.party.length + 1) : width / 2);
+    const y = (target?.y ?? height * 0.46) - age * 0.035 - stack * 20;
+    context.globalAlpha = Math.min(1, (1100 - age) / 300); context.fillStyle = colors[event.kind] ?? '#fff';
+    context.strokeStyle = '#080609'; context.lineWidth = 3;
+    const label = eventLabel(event); context.strokeText(label, x, y); context.fillText(label, x, y);
+  }
+  context.restore();
+}

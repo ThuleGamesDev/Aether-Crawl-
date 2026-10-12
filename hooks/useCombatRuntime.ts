@@ -28,7 +28,7 @@ export const useCombatRuntime = (enabled: boolean, onUpdate: (update: CombatUpda
   const stop = useCallback(() => { runtimeRef.current = null; publish(); }, [publish]);
   const act = useCallback((command: CombatCommand) => {
     if (!runtimeRef.current || outcomeDeliveredRef.current) return;
-    deliver(runtimeRef.current.act(command)); publish();
+    const update = runtimeRef.current.act(command); deliver(update); publish(); return update;
   }, [deliver, publish]);
   const togglePause = useCallback(() => {
     const runtime = runtimeRef.current;
@@ -49,5 +49,7 @@ export const useCombatRuntime = (enabled: boolean, onUpdate: (update: CombatUpda
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
   }, [enabled, deliver, publish]);
-  return { start, stop, act, togglePause, setSlowdown, snapshot, snapshotRef, runtimeRef };
+  const queueSkill = useCallback((command: CombatCommand) => { const queued = runtimeRef.current?.queueSkill(command) ?? false; publish(); return queued; }, [publish]);
+  const cancelQueued = useCallback((actorId?: string) => { runtimeRef.current?.cancelQueued(actorId); publish(); }, [publish]);
+  return { start, stop, act, queueSkill, cancelQueued, togglePause, setSlowdown, snapshot, snapshotRef, runtimeRef };
 };

@@ -1,39 +1,23 @@
 import React, { useEffect, useRef, useState } from 'react';
-import Controls from './Controls';
-import { Character, CombatMenu, GamePhase, Item } from '../types';
+import { GamePhase } from '../types';
 import { MovementInput } from '../services/firstPerson';
 
 interface MobileControlsProps {
   phase: GamePhase;
-  combatMenu: CombatMenu;
-  activeCharacter: Character | null;
-  inventory: Item[];
-  actionReady: boolean;
-  paused: boolean;
-  onPause: () => void;
-  onCharacters: () => void;
   onMoveInput: (input: Pick<MovementInput, 'forward' | 'strafe'>) => void;
   onLook: (deltaX: number) => void;
   onInteract: () => void;
   onAction: (action: string) => void;
-  onSubAction: (type: 'skill' | 'item', id: string) => void;
-  onBack: () => void;
 }
 
 const idleMove = { forward: 0, strafe: 0 };
 
 const MobileControls: React.FC<MobileControlsProps> = ({
   phase,
-  combatMenu,
-  activeCharacter,
-  inventory,
-  actionReady, paused, onPause, onCharacters,
   onMoveInput,
   onLook,
   onInteract,
   onAction,
-  onSubAction,
-  onBack,
 }) => {
   const [stick, setStick] = useState(idleMove);
   const stickPointerRef = useRef<number | null>(null);
@@ -70,7 +54,6 @@ const MobileControls: React.FC<MobileControlsProps> = ({
     onMoveInput(idleMove);
   };
 
-  const consumables = inventory.filter(item => item.type === 'POTION' || item.type === 'SCROLL');
 
   return (
     <div className="pointer-events-none absolute inset-0 z-30 select-none lg:hidden">
@@ -155,9 +138,6 @@ const MobileControls: React.FC<MobileControlsProps> = ({
         </>
       )}
 
-      {phase === 'COMBAT' && <div className="pointer-events-auto absolute bottom-4 left-1/2 w-[min(94vw,520px)] -translate-x-1/2 rounded-xl border border-white/20 bg-black/80 p-2 shadow-xl backdrop-blur-md">
-        <Controls phase={phase} combatMenu={combatMenu} activeCharacter={activeCharacter} inventory={inventory} actionReady={actionReady} paused={paused} onPause={onPause} onCharacters={onCharacters} onAction={onAction} onSubAction={onSubAction} onBack={onBack} />
-      </div>}
 
     </div>
   );
