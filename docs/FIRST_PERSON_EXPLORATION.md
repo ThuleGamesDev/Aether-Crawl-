@@ -30,4 +30,4 @@ New saves include `player.transform`. If a save lacks it, `normalizePlayerTransf
 
 ## Combat boundary
 
-Combat remains turn-based and still owns its existing intents, actions, and enemy resolution. Exploration movement is inactive during combat and UI modals. The viewport remains full screen beneath its overlay HUD. This provides continuous spatial transforms for a later tactical combat pass without introducing enemy navigation, real-time attacks, projectiles, or runtime-generated assets.
+Combat 2.5A uses an independent actor timeline and retains the existing intents, actions, and enemy resolution. Exploration movement is inactive during combat and UI modals. The viewport remains full screen beneath its overlay HUD. This provides continuous spatial transforms for a later spatial combat pass without introducing enemy navigation, projectiles, or runtime-generated assets. See `COMBAT_SYSTEM.md` for clock and tactical controls.

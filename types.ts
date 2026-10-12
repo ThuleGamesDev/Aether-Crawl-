@@ -89,18 +89,23 @@ export interface EnemyIntent {
     description?: string;
     abilityId: string;
     interruptible?: boolean;
+    castTimeMs?: number;
+    recoveryMs?: number;
+    interruptResistance?: number;
 }
 
 export interface StatusEffect {
     id: string;
     type: StatusType;
     name: string;
-    duration: number; // Turns remaining
+    duration: number; // Own action cycles remaining (readiness for heroes, intent resolution for enemies)
     value: number; // Dmg per turn, or stat bonus amount
     icon: string;
 }
 
 export interface Skill {
+  /** Optional authored recovery override, in simulated combat milliseconds. */
+  recoveryMs?: number;
   id: string;
   name: string;
   type: 'DAMAGE' | 'HEAL' | 'DRAIN' | 'BUFF' | 'DEBUFF';

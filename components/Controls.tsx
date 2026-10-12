@@ -1,118 +1,50 @@
-
 import React from 'react';
-import { GamePhase, CombatMenu, Skill, Item, Character } from '../types';
+import type { Character, CombatMenu, GamePhase, Item } from '../types';
+import { playerRecoveryMs } from '../data/combatTiming';
 
-interface ControlsProps {
-  onAction: (action: string) => void;
+export interface ControlsProps {
   phase: GamePhase;
-  
-  // Combat Specific
   combatMenu: CombatMenu;
-  activeCharacter: Character | null; // The character currently taking a turn
+  activeCharacter: Character | null;
   inventory: Item[];
+  actionReady: boolean;
+  paused: boolean;
+  onAction: (action: string) => void;
   onSubAction: (type: 'skill' | 'item', id: string) => void;
   onBack: () => void;
-  isPlayerTurn: boolean; 
+  onPause: () => void;
+  onCharacters: () => void;
 }
 
-const Controls: React.FC<ControlsProps> = ({ 
-    onAction, phase, 
-    combatMenu, activeCharacter, inventory, onSubAction, onBack,
-    isPlayerTurn
-}) => {
-  const btnClass = "bg-gray-700 hover:bg-gray-600 active:bg-gray-800 text-white font-bold py-1 px-2 rounded border-b-4 border-gray-900 active:border-b-0 active:translate-y-1 transition-all select-none touch-manipulation disabled:opacity-50 disabled:cursor-not-allowed text-xs md:text-sm h-10 shadow-lg";
-  const combatBtnClass = "bg-gray-800 hover:bg-gray-700 text-white py-2 px-3 rounded border border-gray-600 mb-1 w-full text-left flex justify-between items-center text-sm disabled:opacity-50 disabled:cursor-not-allowed shadow-md";
-
-  // COMBAT MODE CONTROLS
-  if (phase === 'COMBAT') {
-      if (!activeCharacter) return <div className="text-center text-gray-500">Wait...</div>;
-
-      if (combatMenu === 'SKILLS') {
-          return (
-              <div className="w-full h-full flex flex-col bg-gray-900 p-2 rounded border border-gray-700 absolute top-0 left-0 z-20">
-                  <h3 className="text-purple-400 font-bold mb-2 text-xs uppercase tracking-wider border-b border-gray-700 pb-1">
-                      {activeCharacter.name}'s Skills
-                  </h3>
-                  <div className="flex-1 overflow-y-auto">
-                    {activeCharacter.skills.map(skill => {
-                        // Calculate Effect Power
-                        let statVal = activeCharacter.stats.int;
-                        if (skill.scalingStat === 'STR') statVal = activeCharacter.stats.str;
-                        if (skill.scalingStat === 'DEX') statVal = activeCharacter.stats.dex;
-                        const power = Math.floor(skill.basePower + (statVal * skill.scaling));
-                        const label = skill.type === 'HEAL' || skill.type === 'BUFF' ? 'Heal' : 'Dmg';
-
-                        return (
-                            <button 
-                                key={skill.id} 
-                                onClick={() => onSubAction('skill', skill.id)} 
-                                className={combatBtnClass}
-                                disabled={!isPlayerTurn}
-                            >
-                                <span>{skill.name} <span className="text-gray-400 text-[10px] ml-1">({label}: {power})</span></span>
-                                <span className="text-blue-400 text-xs">{skill.cost} MP</span>
-                            </button>
-                        );
-                    })}
-                  </div>
-                  <button onClick={onBack} className="w-full text-center text-red-400 mt-2 py-2 hover:bg-gray-800 rounded border border-red-900 text-xs font-bold">CANCEL</button>
-              </div>
-          );
-      }
-
-      if (combatMenu === 'ITEMS') {
-        const consumables = inventory.filter(i => i.type === 'POTION' || i.type === 'SCROLL');
-        return (
-            <div className="w-full h-full flex flex-col bg-gray-900 p-2 rounded border border-gray-700 absolute top-0 left-0 z-20">
-                <h3 className="text-green-400 font-bold mb-2 text-xs uppercase tracking-wider border-b border-gray-700 pb-1">Use Item</h3>
-                <div className="flex-1 overflow-y-auto">
-                    {consumables.length === 0 && <p className="text-gray-500 text-center py-4 text-xs">No usable items.</p>}
-                    {consumables.map(item => (
-                        <button 
-                            key={item.id} 
-                            onClick={() => onSubAction('item', item.id)} 
-                            className={combatBtnClass}
-                            disabled={!isPlayerTurn}
-                        >
-                            <span className="truncate mr-2">{item.icon} {item.name}</span>
-                            <span className="text-gray-400 text-xs">x{item.quantity}</span>
-                        </button>
-                    ))}
-                </div>
-                <button onClick={onBack} className="w-full text-center text-red-400 mt-2 py-2 hover:bg-gray-800 rounded border border-red-900 text-xs font-bold">CANCEL</button>
-            </div>
-        );
-      }
-
-      return (
-        <div className="flex flex-col h-full">
-            <div className="text-xs text-center text-yellow-500 mb-2 font-bold bg-gray-900 p-1 rounded border border-gray-700 flex justify-between px-2 items-center">
-                <span>{activeCharacter.name}'s Turn</span>
-                <span className="text-[10px] text-gray-400">HP: {activeCharacter.stats.hp} MP: {activeCharacter.stats.mp}</span>
-            </div>
-            <div className="grid grid-cols-2 gap-2 h-full">
-                <button onClick={() => onAction('attack')} disabled={!isPlayerTurn} className={`${btnClass} bg-red-900 hover:bg-red-800 border-red-950 text-[10px]`}>
-                    ATTACK
-                </button>
-                <button onClick={() => onAction('defend')} disabled={!isPlayerTurn} className={`${btnClass} bg-blue-900 hover:bg-blue-800 border-blue-950 text-[10px]`}>
-                    DEFEND
-                </button>
-                <button onClick={() => onAction('skill')} disabled={!isPlayerTurn} className={`${btnClass} bg-purple-900 hover:bg-purple-800 border-purple-950 text-[10px]`}>
-                    SKILL
-                </button>
-                <button onClick={() => onAction('item')} disabled={!isPlayerTurn} className={`${btnClass} bg-green-900 hover:bg-green-800 border-green-950 text-[10px]`}>
-                    ITEM
-                </button>
-                <button onClick={() => onAction('run')} disabled={!isPlayerTurn} className={`${btnClass} col-span-2 bg-yellow-900 hover:bg-yellow-800 border-yellow-950 text-[10px]`}>
-                    FLEE
-                </button>
-            </div>
-            {!isPlayerTurn && <div className="absolute top-[-40px] left-0 w-full flex justify-center pointer-events-none"><span className="text-xs text-yellow-500 animate-pulse font-bold bg-black px-2 py-1 rounded border border-yellow-900">ENEMY TURN</span></div>}
-        </div>
-      )
-  }
-
-  return null;
+/** Shared compact quickbar for mouse and touch; selection panels slow the clock. */
+const Controls: React.FC<ControlsProps> = ({ phase, combatMenu, activeCharacter, inventory, actionReady, paused, onAction, onSubAction, onBack, onPause, onCharacters }) => {
+  if (phase !== 'COMBAT') return null;
+  const button = 'min-h-12 min-w-11 rounded-lg border border-white/20 bg-slate-900/90 px-2 text-[10px] font-bold text-white touch-manipulation disabled:opacity-40 hover:bg-slate-700';
+  return <div className="relative w-full">
+    <div className="mb-1 flex items-center justify-between gap-2 text-[10px] text-amber-100">
+      <span>{activeCharacter?.name ?? 'Party'} · {actionReady ? 'READY' : 'RECOVERING'}</span>
+      <span>{paused ? 'PAUSED' : combatMenu !== 'MAIN' ? '20% SPEED' : 'SPACE · PAUSE'}</span>
+    </div>
+    {combatMenu !== 'MAIN' && <div className="absolute bottom-full left-0 mb-3 flex max-h-[42dvh] w-full flex-col rounded-xl border border-white/25 bg-slate-950/95 p-3 shadow-xl">
+      <div className="mb-2 flex items-center justify-between text-xs text-amber-200"><span>{combatMenu === 'SKILLS' ? 'Skills' : 'Potions'} · 20% speed</span><button className={button} onClick={onBack}>BACK</button></div>
+      <div className="space-y-1 overflow-y-auto">
+        {combatMenu === 'SKILLS' && activeCharacter?.skills.map(skill => <button key={skill.id} className={button + ' flex w-full items-center justify-between gap-2 text-left'} disabled={!actionReady || (skill.id !== 'soul_pact' && activeCharacter.stats.mp < skill.cost)} onClick={() => onSubAction('skill', skill.id)}>
+          <span>{skill.name}</span><span className="shrink-0 text-blue-200">{skill.cost} MP · {(playerRecoveryMs(activeCharacter, 'skill', skill) / 1000).toFixed(1)}s</span>
+        </button>)}
+        {combatMenu === 'SKILLS' && !activeCharacter?.skills.length && <p className="py-3 text-xs text-white/60">No learned skills.</p>}
+        {combatMenu === 'ITEMS' && inventory.filter(item => item.type === 'POTION').map(item => <button key={item.id} className={button + ' flex w-full items-center justify-between text-left'} disabled={!actionReady} onClick={() => onSubAction('item', item.id)}><span>{item.icon} {item.name}</span><span>x{item.quantity}</span></button>)}
+        {combatMenu === 'ITEMS' && !inventory.some(item => item.type === 'POTION') && <p className="py-3 text-xs text-white/60">No usable potions.</p>}
+      </div>
+    </div>}
+    <div className="grid grid-cols-4 gap-1 sm:grid-cols-7">
+      <button className={button + ' bg-red-900/90'} disabled={!actionReady} onClick={() => onAction('attack')}>ATTACK</button>
+      <button className={button + ' bg-blue-900/90'} disabled={!actionReady} onClick={() => onAction('defend')}>DEFEND</button>
+      <button className={button} onClick={() => onAction('skill')}>SKILL</button>
+      <button className={button} onClick={() => onAction('item')}>ITEM</button>
+      <button className={button} onClick={onCharacters}>PARTY</button>
+      <button className={button + (paused ? ' bg-amber-700/90' : '')} aria-pressed={paused} onClick={onPause}>{paused ? 'RESUME' : 'PAUSE'}</button>
+      <button className={button} disabled={!actionReady} onClick={() => onAction('run')}>FLEE</button>
+    </div>
+  </div>;
 };
-
 export default Controls;

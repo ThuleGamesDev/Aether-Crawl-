@@ -75,7 +75,7 @@ describe('first-person exploration', () => {
   it('reports tile changes once and keeps float positions mapped to grid cells', () => {
     const current = getTileCell({ x: 2.8, y: 3.1 });
     expect(current).toEqual({ x: 2, y: 3 });
-    expect(hasEnteredNewTile(current, { x: 2.95, y: 3.9 })).toBe(false);
+    expect(hasEnteredNewTile(current, getTileCell({ x: 2.95, y: 3.9 }))).toBe(false);
     expect(hasEnteredNewTile(current, { x: 3, y: 3 })).toBe(true);
   });
 
