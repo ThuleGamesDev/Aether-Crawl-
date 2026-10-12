@@ -241,6 +241,11 @@ class AudioService {
     this.playTone(150, 'sawtooth', 0.1, 0.05, 0.1);
   }
 
+  playCrit() { this.playTone(700, 'square', 0.07, 0, 0.12); this.playTone(1000, 'triangle', 0.12, 0.05, 0.1); }
+  playBlock() { this.playTone(220, 'triangle', 0.08, 0, 0.13); this.playTone(80, 'square', 0.07, 0.03, 0.07); }
+  playInterrupt() { this.playTone(900, 'sawtooth', 0.07, 0, 0.09); this.playTone(320, 'square', 0.12, 0.06, 0.09); }
+  playBossPhase() { this.playTone(65, 'sawtooth', 0.4, 0, 0.13); this.playTone(130, 'triangle', 0.45, 0.1, 0.1); }
+
   playDefend() {
       this.playTone(150, 'sine', 0.2, 0, 0.2);
   }

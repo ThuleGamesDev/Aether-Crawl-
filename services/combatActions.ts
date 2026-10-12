@@ -1,3 +1,4 @@
+import type { CombatEvent } from './combatFeedback';
 import type { Enemy, Player, VFXType } from '../types';
 import { enemyAbilities } from '../data/enemyAbilities';
 import { playerRecoveryMs } from '../data/combatTiming';
@@ -9,6 +10,7 @@ export type CombatCommand = { actorId: string; targetId?: string | null } & (
 );
 export interface CombatFeedback {
   logs: string[];
+  events?: CombatEvent[];
   vfx: Array<{ type: VFXType; targetId?: string }>;
   sound?: 'attack' | 'defend' | 'heal';
 }
@@ -24,6 +26,15 @@ export interface PlayerActionResult extends CombatFeedback {
 export const resolvePlayerCombatAction = (initialPlayer: Player, initialEnemies: Enemy[], command: CombatCommand, random: () => number = Math.random): PlayerActionResult => {
   const logs: string[] = [];
   const vfx: CombatFeedback['vfx'] = [];
+  const events: CombatEvent[] = [];
+  const damageFeedback = (before: Enemy[], after: Enemy[], critical = false) => {
+    for (const enemy of after) {
+      const old = before.find(e => e.id === enemy.id)!;
+      if (old.hp <= 0) continue;
+      if (old.hp > enemy.hp) events.push({ kind: critical ? 'crit' : 'damage', amount: old.hp - enemy.hp, targetId: enemy.id, source: 'player' });
+      if ((old.guard ?? 0) > (enemy.guard ?? 0)) events.push({ kind: 'block', amount: (old.guard ?? 0) - (enemy.guard ?? 0), targetId: enemy.id });
+    }
+  };
   const fail = (message: string): PlayerActionResult => ({ accepted: false, player: initialPlayer, enemies: initialEnemies, recoveryMs: 0, logs: [message], vfx });
   const index = initialPlayer.party.findIndex(character => character.id === command.actorId && character.stats.hp > 0);
   if (index < 0) return fail('That character cannot act.');
@@ -50,12 +61,13 @@ export const resolvePlayerCombatAction = (initialPlayer: Player, initialEnemies:
   if (command.type === 'attack') {
     if (!target) return fail('No living target.');
     const attack = calculatePlayerAttack(character, random);
-    enemies = damageEnemies(enemies, target.id, attack.damage);
+    const before = enemies;
+    enemies = damageEnemies(enemies, target.id, attack.damage); damageFeedback(before, enemies, attack.critical);
     logs.push(`${character.name} attacks ${target.name} for ${attack.damage}${attack.critical ? ' (CRIT!)' : ''}.`);
     vfx.push({ type: attack.critical ? 'CRITICAL' : 'ATTACK', targetId: target.id });
     sound = 'attack';
   } else if (command.type === 'defend') {
-    character.isDefending = true;
+    character.isDefending = true; events.push({ kind: 'guard', targetId: character.id });
     logs.push(`${character.name} guards for 2.8 seconds.`);
     vfx.push({ type: 'BUFF', targetId: character.id }); sound = 'defend';
   } else if (command.type === 'run') {
@@ -81,15 +93,18 @@ export const resolvePlayerCombatAction = (initialPlayer: Player, initialEnemies:
       if (skill.type === 'HEAL' || skill.type === 'BUFF') {
         const ally = skill.targetType === 'ALLY' ? [...player.party].sort((a, b) => a.stats.hp / a.stats.maxHp - b.stats.hp / b.stats.maxHp)[0] : character;
         if (skill.type === 'HEAL') {
+          const oldHp = ally.stats.hp;
           ally.stats.hp = Math.min(ally.stats.maxHp, ally.stats.hp + power);
+          events.push({ kind: 'heal', targetId: ally.id, amount: ally.stats.hp - oldHp });
           logs.push(`${character.name} heals ${ally.name} for ${power}.`); sound = 'heal';
           vfx.push({ type: 'HEAL', targetId: ally.id });
         } else if (skill.effect) { status(ally.id, skill.effect.type, skill.effect.duration, skill.effect.val, false); vfx.push({ type: 'BUFF', targetId: ally.id }); }
       } else if (target) {
-        enemies = damageEnemies(enemies, target.id, power, skill.targetType === 'MULTI');
+        const before = enemies;
+        enemies = damageEnemies(enemies, target.id, power, skill.targetType === 'MULTI'); damageFeedback(before, enemies);
         logs.push(`${character.name} casts ${skill.name} for ${power} damage.`);
         vfx.push({ type: skill.vfxType, targetId: target.id }); sound = 'attack';
-        if (skill.type === 'DRAIN') character.stats.hp = Math.min(character.stats.maxHp, character.stats.hp + Math.floor(power * 0.8));
+        if (skill.type === 'DRAIN') { const oldHp = character.stats.hp; character.stats.hp = Math.min(character.stats.maxHp, character.stats.hp + Math.floor(power * 0.8)); events.push({ kind: 'heal', targetId: character.id, amount: character.stats.hp - oldHp }); }
         if (skill.effect && random() < skill.effect.chance) {
           const targets = skill.targetType === 'MULTI' ? enemies.filter(e => e.hp > 0) : enemies.filter(e => e.id === target.id && e.hp > 0);
           targets.forEach(e => status(e.id, skill.effect!.type, skill.effect!.duration, skill.effect!.val, true));
@@ -100,10 +115,12 @@ export const resolvePlayerCombatAction = (initialPlayer: Player, initialEnemies:
     const item = player.inventory.find(i => i.id === command.id && i.quantity > 0);
     // SCROLL has no authored effect in the current data; reject instead of consuming a fake action.
     if (!item || item.type !== 'POTION' || (!item.id.includes('hp') && !item.id.includes('mp'))) return fail('No usable potion.');
+    const oldHp = character.stats.hp, oldMp = character.stats.mp;
     if (item.id.includes('hp')) character.stats.hp = Math.min(character.stats.maxHp, character.stats.hp + item.value);
     if (item.id.includes('mp')) character.stats.mp = Math.min(character.stats.maxMp, character.stats.mp + item.value);
+    events.push({ kind: item.id.includes('hp') ? 'heal' : 'mana', targetId: character.id, amount: item.id.includes('hp') ? character.stats.hp - oldHp : character.stats.mp - oldMp });
     item.quantity -= 1; player.inventory = player.inventory.filter(i => i.quantity > 0);
     logs.push(`${character.name} used ${item.name}.`); vfx.push({ type: 'HEAL', targetId: character.id }); sound = 'heal';
   }
-  return { accepted: true, player, enemies, recoveryMs, logs, vfx, sound, escaped };
+  return { accepted: true, player, enemies, recoveryMs, logs, vfx, events, sound, escaped };
 };

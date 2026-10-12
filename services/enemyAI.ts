@@ -1,3 +1,4 @@
+import type { CombatEvent } from './combatFeedback';
 import { enemyAbilities, type EnemyAbilityDefinition } from '../data/enemyAbilities';
 import { createEnemyById } from './gameLogic';
 import { calculateEnemyAttack, createStatusEffect, estimateEnemyDamageRange, resolveStatusTurn, upsertStatusEffect } from './combat';
@@ -16,6 +17,7 @@ export interface EnemyActionResolution {
   scrap: number;
   logs: string[];
   vfx: EnemyVfxRequest[];
+  events: CombatEvent[];
   acted: boolean;
   defeated: boolean;
   stunned: boolean;
@@ -161,17 +163,19 @@ export const resolveEnemyIntent = (
   let scrap = initialScrap;
   const logs: string[] = [];
   const vfx: EnemyVfxRequest[] = [];
+  const events: CombatEvent[] = [];
   let acted = false;
   let wasStunned = false;
   let actor = enemies.find(enemy => enemy.id === enemyId);
   if (!actor || actor.hp <= 0) {
-    return { enemies, party, scrap, logs, vfx, acted, defeated: true, stunned: false };
+    return { enemies, party, scrap, logs, vfx, events, acted, defeated: true, stunned: false };
   }
 
   // Status duration is consumed at the acting enemy's turn, but STUN is checked before expiry.
   const hadStun = actor.statusEffects?.some(effect => effect.type === 'STUN') ?? false;
   const statusTurn = resolveStatusTurn(actor.hp, actor.maxHp, actor.statusEffects);
   statusTurn.ticks.forEach(tick => {
+    events.push({ kind: tick.type === 'REGEN' ? 'heal' : tick.type === 'POISON' ? 'poison' : 'burn', amount: tick.value, targetId: actor!.id });
     logs.push(`${actor!.name} ${tick.type === 'REGEN' ? 'recovers' : 'takes'} ${tick.value} ${statusLabel[tick.type]}.`);
     vfx.push({ type: tick.type === 'POISON' ? 'POISON' : tick.type === 'BURN' ? 'FIREBALL' : 'HEAL', targetId: actor!.id });
   });
@@ -180,7 +184,7 @@ export const resolveEnemyIntent = (
   if (statusTurn.defeated) {
     logs.push(`${actor.name} falls to its wounds.`);
     vfx.push({ type: 'ENEMY_DEATH', targetId: actor.id });
-    return { enemies, party, scrap, logs, vfx, acted, defeated: true, stunned: false };
+    return { enemies, party, scrap, logs, vfx, events, acted, defeated: true, stunned: false };
   }
 
   const intent = actor.intent ?? buildIntent(actor, enemyAbilities.basic_attack);
@@ -192,7 +196,7 @@ export const resolveEnemyIntent = (
     actor = withFlags({ ...actor, previousAbilityId: ability.id, abilityCooldowns }, ability.cancelFlagOnInterrupt);
     enemies = enemies.map(enemy => enemy.id === enemyId ? actor! : enemy);
     logs.push(`${actor.name} is stunned and loses ${ability.name}.`);
-    return { enemies, party, scrap, logs, vfx, acted, defeated: false, stunned: wasStunned };
+    return { enemies, party, scrap, logs, vfx, events, acted, defeated: false, stunned: wasStunned };
   }
   if (hadStun) logs.push(`${actor.name} resists the stun; ${ability.name} is not interruptible.`);
 
@@ -210,6 +214,9 @@ export const resolveEnemyIntent = (
   if (effect.kind === 'damage') {
     if (target && targetIndex >= 0) {
       const damage = calculateEnemyAttack(actor, target, effect.multiplier);
+      events.push({ kind: 'damage', targetId: target.id, amount: Math.min(target.stats.hp, damage), source: 'enemy' });
+      const unguarded = calculateEnemyAttack(actor, { ...target, isDefending: false, equipment: { ...target.equipment, armor: null, offhand: null } }, effect.multiplier ?? 1);
+      if (unguarded > damage) events.push({ kind: 'block', targetId: target.id, amount: unguarded - damage });
       party = applyDamageToParty(party, targetIndex, damage);
       logs.push(`${actor.name} uses ${ability.name} on ${target.name} for ${damage} damage.`);
       vfx.push({ type: 'DAMAGE', targetId: target.id });
@@ -246,6 +253,9 @@ export const resolveEnemyIntent = (
     if (target && targetIndex >= 0) {
       if (effect.multiplier) {
         const damage = calculateEnemyAttack(actor, target, effect.multiplier);
+        events.push({ kind: 'damage', targetId: target.id, amount: Math.min(target.stats.hp, damage), source: 'enemy' });
+        const unguarded = calculateEnemyAttack(actor, { ...target, isDefending: false, equipment: { ...target.equipment, armor: null, offhand: null } }, effect.multiplier ?? 1);
+        if (unguarded > damage) events.push({ kind: 'block', targetId: target.id, amount: unguarded - damage });
         party = applyDamageToParty(party, targetIndex, damage);
         vfx.push({ type: 'DAMAGE', targetId: target.id });
         logs.push(`${actor.name} hits ${target.name} for ${damage} damage.`);
@@ -304,6 +314,7 @@ export const resolveEnemyIntent = (
       actor = { ...actor, hp: actor.hp + restored };
       if (effect.consumeFlag) actor = withFlags(actor, effect.consumeFlag);
       enemies = enemies.map(enemy => enemy.id === enemyId ? actor! : enemy);
+      events.push({ kind: 'heal', targetId: actor.id, amount: restored });
       logs.push(`${actor.name} consumes ${minion.name} and restores ${restored} HP.`);
       vfx.push({ type: 'HEAL', targetId: actor.id });
     } else {
@@ -316,5 +327,5 @@ export const resolveEnemyIntent = (
   }
   // Ensure the actor's last-used ability and cooldown are retained if the effect modified allies.
   enemies = enemies.map(enemy => enemy.id === enemyId ? actor! : enemy);
-  return { enemies, party, scrap, logs, vfx, acted, defeated: false, stunned: wasStunned };
+  return { enemies, party, scrap, logs, vfx, events, acted, defeated: false, stunned: wasStunned };
 };

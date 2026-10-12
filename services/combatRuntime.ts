@@ -1,3 +1,4 @@
+import { transitionEvents } from './combatFeedback';
 import type { Enemy, EnemyIntent, Player } from '../types';
 import { COMBAT_TIMING } from '../data/combatTiming';
 import { resolveStatusTurn } from './combat';
@@ -12,6 +13,9 @@ export interface CombatActorRuntime {
   recoveryMs: number;
   ready: boolean;
   guardUntil: number;
+  /** Future presentation bands only; never used for damage, movement or targeting. */
+  rangeBand?: 'melee' | 'near' | 'far';
+  queued?: CombatCommand;
   casting?: { intent: EnemyIntent; remainingMs: number; totalMs: number; interruptible: boolean };
 }
 export interface CombatSnapshot {
@@ -33,8 +37,24 @@ export class CombatRuntime {
   player: Player;
   enemies: Enemy[];
   outcome: CombatSnapshot['outcome'] = null;
-  private feedback: CombatFeedback = { logs: [], vfx: [] };
+  private feedback: CombatFeedback = { logs: [], vfx: [], events: [] };
   private changed = false;
+  private control = { activeActorId: '', targetId: null as string | null, autoBasic: false };
+
+  setControl(activeActorId: string, targetId: string | null, autoBasic: boolean): void { this.control = { activeActorId, targetId, autoBasic }; }
+  cancelQueued(actorId?: string): void {
+    for (const actor of Object.values(this.actors)) if (!actorId || actor.actorId === actorId) delete actor.queued;
+  }
+  /** Skills alone may occupy one explicit short buffer; no resource is consumed before READY. */
+  queueSkill(command: CombatCommand): boolean {
+    const actor = this.actors[command.actorId];
+    const hero = this.player.party.find(c => c.id === command.actorId);
+    const skill = command.type === 'skill' && hero?.skills.find(s => s.id === command.id);
+    if (this.outcome || !hero || hero.stats.hp <= 0 || !actor || actor.side !== 'player' || actor.ready || actor.queued || actor.remainingMs > 250 || !skill || hero.statusEffects.some(e => e.type === 'STUN')) return false;
+    if (skill.id === 'soul_pact' ? hero.stats.hp <= 20 : skill.id === 'sacrifice' ? hero.stats.hp <= 15 : hero.stats.mp < skill.cost) return false;
+    if (skill.type !== 'HEAL' && skill.type !== 'BUFF' && skill.id !== 'soul_pact' && !this.enemies.some(e => e.id === command.targetId && e.hp > 0)) return false;
+    actor.queued = { ...command }; return true;
+  }
 
   constructor(player: Player, enemies: Enemy[], private readonly random: () => number = Math.random) {
     this.player = { ...player, party: player.party.map(c => ({ ...c, isDefending: false })) };
@@ -43,7 +63,7 @@ export class CombatRuntime {
   }
 
   snapshot(): CombatSnapshot {
-    return { clock: { ...this.clock }, outcome: this.outcome, actors: Object.fromEntries(Object.entries(this.actors).map(([id, actor]) => [id, { ...actor, casting: actor.casting ? { ...actor.casting, intent: { ...actor.casting.intent } } : undefined }])) };
+    return { clock: { ...this.clock }, outcome: this.outcome, actors: Object.fromEntries(Object.entries(this.actors).map(([id, actor]) => [id, { ...actor, queued: actor.queued ? { ...actor.queued } : undefined, casting: actor.casting ? { ...actor.casting, intent: { ...actor.casting.intent } } : undefined }])) };
   }
 
   isReady(id: string): boolean { return !this.outcome && Boolean(this.actors[id]?.side === 'player' && this.actors[id]?.ready); }
@@ -54,6 +74,7 @@ export class CombatRuntime {
     actor.remainingMs = actor.recoveryMs = Math.max(1, Math.min(5000, Number.isFinite(ms) ? ms : COMBAT_TIMING.enemyRecoveryMs));
     actor.ready = false;
     delete actor.casting;
+    delete actor.queued;
   }
 
   private syncActors(initial = false): void {
@@ -73,9 +94,11 @@ export class CombatRuntime {
   }
 
   private settle(): void {
+    const before = this.enemies;
     const phased = activateEnemyPhases(this.enemies);
     this.enemies = phased.enemies;
     this.feedback.logs.push(...phased.logs);
+    this.feedback.events!.push(...transitionEvents(this.player, before, this.player, phased.enemies));
     if (phased.logs.length) this.changed = true;
     if (phased.logs.length) this.feedback.vfx.push({ type: 'DARK', targetId: this.enemies.find(e => e.definitionId === 'the_necromancer')?.id });
     const theft = settleDefeatedEnemyTheft(this.enemies);
@@ -93,7 +116,7 @@ export class CombatRuntime {
 
   private clearGuards(): void {
     this.player = { ...this.player, party: this.player.party.map(c => ({ ...c, isDefending: false })) };
-    for (const actor of Object.values(this.actors)) actor.guardUntil = 0;
+    for (const actor of Object.values(this.actors)) { actor.guardUntil = 0; delete actor.queued; }
   }
 
   private consumeReadyStuns(): void {
@@ -116,6 +139,7 @@ export class CombatRuntime {
       this.enemies = this.enemies.map(e => e.id === enemy.id ? planEnemyIntent(e, this.enemies, this.player.scrap, this.random) : e);
       this.recover(actor, COMBAT_TIMING.interruptRecoveryMs);
       this.feedback.logs.push(`${enemy.name}'s ${label} is interrupted!`);
+      this.feedback.events!.push({ kind: 'interrupt', targetId: enemy.id });
       this.feedback.vfx.push({ type: 'DEBUFF', targetId: enemy.id });
       this.changed = true;
     }
@@ -124,17 +148,23 @@ export class CombatRuntime {
   act(command: CombatCommand): CombatUpdate {
     if (this.outcome) return this.drain();
     this.consumeReadyStuns();
-    if (!this.isReady(command.actorId)) return this.drain();
+    if (!this.isReady(command.actorId)) { this.feedback.logs.push('Still recovering.'); return this.drain(); }
+    this.applyCommand(command);
+    return this.drain();
+  }
+
+  private applyCommand(command: CombatCommand): void {
     const result = resolvePlayerCombatAction(this.player, this.enemies, command, this.random);
     this.feedback.logs.push(...result.logs); this.feedback.vfx.push(...result.vfx); this.feedback.sound = result.sound;
-    if (!result.accepted) return this.drain();
+    if (!result.accepted) return;
+    this.feedback.events!.push(...(result.events ?? []), ...transitionEvents(this.player, this.enemies, result.player, result.enemies));
     this.player = result.player; this.enemies = result.enemies; this.changed = true;
     const actor = this.actors[command.actorId];
     this.recover(actor, result.recoveryMs);
     if (command.type === 'defend') actor.guardUntil = this.clock.elapsedMs + COMBAT_TIMING.guardMs;
     if (result.escaped) { this.outcome = 'escaped'; this.clearGuards(); }
     else { this.settle(); this.interruptCasts(); }
-    return this.drain();
+    return;
   }
 
   /** Pure simulated elapsed time; fixed substeps keep guard/cast ordering consistent. */
@@ -175,8 +205,30 @@ export class CombatRuntime {
         }
       }
       this.settle();
+      this.runReadyCommands();
     }
     return this.drain();
+  }
+
+
+  private runReadyCommands(): void {
+    if (this.outcome || this.clock.paused) return;
+    for (const actor of Object.values(this.actors)) {
+      if (this.outcome || actor.side !== 'player' || !actor.ready || !this.actors[actor.actorId]) continue;
+      const queued = actor.queued;
+      if (queued) {
+        delete actor.queued;
+        // A buffered offensive skill must keep its chosen living target; never redirect a paid skill.
+        const hero = this.player.party.find(c => c.id === actor.actorId)!;
+        const skill = queued.type === 'skill' ? hero.skills.find(s => s.id === queued.id) : undefined;
+        if (skill && (skill.type === 'HEAL' || skill.type === 'BUFF' || skill.id === 'soul_pact' || this.enemies.some(e => e.id === queued.targetId && e.hp > 0))) this.applyCommand(queued);
+        else this.feedback.logs.push('Buffered skill cancelled: target unavailable.');
+        continue;
+      }
+      if (this.control.autoBasic && actor.actorId !== this.control.activeActorId && this.enemies.some(e => e.id === this.control.targetId && e.hp > 0)) {
+        this.applyCommand({ type: 'attack', actorId: actor.actorId, targetId: this.control.targetId });
+      }
+    }
   }
 
   private readyPlayer(actor: CombatActorRuntime): void {
@@ -184,7 +236,7 @@ export class CombatRuntime {
     const stunned = character.statusEffects.some(e => e.type === 'STUN');
     const status = resolveStatusTurn(character.stats.hp, character.stats.maxHp, character.statusEffects);
     this.player = { ...this.player, party: this.player.party.map(c => c.id === actor.actorId ? { ...c, stats: { ...c.stats, hp: status.hp }, statusEffects: status.statusEffects } : c) };
-    status.ticks.forEach(tick => { this.feedback.logs.push(`${character.name}: ${tick.type} ${tick.value}.`); this.feedback.vfx.push({ type: tick.type === 'POISON' ? 'POISON' : tick.type === 'BURN' ? 'FIREBALL' : 'HEAL', targetId: character.id }); });
+    status.ticks.forEach(tick => { this.feedback.events!.push({ kind: tick.type === 'REGEN' ? 'heal' : tick.type === 'POISON' ? 'poison' : 'burn', targetId: character.id, amount: tick.value }); this.feedback.logs.push(`${character.name}: ${tick.type} ${tick.value}.`); this.feedback.vfx.push({ type: tick.type === 'POISON' ? 'POISON' : tick.type === 'BURN' ? 'FIREBALL' : 'HEAL', targetId: character.id }); });
     this.changed = true;
     if (status.defeated) { this.feedback.logs.push(`${character.name} collapsed!`); delete this.actors[character.id]; }
     else if (stunned) { this.feedback.logs.push(`${character.name} is stunned!`); this.recover(actor, COMBAT_TIMING.classRecoveryMs[character.classType]); }
@@ -197,6 +249,7 @@ export class CombatRuntime {
     // Restore the exact announced intent even when a boss phase changed while casting.
     this.enemies = this.enemies.map(e => e.id === actor.actorId ? { ...e, intent: cast.intent } : e);
     const result = resolveEnemyIntent(actor.actorId, this.enemies, this.player.party, this.player.scrap, this.random);
+    this.feedback.events!.push(...result.events, ...transitionEvents(this.player, this.enemies, { ...this.player, party: result.party }, result.enemies));
     this.enemies = result.enemies;
     this.player = { ...this.player, party: result.party, scrap: result.scrap };
     this.feedback.logs.push(...result.logs); this.feedback.vfx.push(...result.vfx);
@@ -209,7 +262,7 @@ export class CombatRuntime {
 
   private drain(): CombatUpdate {
     const update = { ...this.feedback, changed: this.changed, player: this.player, enemies: this.enemies, outcome: this.outcome };
-    this.feedback = { logs: [], vfx: [] }; this.changed = false;
+    this.feedback = { logs: [], vfx: [], events: [] }; this.changed = false;
     return update;
   }
 }
