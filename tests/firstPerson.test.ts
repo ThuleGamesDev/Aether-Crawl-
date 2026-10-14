@@ -89,4 +89,17 @@ describe('first-person exploration', () => {
     map[2][3] = TileType.WALL;
     expect(getLookInteraction(map, decorations, { x: 2.5, y: 2.5, angle: 0 })).toBeNull();
   });
+
+  it('blocks movement at a closed door while keeping it interactable', () => {
+    const map = openMap();
+    const decorations = Array.from({ length: 5 }, () => Array(5).fill(0));
+    map[2][3] = TileType.DOOR;
+
+    expect(canOccupyPosition(map, 2.83, 2.5)).toBe(false);
+    expect(getLookInteraction(map, decorations, { x: 2.5, y: 2.5, angle: 0 }))
+      .toEqual({ kind: 'door', x: 3, y: 2 });
+
+    map[2][3] = TileType.EMPTY;
+    expect(canOccupyPosition(map, 2.83, 2.5)).toBe(true);
+  });
 });

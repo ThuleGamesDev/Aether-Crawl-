@@ -79,8 +79,15 @@ Old saves lacking floor state keep their map, decorations and cleared path. A de
 - `DungeonDecision.tsx`, existing `RoomEventModal.tsx`, Viewport and Minimap: presentation.
 - App: level generation/load/save and encounter/reward coordination; room policy is outside App.
 
-115 authored cases pass across ten test files using the available Node assertion/mock adapter (21 new dungeon cases), including 1,000 seeded first-five-floor reachability/placement checks. Application and test sources typecheck with available TypeScript 7.0.2 (temporary Vitest declaration for test checking). The browser production bundle builds with available Vite 8.3.3 and a temporary Tailwind 4 compatibility override. The exact declared npm versions and actual Vitest remain unavailable; their standard commands still require a dependency-enabled environment. Temporary adapters/configs/binaries/captures are excluded from the PR.
+## Floors 1–5 hardening status (2026-10-15)
 
-Desktop and emulated touch smoke tests exercise the actual app/save path with small saved fixtures: E choices, cache reload/no duplicates, one-use meditation, non-modal secret reveal, key/open/claim, shrine curse consumption, elite victory/reward, guardian victory without forced descent, explicit next floor, hazard chance/results. Choice/clue and viewport captures are inspected. Physical-device pacing, first-run difficulty and reward economy need playtesting with ordinary starting parties; synthetic smoke characters test integration, not balance.
+The first-person collision audit found that ordinary `DOOR` tiles looked closed and had an E interaction, but movement treated them as floor. Closed doors now share the blocking-tile rule used by floor reachability; the look ray still selects a door so E can open it. Mobile stick/look inputs reset and unmount while a room decision or map overlay is open, preventing a held touch from resuming movement after the overlay closes.
 
-Next: playtest an ordinary level 1–5 expedition on a phone, measure route use, key/scrap scarcity, rest timing and elite avoidance; adjust the small budgets/prices before adding more events or spatial combat.
+Validation on this branch:
+
+- `npm test`: 116/116 tests pass across ten suites, including 1,000 seeded Floors 1–5 map checks and the closed-door regression case.
+- `npm run typecheck`: pass. This also fixes a test cleanup callback whose returned `VitestUtils` value broke the repository-wide check.
+- `npm run build`: pass with Vite 5.4.21 and TypeScript 5.9.3.
+- Full browser/manual run: not performed. No local Chromium is installed, and the remote browser cannot reach this isolated local dev server. The first-run Floors 1–5 flow, touch behavior on a real device, pacing and reward balance remain open playtest items.
+
+The earlier saved-fixture smoke checks recorded for Dungeon Gameplay 2.0 are useful subsystem evidence, but do not replace a normal new-party expedition through the fifth-floor guardian. See [the roadmap](ROADMAP.md) for the remaining acceptance work and the deferred combat sequence.

@@ -8,6 +8,7 @@ interface MobileControlsProps {
   onLook: (deltaX: number) => void;
   onInteract: () => void;
   onAction: (action: string) => void;
+  inputBlocked: boolean;
 }
 
 const idleMove = { forward: 0, strafe: 0 };
@@ -18,6 +19,7 @@ const MobileControls: React.FC<MobileControlsProps> = ({
   onLook,
   onInteract,
   onAction,
+  inputBlocked,
 }) => {
   const [stick, setStick] = useState(idleMove);
   const stickPointerRef = useRef<number | null>(null);
@@ -31,9 +33,10 @@ const MobileControls: React.FC<MobileControlsProps> = ({
     lookPointerRef.current = null;
     setStick(idleMove);
     moveCallbackRef.current(idleMove);
-  }, [phase]);
+  }, [phase, inputBlocked]);
 
   const updateStick = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (inputBlocked || phase !== 'EXPLORE') return;
     const rect = event.currentTarget.getBoundingClientRect();
     const radius = rect.width * 0.34;
     const dx = event.clientX - stickCenterRef.current.x;
@@ -57,7 +60,7 @@ const MobileControls: React.FC<MobileControlsProps> = ({
 
   return (
     <div className="pointer-events-none absolute inset-0 z-30 select-none lg:hidden">
-      {phase === 'EXPLORE' && (
+      {phase === 'EXPLORE' && !inputBlocked && (
         <>
           <div
             aria-label="Drag to look around"

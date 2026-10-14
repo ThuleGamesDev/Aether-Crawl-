@@ -16,7 +16,7 @@ Biomes are selected by dungeon level: Stone Dungeon (1–5), Moss (6–10), Cata
 
 ## Controls
 
-**Desktop:** click the viewport to capture the mouse, then use WASD to move and strafe. Mouse movement turns freely; arrow keys turn if you prefer keyboard-only aiming. Press E to use a nearby door, prop, or exit; I opens or closes Inventory, C/K opens party stats, Tab opens the map, and Escape releases the pointer or opens the menu. Mouse sensitivity is adjustable in Options. Movement stops at walls and slides along them.
+**Desktop:** click the viewport to capture the mouse, then use WASD to move and strafe. Mouse movement turns freely; arrow keys turn if you prefer keyboard-only aiming. Press E to open a nearby closed door, use a prop, or challenge/descend at an exit. Closed doors block movement until opened. I opens or closes Inventory, C/K opens party stats, Tab opens the map, and Escape releases the pointer or opens the menu. Mouse sensitivity is adjustable in Options. Movement stops at walls and slides along them.
 
 **Mobile:** drag the left virtual stick to move and drag the right half of the view to look. Large touch buttons open Inventory, Skills, Party, Crafting, and the map; E interacts. Turn the device sideways for more room where possible.
 
@@ -71,6 +71,8 @@ public/assets/
 docs/                      Art direction and asset pipeline
 tests/                     Dungeon, gameplay, and asset registry tests
 ```
+
+See [the current roadmap and vertical-slice status](docs/ROADMAP.md) for the Floors 1–5 acceptance checklist and deferred next steps.
 
 ## Adding a new enemy
 
