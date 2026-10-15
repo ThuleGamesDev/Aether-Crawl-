@@ -2,7 +2,9 @@
 
 ## Visual identity
 
-Aether Crawl uses a dark fantasy, first-person dungeon-crawler look with the chunky silhouettes and textured surfaces of early 1990s RPGs. The target is a lightly stylized pixel-painted image: readable at the game's 800 × 450 render resolution, with hand-painted wear, hard-edged clusters, and restrained glow.
+Aether Crawl is moving toward a detailed, dark fantasy painted first-person look: worn stone, deep green-black shadows, warm torchlight, leather gloves and large readable weapons. Floors 1–5 walls/floor/gate and the sword/shield foreground have been converted. Smooth sampling and perspective ground projection preserve detail on desktop and narrow screens. Existing monsters, other weapons, props and later biomes still use the earlier pixel-painted library; their conversion is open.
+
+The current renderer is a grid-based 2.5D raycaster. Painted arch textures suggest masonry depth, but do not create curved geometry or outdoor castles. Supplied screenshot editor symbols and browser chrome are not game UI. See [the implementation notes](INITIATIVE_AND_PAINTED_LOOK.md).
 
 The references are genre touchstones only. Do not reproduce a recognizable character, level, interface, or asset from another game.
 
@@ -58,4 +60,4 @@ Each biome needs its own surface structure and material cues. A palette swap on 
 - VFX are short, high-contrast accents that do not obscure the target or combat UI.
 - Use transparent backgrounds and a compact center of mass.
 - Keep each effect distinct by shape as well as color: slashes, starbursts, flames, clouds, sigils, wards, stun stars, and ice shards should read differently.
-- Effects should fade through canvas opacity while the underlying art remains a static PNG.
+- Effects should fade through canvas opacity while the underlying art remains a static PNG or WebP.

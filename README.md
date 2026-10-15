@@ -20,7 +20,7 @@ Biomes are selected by dungeon level: Stone Dungeon (1–5), Moss (6–10), Cata
 
 **Mobile:** drag the left virtual stick to move and drag the right half of the view to look. Large touch buttons open Inventory, Skills, Party, Crafting, and the map; E interacts. Turn the device sideways for more room where possible.
 
-Combat uses independent party/enemy action timers. Use Attack, timed Defend, Skills, potions or Flee when the selected hero is READY. Space toggles tactical pause; 1–4/F1–F4 or READY party cards select a hero. Touch has Party and Pause buttons. Skill/Item/Party selection slows combat to 20%. Enemy badges show announced casts and whether Stun can interrupt them. Click an enemy sprite to target it. Save after the encounter; Menu suspends combat.
+Combat uses independent party/enemy action timers. Initiative determines initial readiness and recovery; light heroes and creatures act faster, while armor and shields add load. Effective INIT is visible in combat, Inventory and Party Stats. Use Attack, timed Defend, Skills, potions or Flee when the selected hero is READY. Space toggles tactical pause; 1–4/F1–F4 or READY party cards select a hero. Touch has Party and Pause buttons. Skill/Item/Party selection slows combat to 20%. Enemy badges show announced casts and whether Stun can interrupt them. Click an enemy sprite to target it. Save after the encounter; Menu suspends combat.
 
 ## Requirements and setup
 
@@ -49,9 +49,11 @@ npm run preview
 
 ## Static asset pipeline
 
-All production art is committed under `public/assets/` as individual PNG files. The runtime only loads those files through `services/assetLoader.ts`; it does not call a generation service or create image data URLs. The title screen waits for the first floor's biome, enemies, weapons, and combat effects. Before a saved floor or the next biome appears, its required local assets are loaded and cached. A missing asset is reported visibly instead of silently replaced by generic art.
+All production art is committed under `public/assets/` as individual PNG and WebP files. The runtime only loads those files through `services/assetLoader.ts`; it does not call a generation service or create image data URLs. The title screen waits for the first floor's biome, enemies, weapons, and combat effects. Before a saved floor or the next biome appears, its required local assets are loaded and cached. A missing asset is reported visibly instead of silently replaced by generic art.
 
-The assets use a cohesive, dark fantasy pixel-painted style with distinct materials and accent colors for each biome. Transparent enemy, hand, prop, light, and VFX sprites are PNGs with alpha. Environment surfaces are opaque PNG tiles.
+Floors 1–5 now use detailed painted stone walls, perspective floors and an arched gate, with larger painted sword/shield foregrounds inspired by the supplied dark fantasy reference. Other weapons, creatures, props and later biomes retain the existing pixel-painted assets. This remains a 2.5D raycaster; curved corridors and an outdoor castle scene are not implemented. Transparent sprites retain real alpha in PNG or WebP.
+
+See [initiative, art provenance and browser verification](docs/INITIATIVE_AND_PAINTED_LOOK.md) for the current rules, checks and limitations.
 
 See [the art direction](docs/ART_DIRECTION.md) for visual rules and [the asset pipeline](docs/ASSET_PIPELINE.md) for filenames, registry updates, and addition steps.
 

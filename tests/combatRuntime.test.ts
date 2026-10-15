@@ -3,38 +3,39 @@ import type { Character, Enemy, Player, Skill } from '../types';
 import { CombatRuntime } from '../services/combatRuntime';
 import { COMBAT_TIMING } from '../data/combatTiming';
 import { createEnemyById } from '../services/gameLogic';
+import { initiativeDuration } from '../services/initiative';
 import { createStatusEffect } from '../services/combat';
 
 const stun: Skill = { id: 'stun', name: 'Interrupt', type: 'DAMAGE', targetType: 'SINGLE', cost: 2, basePower: 0, scaling: 0, scalingStat: 'INT', description: '', level: 1, maxLevel: 1, vfxType: 'DEBUFF', effect: { type: 'STUN', duration: 1, chance: 1, val: 0 } };
 const hero = (id = 'hero', classType: Character['classType'] = 'PALADIN'): Character => ({
-  id, name: id, classType, stats: { hp: 10000, maxHp: 10000, mp: 100, maxMp: 100, str: 10, dex: 0, int: 8, xp: 0, level: 1 },
+  id, name: id, classType, stats: { initiative: classType === 'ROGUE' ? 14 : 10, hp: 10000, maxHp: 10000, mp: 100, maxMp: 100, str: 10, dex: 0, int: 8, xp: 0, level: 1 },
   equipment: { weapon: null, armor: null, offhand: null, accessory: null }, skills: [stun], statusEffects: [], isDefending: false,
 });
 const party = (characters = [hero()]): Player => ({ pos: { x: 1, y: 1 }, dir: 'E', party: characters, inventory: [], scrap: 10 });
-const rat = (): Enemy => ({ ...createEnemyById('giant_rat'), hp: 10000, maxHp: 10000 });
-const heavy = (interruptible = true): Enemy => ({ ...createEnemyById('orc_brute'), hp: 10000, maxHp: 10000, combatFlags: ['orc_wind_up'], intent: { type: 'HEAVY_ATTACK', label: 'Crushing Blow', shortLabel: 'Crush', icon: '💥', abilityId: 'orc_crushing_blow', castTimeMs: 2000, recoveryMs: 2200, interruptible } });
+const rat = (): Enemy => ({ ...createEnemyById('giant_rat'), initiative: 10, hp: 10000, maxHp: 10000 });
+const heavy = (interruptible = true): Enemy => ({ ...createEnemyById('orc_brute'), initiative: 10, hp: 10000, maxHp: 10000, combatFlags: ['orc_wind_up'], intent: { type: 'HEAVY_ATTACK', label: 'Crushing Blow', shortLabel: 'Crush', icon: '💥', abilityId: 'orc_crushing_blow', castTimeMs: 2000, recoveryMs: 2200, interruptible } });
 
 describe('Combat 2.5A actor timeline', () => {
   it('loads party and enemy timers independently and never auto-attacks for READY players', () => {
     const enemy = rat(); const runtime = new CombatRuntime(party([hero(), hero('rogue', 'ROGUE')]), [enemy], () => 0.5);
-    runtime.advance(450);
-    expect(runtime.isReady('hero')).toBe(true); expect(runtime.isReady('rogue')).toBe(false);
-    expect(runtime.actors[enemy.id].remainingMs).toBe(950);
+    runtime.advance(1200);
+    expect(runtime.isReady('hero')).toBe(false); expect(runtime.isReady('rogue')).toBe(true);
+    expect(runtime.actors[enemy.id].remainingMs).toBe(200);
     runtime.advance(200);
-    expect(runtime.isReady('rogue')).toBe(true); expect(runtime.enemies[0].hp).toBe(10000);
+    expect(runtime.isReady('hero')).toBe(true); expect(runtime.enemies[0].hp).toBe(10000);
   });
 
   it('consumes an action atomically and blocks double-clicks until its own recovery ends', () => {
     const enemy = rat(); const runtime = new CombatRuntime(party([hero(), hero('rogue', 'ROGUE')]), [enemy], () => 0.5);
-    runtime.advance(650);
+    runtime.advance(1400);
     runtime.act({ type: 'attack', actorId: 'hero', targetId: enemy.id });
     expect(runtime.enemies[0].hp).toBe(9990); expect(runtime.isReady('hero')).toBe(false);
     runtime.act({ type: 'attack', actorId: 'hero', targetId: enemy.id });
     expect(runtime.enemies[0].hp).toBe(9990);
     runtime.act({ type: 'attack', actorId: 'rogue', targetId: enemy.id });
-    expect(runtime.actors.rogue.recoveryMs).toBe(720);
-    runtime.advance(720); expect(runtime.isReady('rogue')).toBe(true); expect(runtime.isReady('hero')).toBe(false);
-    runtime.advance(180); expect(runtime.isReady('hero')).toBe(true);
+    expect(runtime.actors.rogue.recoveryMs).toBe(750);
+    runtime.advance(750); expect(runtime.isReady('rogue')).toBe(true); expect(runtime.isReady('hero')).toBe(false);
+    runtime.advance(150); expect(runtime.isReady('hero')).toBe(true);
   });
 
   it('freezes recovery, casts and guard clocks during pause while allowing menu commands', () => {
@@ -49,8 +50,8 @@ describe('Combat 2.5A actor timeline', () => {
   it('scales the same timers to 20% without affecting readiness rules', () => {
     const runtime = new CombatRuntime(party(), [rat()], () => 0.5);
     runtime.setSlowdown(true); runtime.advance(1000);
-    expect(runtime.clock.elapsedMs).toBe(200); expect(runtime.actors.hero.remainingMs).toBe(250);
-    runtime.setSlowdown(false); runtime.advance(250); expect(runtime.isReady('hero')).toBe(true);
+    expect(runtime.clock.elapsedMs).toBe(200); expect(runtime.actors.hero.remainingMs).toBe(1200);
+    runtime.setSlowdown(false); runtime.advance(1200); expect(runtime.isReady('hero')).toBe(true);
   });
 
   it('holds the advertised intent through the complete cast, then resolves exactly once', () => {
@@ -102,12 +103,12 @@ describe('Combat 2.5A actor timeline', () => {
 
   it('removes defeated actors immediately, latches victory, and does not grant repeated actions', () => {
     const enemy = { ...rat(), hp: 1 }; const runtime = new CombatRuntime(party(), [enemy], () => 0.5);
-    runtime.advance(450); const victory = runtime.act({ type: 'attack', actorId: 'hero' });
+    runtime.advance(1400); const victory = runtime.act({ type: 'attack', actorId: 'hero' });
     expect(victory.outcome).toBe('victory'); expect(runtime.actors[enemy.id]).toBeUndefined();
     expect(runtime.advance(10000).logs).toHaveLength(0);
     const poisoned = hero(); poisoned.stats.hp = 1; poisoned.statusEffects = [createStatusEffect('POISON', 1, 5)];
     const defeat = new CombatRuntime(party([poisoned]), [rat()]);
-    expect(defeat.advance(450).outcome).toBe('defeat'); expect(defeat.actors.hero).toBeUndefined();
+    expect(defeat.advance(1400).outcome).toBe('defeat'); expect(defeat.actors.hero).toBeUndefined();
   });
 
   it('initializes summoned actors with their own delayed recovery and preserves the enemy cap', () => {
@@ -116,7 +117,7 @@ describe('Combat 2.5A actor timeline', () => {
     expect(result.enemies).toHaveLength(3);
     const summons = runtime.enemies.filter(e => e.isSummoned);
     expect(summons).toHaveLength(2);
-    summons.forEach(e => { expect(runtime.actors[e.id].remainingMs).toBe(1400); expect(e.intent).toBeDefined(); expect(e.xpReward).toBe(0); });
+    summons.forEach(e => { expect(runtime.actors[e.id].remainingMs).toBe(initiativeDuration(1400, e.initiative!)); expect(e.intent).toBeDefined(); expect(e.xpReward).toBe(0); });
     expect(runtime.advance(0).logs).toHaveLength(0);
   });
 
@@ -133,7 +134,7 @@ describe('Combat 2.5A actor timeline', () => {
     const p = party(); p.party[0].stats.mp = 0;
     p.inventory = [{ id: 'potion_hp', name: 'Health', description: '', type: 'POTION', value: 30, quantity: 1 }];
     p.party[0].stats.hp = 9900;
-    const runtime = new CombatRuntime(p, [rat()], () => 0.5); runtime.advance(450);
+    const runtime = new CombatRuntime(p, [rat()], () => 0.5); runtime.advance(1400);
     runtime.act({ type: 'skill', id: 'stun', actorId: 'hero' }); expect(runtime.isReady('hero')).toBe(true);
     runtime.act({ type: 'item', id: 'missing', actorId: 'hero' }); expect(runtime.isReady('hero')).toBe(true);
     runtime.act({ type: 'item', id: 'potion_hp', actorId: 'hero' }); expect(runtime.player.party[0].stats.hp).toBe(9930);
@@ -141,7 +142,7 @@ describe('Combat 2.5A actor timeline', () => {
   });
 
   it('blocks a READY hero newly stunned by an enemy without double-ticking other statuses', () => {
-    const runtime = new CombatRuntime(party(), [rat()], () => 0.5); runtime.advance(450);
+    const runtime = new CombatRuntime(party(), [rat()], () => 0.5); runtime.advance(1400);
     runtime.player.party[0].statusEffects = [createStatusEffect('STUN', 1, 0), createStatusEffect('POISON', 2, 3)];
     runtime.act({ type: 'attack', actorId: 'hero' });
     expect(runtime.isReady('hero')).toBe(false); expect(runtime.enemies[0].hp).toBe(10000);
@@ -151,18 +152,18 @@ describe('Combat 2.5A actor timeline', () => {
   it('preserves ally healing and initializes a revived party member with a fresh gauge', () => {
     const healer = hero(); healer.skills = [{ ...stun, id: 'heal', name: 'Heal', type: 'HEAL', targetType: 'ALLY', basePower: 30, effect: undefined }];
     const fallen = hero('fallen'); fallen.stats.hp = 0;
-    const runtime = new CombatRuntime(party([healer, fallen]), [rat()], () => 0.5); runtime.advance(450);
+    const runtime = new CombatRuntime(party([healer, fallen]), [rat()], () => 0.5); runtime.advance(1400);
     runtime.act({ type: 'skill', id: 'heal', actorId: 'hero' });
     expect(runtime.player.party[1].stats.hp).toBe(30);
-    expect(runtime.actors.fallen.ready).toBe(false); expect(runtime.actors.fallen.remainingMs).toBe(570);
+    expect(runtime.actors.fallen.ready).toBe(false); expect(runtime.actors.fallen.remainingMs).toBe(1400);
   });
 
   it('retains HP-for-MP skill costs and prevents invalid health sacrifices', () => {
     const caster = hero(); caster.skills = [{ ...stun, id: 'soul_pact', name: 'Soul Pact', type: 'BUFF', targetType: 'SELF', cost: 0, effect: undefined }]; caster.stats.mp = 0;
-    const runtime = new CombatRuntime(party([caster]), [rat()], () => 0.5); runtime.advance(450);
+    const runtime = new CombatRuntime(party([caster]), [rat()], () => 0.5); runtime.advance(1400);
     runtime.act({ type: 'skill', id: 'soul_pact', actorId: 'hero' });
     expect(runtime.player.party[0].stats.hp).toBe(9980); expect(runtime.player.party[0].stats.mp).toBe(40);
-    const low = { ...caster, stats: { ...caster.stats, hp: 20 } }; const blocked = new CombatRuntime(party([low]), [rat()]); blocked.advance(450);
+    const low = { ...caster, stats: { ...caster.stats, hp: 20 } }; const blocked = new CombatRuntime(party([low]), [rat()]); blocked.advance(1400);
     blocked.act({ type: 'skill', id: 'soul_pact', actorId: 'hero' }); expect(blocked.player.party[0].stats.hp).toBe(20); expect(blocked.isReady('hero')).toBe(true);
   });
 

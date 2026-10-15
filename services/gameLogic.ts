@@ -1,3 +1,4 @@
+import { normalizePlayerInitiative } from './initiative';
 
 import { isValidFloorState } from './dungeonSave';
 import { Item, HighScore, SaveData, Enemy } from '../types';
@@ -55,12 +56,14 @@ export const generateLoot = (level: number, isBoss = false): Item | null => {
         };
     } else if (rand < 0.65) {
         // Armor
+        const armorWeight = (['LIGHT', 'MEDIUM', 'HEAVY'] as const)[Math.floor(Math.random() * 3)];
         return {
+            armorWeight,
             id: generatedItemId(`armor_t${tier}`),
-            name: `Armor +${tier}`,
+            name: `${armorWeight[0]}${armorWeight.slice(1).toLowerCase()} Armor +${tier}`,
             description: 'Protective gear.',
             type: 'ARMOR',
-            value: 2 + tier,
+            value: (armorWeight === 'LIGHT' ? 1 : armorWeight === 'HEAVY' ? 4 : 2) + tier,
             icon: '👕',
             quantity: 1
         };
@@ -120,7 +123,7 @@ export const saveHighScore = (score: HighScore) => {
 export const saveGame = (data: SaveData) => {
     try {
         if (data.floor?.pendingEncounterId) return false;
-        const player = normalizePlayerWeaponVisuals(data.player);
+        const player = normalizePlayerInitiative(normalizePlayerWeaponVisuals(data.player));
         const savedPlayer = {
             ...player,
             transform: normalizePlayerTransform(player.transform, player.pos, player.dir),
@@ -154,7 +157,7 @@ export const loadGame = (): SaveData | null => {
         for (const room of parsed.floor?.rooms ?? []) if (room.gate && (room.unlocked || room.type === 'SECRET' && room.discovered)) restoredMap[room.gate.y][room.gate.x] = 0;
         return {
             ...parsed,
-            player: normalizePlayerWeaponVisuals({
+            player: normalizePlayerInitiative(normalizePlayerWeaponVisuals({
                 ...parsed.player,
                 pos: parsed.player.pos ?? { x: 1, y: 1 },
                 dir: parsed.player.dir ?? 'E',
@@ -162,7 +165,7 @@ export const loadGame = (): SaveData | null => {
                 party: Array.isArray(parsed.player.party) ? parsed.player.party : [],
                 inventory: Array.isArray(parsed.player.inventory) ? parsed.player.inventory : [],
                 scrap: Number.isFinite(parsed.player.scrap) ? parsed.player.scrap : 0,
-            } as SaveData['player']),
+            } as SaveData['player'])),
             map: restoredMap,
             decorations: Array.isArray(parsed.decorations) ? parsed.decorations : [],
             explored: Array.isArray(parsed.explored) ? parsed.explored : [],
@@ -198,6 +201,7 @@ const instantiateEnemy = (
     return {
         id: `${isBoss ? 'boss' : isSummoned ? 'summon' : 'enemy'}_${definition.id}_${++enemySequence}`,
         name: definition.name,
+        initiative: definition.initiative,
         hp,
         maxHp: hp,
         damage: Math.floor(definition.damage * scale),

@@ -63,6 +63,15 @@ export const normalizePlayerTransform = (
   };
 };
 
+/** Face an open route on a fresh floor instead of presenting the player with a wall. */
+export function spawnFacingAngle(map: number[][], position: { x: number; y: number }): number {
+  for (const [dx, dy, angle] of [[1, 0, 0], [0, 1, Math.PI / 2], [-1, 0, Math.PI], [0, -1, Math.PI * 1.5]]) {
+    const tile = map[position.y + dy]?.[position.x + dx];
+    if (tile !== undefined && !isClosedTile(tile)) return angle;
+  }
+  return 0;
+}
+
 export const normalizeMovementInput = (input: MovementInput): MovementInput => {
   let forward = Math.max(-1, Math.min(1, Number.isFinite(input.forward) ? input.forward : 0));
   let strafe = Math.max(-1, Math.min(1, Number.isFinite(input.strafe) ? input.strafe : 0));

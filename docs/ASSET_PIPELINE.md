@@ -4,7 +4,7 @@
 
 Every gameplay image is a static repository file under `public/assets/`. React and Canvas do not call an image-generation API, create image data URLs, or synthesize replacement textures. Required floor assets are preloaded through `services/assetLoader.ts` and cached as `HTMLImageElement` instances. Rendering reuses those instances.
 
-The title screen preloads the first floor's environment, possible enemies, player hands/weapons, and combat effects. A saved floor or new biome preloads its required environment and possible enemy sprites before it is shown. Already loaded assets are reused from the shared cache, so the full 25 MB registry is not downloaded before the first menu. A failed image load stops at a clear loading error; a missing image does not silently fall back to generic production art.
+The title screen preloads the first floor's environment, possible enemies, player hands/weapons, and combat effects. A saved floor or new biome preloads its required environment and possible enemy sprites before it is shown. Already loaded assets are reused from the shared cache, so the full asset registry is not downloaded before the first menu. A failed image load stops at a clear loading error; a missing image does not silently fall back to generic production art.
 
 ## Directory layout
 
@@ -27,9 +27,9 @@ public/assets/
 
 ## File and image rules
 
-- Use lowercase kebab-case filenames with `.png` extensions.
-- Environment wall, floor, ceiling, door, and exit files are opaque square tiles. Current crops are approximately 404 × 404 pixels.
-- Enemy and boss sprites, hands/weapons, lights, props, and VFX use transparent PNGs with real alpha.
+- Use lowercase kebab-case filenames with `.png` or `.webp` extensions. Painted replacements live in `environments/dungeon/painted/` and `hands/painted/`.
+- Environment wall, floor, ceiling, door, and exit files are opaque square tiles. Legacy crops are approximately 404 × 404 pixels; painted environment replacements are 1254 × 1254.
+- Enemy and boss sprites, hands/weapons, lights, props, and VFX use PNG or WebP with real alpha.
 - Keep cutout sprites centered and fully inside their image bounds. Leave visual padding so canvas scaling and movement bob do not clip the silhouette.
 - Do not add Base64 strings, inline raster data, huge inline SVGs, CSS-shaped VFX, or generated fallback textures to the runtime.
 - Generated source sheets are cropped into individual named files before integration; the game reads only the finished files.
@@ -40,14 +40,14 @@ public/assets/
 
 - `biomeVisuals` maps a `BiomeId` to its environment surfaces, light, common props, themed props, and ambient tint.
 - `enemyVisuals` maps stable enemy `visualId` values to sprite files and render scale.
-- `weaponVisuals`, `shieldVisual`, `propVisuals`, and `vfxVisuals` map their gameplay/render keys to static PNG paths.
+- `weaponVisuals`, `shieldVisual`, `propVisuals`, and `vfxVisuals` map their gameplay/render keys to static image paths.
 - `getLevelAssetPaths(level)` exposes the static files needed for a level; `collectAssetPaths()` returns the full unique list for completeness tests.
 
 Gameplay definitions refer to stable IDs, not file paths. Enemy stats and boss selection live in `data/enemies.ts`; sprite scale and paths live in `data/assetRegistry.ts`.
 
 ## Add and verify assets
 
-1. Add the final PNG to the matching directory with a stable filename.
+1. Add the final PNG or WebP to the matching directory with a stable filename.
 2. Add or update its registry entry in `data/assetRegistry.ts`.
 3. For enemies, add gameplay data in `data/enemies.ts` and refer to the registry key with `visualId`.
 4. For biomes, populate wall, floor, ceiling, door, exit, light, and both themed prop slots.
@@ -58,3 +58,7 @@ Gameplay definitions refer to stable IDs, not file paths. Enemy stats and boss s
 ## Saves
 
 Save files contain gameplay data only. They do not contain static asset paths, data URLs, image bytes, or cached visual objects. Weapon visual types are derived at runtime; legacy saves are migrated during load.
+
+## Painted reference pass
+
+Five images were generated at authoring time with the built-in image generator, then encoded to WebP at quality 85 with alpha quality 100. No runtime service is involved. Original image dimensions and transparency were preserved; this was format conversion only. The five registered replacements total about 1.9 MB. Old PNGs remain available as source history but are no longer registered for these slots. See [prompts and scope](INITIATIVE_AND_PAINTED_LOOK.md#art-provenance).

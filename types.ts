@@ -25,6 +25,8 @@ export enum TileType {
 }
 
 export interface Stats {
+  /** Base initiative; absent only in legacy saves. Equipment load is derived. */
+  initiative?: number;
   hp: number;
   maxHp: number;
   mp: number;
@@ -42,6 +44,7 @@ export interface Item {
   description: string;
   type: 'WEAPON' | 'ARMOR' | 'POTION' | 'SCROLL' | 'SHIELD' | 'ACCESSORY';
   value: number; // damage, armor, heal amount, or stat boost
+  armorWeight?: 'LIGHT' | 'MEDIUM' | 'HEAVY';
   statBonus?: 'STR' | 'DEX' | 'INT' | 'HP' | 'MP'; // For accessories
   icon?: string; 
   isEquipped?: boolean;
@@ -145,6 +148,7 @@ export interface Prop {
 }
 
 export interface Enemy {
+    initiative?: number;
     id: string; 
     name: string;
     hp: number;
