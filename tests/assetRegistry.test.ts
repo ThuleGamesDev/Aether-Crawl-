@@ -49,10 +49,10 @@ describe('static asset registry', () => {
 
   it('preloads the active floor set without downloading other biome surfaces up front', () => {
     const firstFloor = getLevelAssetPaths(1);
-    expect(firstFloor).toContain('/assets/environments/dungeon/wall.png');
+    expect(firstFloor).toContain('/assets/environments/dungeon/painted/wall.webp');
     expect(firstFloor).toContain('/assets/enemies/giant-rat.png');
     expect(firstFloor).toContain('/assets/enemies/dungeon-warden.png');
-    expect(firstFloor).toContain('/assets/hands/sword.png');
+    expect(firstFloor).toContain('/assets/hands/painted/sword.webp');
     expect(firstFloor).toContain('/assets/vfx/melee-hit.png');
     expect(firstFloor).not.toContain('/assets/environments/moss/wall.png');
     const startupBytes = firstFloor.reduce((total, path) => total + localAssetBytes(path), 0);

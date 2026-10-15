@@ -1,4 +1,4 @@
-# Combat System — 2.5B
+# Combat System — initiative timelines
 
 Combat uses one simulated clock and independent actor timelines. The player controls the active hero and the optional inactive-hero Auto Basic toggle, which defaults OFF. No automatic skills are present. Enemy Intents, existing damage/equipment rules, static assets, boss phases, XP and loot are retained. Enemy sprites remain presentation targets rather than navigable world actors.
 
@@ -18,9 +18,9 @@ Previous flow was party index 0 → 1 → 2 → all enemies → party index 0, w
 
 The clock stores `elapsedMs`, `timeScale` and `paused`. Delta time is applied in bounded 50 ms substeps; timers carry transition overflow so timing does not depend on render frequency. The browser bridge caps long frame deltas to 100 ms, drops hidden-tab catch-up and suspends on full options/map overlays. Timers do not advance while those overlays are open.
 
-Each runtime record contains actor ID/side, remaining recovery, recovery duration, readiness, guard expiry and optional cast. It stores no callbacks and is separate from Character/Enemy gameplay data. Initial party readiness is staggered from 450 ms; enemies start from 1400 ms. Summons receive their own initial timer and never act in the resolving summoner's event.
+Each runtime record contains actor ID/side, effective initiative, remaining recovery, recovery duration, readiness, guard expiry and optional cast. It stores no callbacks and is separate from Character/Enemy gameplay data. Heroes and enemies share a 1400 ms initial gauge, divided by their initiative speed; party position gives no timing bonus. Summons receive their own initial timer and never act in the resolving summoner's event.
 
-Base hero recovery: Barbarian/Paladin/Cleric 1000 ms, Rogue 800 ms, Ranger 900 ms, Monk 850 ms, Sorcerer/Necromancer 1100 ms. Attack uses 90%, Defend 105%, potion 95%, Flee 110%. Skills use a small policy for normal/heavy/AoE recovery or an optional `Skill.recoveryMs` override. DEX still affects existing damage/crit/defense arithmetic, not timeline speed.
+Base hero recovery is 1000 ms, divided by effective initiative speed. Class base initiative minus equipment load sets that speed; see [the initiative rules](INITIATIVE_AND_PAINTED_LOOK.md). Attack uses 90%, Defend 105%, potion 95%, Flee 110%. Skills use a small policy for normal/heavy/AoE recovery or an optional `Skill.recoveryMs` override. DEX still affects existing damage/crit/defense arithmetic, not timeline speed.
 
 ## Enemy Intents and casts
 
@@ -42,7 +42,7 @@ The viewport remains fullscreen. Party cards show READY or recovery seconds and 
 
 ## Interrupts and boss counterplay
 
-Accepted STUN cancels an interruptible live cast immediately, consumes one Stun cycle, clears the corresponding preparation flag, suppresses immediate repetition and applies 650 ms recovery. Unrelated poison/burn/regen effects are not ticked a second time by interruption. A newly stunned READY hero loses readiness and recovers instead of bypassing Stun with a click.
+Accepted STUN cancels an interruptible live cast immediately, consumes one Stun cycle, clears the corresponding preparation flag, suppresses immediate repetition and applies initiative-scaled 650 ms recovery. Unrelated poison/burn/regen effects are not ticked a second time by interruption. A newly stunned READY hero loses readiness and recovers instead of bypassing Stun with a click.
 
 An explicitly uninterruptible action completes even with Stun present. Ordinary enemy actions are interruptible unless explicitly disabled; boss actions require an authored interrupt flag. Bosses use ability-specific resistance where present: Soul Bolt 35%, Summon Dead 50%, Mass Raise 65%, with the established boss fallback otherwise. Bosses are not universally immune. Phase II activation is an instantaneous existing rule, not a newly invented cast; it preserves the currently announced cast and influences the next intent.
 

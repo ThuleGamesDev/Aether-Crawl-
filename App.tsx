@@ -1,3 +1,4 @@
+import { characterInitiative, CLASS_INITIATIVE, equipmentInitiativePenalty, initiativeSpeed } from './services/initiative';
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useDungeonGameplay } from './hooks/useDungeonGameplay';
@@ -24,7 +25,7 @@ import Minimap from './components/Minimap';
 import MobileControls from './components/MobileControls';
 import { Player, PlayerTransform, Character, TileType, GamePhase, LogEntry, BiomeId, Enemy, VFXEvent, VFXType, Item, HighScore, Perk, ClassType, Skill } from './types';
 import { CLASSES, MAP_SIZE, MASTER_SKILL_POOL } from './constants';
-import { DEFAULT_MOUSE_SENSITIVITY, MovementInput, angleToDirection, getLookInteraction, getTileCell, hasEnteredNewTile, moveFirstPerson, normalizeAngle, normalizePlayerTransform } from './services/firstPerson';
+import { DEFAULT_MOUSE_SENSITIVITY, MovementInput, angleToDirection, getLookInteraction, getTileCell, hasEnteredNewTile, moveFirstPerson, spawnFacingAngle, normalizeAngle, normalizePlayerTransform } from './services/firstPerson';
 
 const Modal: React.FC<{ title: string; onClose: () => void; children: React.ReactNode }> = ({ title, onClose, children }) => (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 backdrop-blur-sm p-3 md:p-6 animate-fadeIn">
@@ -314,7 +315,7 @@ const App: React.FC = () => {
       if (newMap[sy][sx] !== TileType.EMPTY) {
           for(let y=1; y<MAP_SIZE; y++) for(let x=1; x<MAP_SIZE; x++) if(newMap[y][x] === TileType.EMPTY) { sx=x; sy=y; break;}
       }
-      const nextTransform = { x: sx + 0.5, y: sy + 0.5, angle: transformRef.current.angle };
+      const nextTransform = { x: sx + 0.5, y: sy + 0.5, angle: spawnFacingAngle(newMap, { x: sx, y: sy }) };
       transformRef.current = nextTransform;
       lastProcessedCellRef.current = { x: sx, y: sy };
       encounterPendingRef.current = false;
@@ -561,7 +562,8 @@ const App: React.FC = () => {
 
   const startCombat = (isBoss = false, customEncounter?: Enemy[]) => {
       setPhase('COMBAT'); control.reset(); feedback.clear();
-      setActiveCharIndex(playerRef.current.party.findIndex(c => c.stats.hp > 0));
+      const fastest = playerRef.current.party.reduce((best, hero, index, party) => hero.stats.hp > 0 && (best < 0 || characterInitiative(hero) > characterInitiative(party[best])) ? index : best, -1);
+      setActiveCharIndex(Math.max(0, fastest));
       const encounter = customEncounter ?? (isBoss ? [createBoss(dungeonLevel, dungeonLevel % 5 === 0)] : createEnemyEncounter(dungeonLevel));
       const runtime = combat.start(dungeon.prepareEncounter(), encounter);
       playerRef.current = runtime.player; setPlayer(runtime.player);
@@ -784,7 +786,7 @@ const App: React.FC = () => {
                   return (
                       <button key={key} onClick={() => handleClassSelect(cKey)} className={`p-3 border rounded text-left transition-all ${isSelected ? 'bg-yellow-900 border-yellow-500 shadow-[0_0_10px_rgba(234,179,8,0.5)]' : 'bg-gray-800 border-gray-600 hover:bg-gray-700'}`}>
                           <div className="font-bold text-sm mb-1">{cls.name}</div>
-                          <div className="text-[10px] text-gray-400">{cls.description}</div>
+                          <div className="text-[10px] text-gray-400">{cls.description}</div><div className="mt-2 text-[10px] text-amber-200">Initiative {cls.stats.initiative ?? CLASS_INITIATIVE[cKey]}</div>
                       </button>
                   );
               })}
@@ -1174,7 +1176,17 @@ const App: React.FC = () => {
       )}
 
       {/* Modals */}
-      {phase === 'INVENTORY' && (<Modal title={T.INVENTORY} onClose={closeModal}><div className="flex flex-col h-full"><div className="flex border-b border-gray-700 mb-2">{player.party.map((char, i) => (<button key={char.id} onClick={() => setViewCharIndex(i)} className={`flex-1 py-2 text-xs font-bold ${viewCharIndex === i ? 'bg-gray-700 text-yellow-500 border-t-2 border-yellow-500' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>{char.name}</button>))}</div><div className="flex-1 overflow-y-auto mb-4"><h3 className="text-xs text-gray-400 mb-2 uppercase tracking-wide">Equipped</h3><div className="grid grid-cols-2 gap-2 mb-4">{['weapon', 'offhand', 'armor', 'accessory'].map(slot => { const item = (player.party[viewCharIndex].equipment as any)[slot]; return (<div key={slot} className="bg-black p-2 rounded border border-gray-700 flex items-center gap-2"><div className="w-8 h-8 bg-gray-900 flex items-center justify-center text-xl">{item ? item.icon : '◌'}</div><div className="flex-1 min-w-0"><div className="text-[10px] text-gray-500 uppercase">{slot}</div><div className="text-xs truncate text-white">{item ? item.name : 'Empty'}</div></div></div>); })}</div><h3 className="text-xs text-gray-400 mb-2 uppercase tracking-wide">Bag</h3><div className="space-y-1">{player.inventory.map(item => (<div key={item.id} className="flex justify-between items-center bg-gray-800 p-2 rounded border border-gray-700"><div className="flex items-center gap-2 overflow-hidden"><span className="text-lg">{item.icon}</span><div className="flex flex-col"><span className="text-sm font-bold">{item.name}</span><span className="text-[10px] text-gray-400">{item.description}</span></div></div><div className="flex items-center gap-2 shrink-0"><span className="text-xs text-gray-400">x{item.quantity}</span>{(item.type === 'WEAPON' || item.type === 'ARMOR' || item.type === 'SHIELD' || item.type === 'ACCESSORY') && (<button onClick={() => handleEquip(item.id, viewCharIndex)} className="px-2 py-1 bg-blue-700 text-[10px] rounded hover:bg-blue-600">{T.EQUIP}</button>)}<button onClick={() => handleScrap(item.id)} className="px-2 py-1 bg-red-900 text-[10px] rounded hover:bg-red-800">{T.SCRAP}</button></div></div>))}{player.inventory.length === 0 && <p className="text-center text-gray-500 text-xs py-4">Inventory is empty.</p>}</div></div></div></Modal>)}
+      {phase === 'INVENTORY' && (<Modal title={T.INVENTORY} onClose={closeModal}><div className="flex flex-col h-full"><div className="flex border-b border-gray-700 mb-2">{player.party.map((char, i) => (<button key={char.id} onClick={() => setViewCharIndex(i)} className={`flex-1 py-2 text-xs font-bold ${viewCharIndex === i ? 'bg-gray-700 text-yellow-500 border-t-2 border-yellow-500' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>{char.name}</button>))}</div><div className="flex-1 overflow-y-auto mb-4"><p className="mb-3 text-sm text-amber-200">Initiative {characterInitiative(player.party[viewCharIndex])} · base {player.party[viewCharIndex].stats.initiative} · speed {initiativeSpeed(characterInitiative(player.party[viewCharIndex])).toFixed(2)}×</p><h3 className="text-xs text-gray-400 mb-2 uppercase tracking-wide">Equipped</h3><div className="grid grid-cols-2 gap-2 mb-4">{['weapon', 'offhand', 'armor', 'accessory'].map(slot => { const item = (player.party[viewCharIndex].equipment as any)[slot]; return (<div key={slot} className="bg-black p-2 rounded border border-gray-700 flex items-center gap-2"><div className="w-8 h-8 bg-gray-900 flex items-center justify-center text-xl">{item ? item.icon : '◌'}</div><div className="flex-1 min-w-0"><div className="text-[10px] text-gray-500 uppercase">{slot}</div><div className="text-xs truncate text-white">{item ? item.name : 'Empty'}</div>{item && equipmentInitiativePenalty(item) > 0 && <div className="text-[10px] text-amber-200">Load −{equipmentInitiativePenalty(item)} INIT</div>}</div></div>); })}</div><h3 className="text-xs text-gray-400 mb-2 uppercase tracking-wide">Bag</h3><div className="space-y-1">{player.inventory.map(item => (<div key={item.id} className="flex justify-between items-center bg-gray-800 p-2 rounded border border-gray-700"><div className="flex items-center gap-2 overflow-hidden"><span className="text-lg">{item.icon}</span><div className="flex flex-col"><span className="text-sm font-bold">{item.name}</span><span className="text-[10px] text-gray-400">{item.description}</span><span className="text-[10px] text-amber-200">{item.type === 'ARMOR' || item.type === 'SHIELD' ? `Defense ${item.value} · ${item.armorWeight ?? (item.type === 'SHIELD' ? 'SHIELD' : 'MEDIUM')} · −${equipmentInitiativePenalty(item)} INIT` : item.type === 'WEAPON' ? `Weapon power ${item.value}` : ''}</span></div></div><div className="flex items-center gap-2 shrink-0"><span className="text-xs text-gray-400">x{item.quantity}</span>{(item.type === 'WEAPON' || item.type === 'ARMOR' || item.type === 'SHIELD' || item.type === 'ACCESSORY') && (<button onClick={() => handleEquip(item.id, viewCharIndex)} className="px-2 py-1 bg-blue-700 text-[10px] rounded hover:bg-blue-600">{T.EQUIP}</button>)}<button onClick={() => handleScrap(item.id)} className="px-2 py-1 bg-red-900 text-[10px] rounded hover:bg-red-800">{T.SCRAP}</button></div></div>))}{player.inventory.length === 0 && <p className="text-center text-gray-500 text-xs py-4">Inventory is empty.</p>}</div></div></div></Modal>)}
+      {phase === 'STATS' && <Modal title="PARTY STATS" onClose={closeModal}>
+        <div className="grid gap-3 md:grid-cols-3">{player.party.map(hero => <section key={hero.id} className="rounded-lg border border-white/15 bg-black/40 p-4">
+          <h3 className="font-bold text-amber-200">{hero.name}</h3><p className="text-xs text-gray-400">{hero.classType} · Level {hero.stats.level}</p>
+          <dl className="mt-3 grid grid-cols-2 gap-2 text-sm">
+            <dt>HP</dt><dd>{hero.stats.hp}/{hero.stats.maxHp}</dd><dt>MP</dt><dd>{hero.stats.mp}/{hero.stats.maxMp}</dd>
+            <dt>STR</dt><dd>{hero.stats.str}</dd><dt>DEX</dt><dd>{hero.stats.dex}</dd><dt>INT</dt><dd>{hero.stats.int}</dd>
+            <dt className="text-amber-200">Initiative</dt><dd className="text-amber-200">{characterInitiative(hero)}</dd>
+          </dl><p className="mt-3 text-xs text-gray-300">Base {hero.stats.initiative} · Load −{Object.values(hero.equipment).reduce((n, item) => n + equipmentInitiativePenalty(item), 0)} · Gauge speed {initiativeSpeed(characterInitiative(hero)).toFixed(2)}×</p>
+        </section>)}</div><p className="mt-4 text-xs text-gray-400">Higher initiative starts sooner and recovers faster. Armor load reduces initiative. Monster attack windups remain visible.</p>
+      </Modal>}
       {phase === 'SKILLS' && (
           <Modal title={T.SKILLS} onClose={closeModal}>
             {selectedSkill ? (

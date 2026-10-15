@@ -11,14 +11,14 @@ const commonProps = {
 
 export const biomeVisuals: Record<BiomeId, BiomeVisualDefinition> = {
   dungeon: {
-    wall: asset('environments/dungeon/wall.png'),
-    floor: asset('environments/dungeon/floor.png'),
+    wall: asset('environments/dungeon/painted/wall.webp'),
+    floor: asset('environments/dungeon/painted/floor.webp'),
     ceiling: asset('environments/dungeon/ceiling.png'),
-    door: asset('environments/dungeon/door.png'),
-    exit: asset('environments/dungeon/exit.png'),
+    door: asset('environments/dungeon/painted/gate.webp'),
+    exit: asset('environments/dungeon/painted/gate.webp'),
     torch: asset('environments/lights/dungeon.png'),
     props: { ...commonProps, extra: [asset('props/broken-pillar.png'), asset('props/chains.png')] },
-    ambientColor: '#d68b3a',
+    ambientColor: '#ae743c',
   },
   moss: {
     wall: asset('environments/moss/wall.png'),
@@ -105,7 +105,7 @@ export const enemyVisuals: Record<string, EnemyVisualDefinition> = {
 
 export const weaponVisuals: Record<WeaponVisualType, string> = {
   unarmed: asset('hands/empty.png'),
-  sword: asset('hands/sword.png'),
+  sword: asset('hands/painted/sword.webp'),
   dagger: asset('hands/dagger.png'),
   axe: asset('hands/axe.png'),
   mace: asset('hands/mace.png'),
@@ -113,7 +113,7 @@ export const weaponVisuals: Record<WeaponVisualType, string> = {
   bow: asset('hands/bow.png'),
 };
 
-export const shieldVisual = asset('hands/shield.png');
+export const shieldVisual = asset('hands/painted/shield.webp');
 
 export const vfxVisuals: Record<VFXType, string> = {
   DAMAGE: asset('vfx/melee-hit.png'),

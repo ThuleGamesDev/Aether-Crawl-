@@ -1,3 +1,4 @@
+import { characterInitiative, enemyInitiative, initiativeDuration, normalizePlayerInitiative } from './initiative';
 import { transitionEvents } from './combatFeedback';
 import type { Enemy, EnemyIntent, Player } from '../types';
 import { COMBAT_TIMING } from '../data/combatTiming';
@@ -8,6 +9,7 @@ import { resolvePlayerCombatAction, type CombatCommand, type CombatFeedback } fr
 export interface CombatClock { elapsedMs: number; timeScale: number; paused: boolean }
 export interface CombatActorRuntime {
   actorId: string;
+  initiative: number;
   side: 'player' | 'enemy';
   remainingMs: number;
   recoveryMs: number;
@@ -57,9 +59,9 @@ export class CombatRuntime {
   }
 
   constructor(player: Player, enemies: Enemy[], private readonly random: () => number = Math.random) {
-    this.player = { ...player, party: player.party.map(c => ({ ...c, isDefending: false })) };
+    this.player = normalizePlayerInitiative({ ...player, party: player.party.map(c => ({ ...c, isDefending: false })) });
     this.enemies = enemies.map(enemy => enemy.intent ? enemy : planEnemyIntent(enemy, enemies, player.scrap, random));
-    this.syncActors(true);
+    this.syncActors();
   }
 
   snapshot(): CombatSnapshot {
@@ -77,18 +79,20 @@ export class CombatRuntime {
     delete actor.queued;
   }
 
-  private syncActors(initial = false): void {
+  private syncActors(): void {
     const living = new Set([...this.player.party.filter(c => c.stats.hp > 0), ...this.enemies.filter(e => e.hp > 0)].map(a => a.id));
     for (const id of Object.keys(this.actors)) if (!living.has(id)) delete this.actors[id];
-    this.player.party.forEach((character, index) => {
+    this.player.party.forEach(character => {
       if (character.stats.hp <= 0 || this.actors[character.id]) return;
-      const ms = COMBAT_TIMING.initialPlayerMs + index * 120;
-      this.actors[character.id] = { actorId: character.id, side: 'player', remainingMs: ms, recoveryMs: ms, ready: false, guardUntil: 0 };
+      const initiative = characterInitiative(character);
+      const ms = initiativeDuration(COMBAT_TIMING.initialReadyMs, initiative);
+      this.actors[character.id] = { actorId: character.id, initiative, side: 'player', remainingMs: ms, recoveryMs: ms, ready: false, guardUntil: 0 };
     });
-    this.enemies = this.enemies.map((enemy, index) => {
+    this.enemies = this.enemies.map(enemy => {
       if (enemy.hp <= 0 || this.actors[enemy.id]) return enemy;
-      const ms = COMBAT_TIMING.initialEnemyMs + (initial ? index * 180 : 0);
-      this.actors[enemy.id] = { actorId: enemy.id, side: 'enemy', remainingMs: ms, recoveryMs: ms, ready: false, guardUntil: 0 };
+      const initiative = enemyInitiative(enemy);
+      const ms = initiativeDuration(COMBAT_TIMING.initialReadyMs, initiative);
+      this.actors[enemy.id] = { actorId: enemy.id, initiative, side: 'enemy', remainingMs: ms, recoveryMs: ms, ready: false, guardUntil: 0 };
       return enemy.intent ? enemy : planEnemyIntent(enemy, this.enemies, this.player.scrap, this.random);
     });
   }
@@ -124,7 +128,7 @@ export class CombatRuntime {
       const actor = this.actors[character.id];
       if (!actor?.ready || !character.statusEffects.some(e => e.type === 'STUN')) return;
       this.player = { ...this.player, party: this.player.party.map(c => c.id === character.id ? { ...c, statusEffects: c.statusEffects.flatMap(e => e.type !== 'STUN' ? [e] : e.duration > 1 ? [{ ...e, duration: e.duration - 1 }] : []) } : c) };
-      this.recover(actor, COMBAT_TIMING.classRecoveryMs[character.classType]);
+      this.recover(actor, initiativeDuration(COMBAT_TIMING.baseRecoveryMs, actor.initiative));
       this.feedback.logs.push(`${character.name} is stunned!`); this.changed = true;
     });
   }
@@ -137,7 +141,7 @@ export class CombatRuntime {
       const label = actor.casting.intent.label;
       this.enemies = this.enemies.map(e => e.id === enemy.id ? interrupted : e);
       this.enemies = this.enemies.map(e => e.id === enemy.id ? planEnemyIntent(e, this.enemies, this.player.scrap, this.random) : e);
-      this.recover(actor, COMBAT_TIMING.interruptRecoveryMs);
+      this.recover(actor, initiativeDuration(COMBAT_TIMING.interruptRecoveryMs, actor.initiative));
       this.feedback.logs.push(`${enemy.name}'s ${label} is interrupted!`);
       this.feedback.events!.push({ kind: 'interrupt', targetId: enemy.id });
       this.feedback.vfx.push({ type: 'DEBUFF', targetId: enemy.id });
@@ -239,7 +243,7 @@ export class CombatRuntime {
     status.ticks.forEach(tick => { this.feedback.events!.push({ kind: tick.type === 'REGEN' ? 'heal' : tick.type === 'POISON' ? 'poison' : 'burn', targetId: character.id, amount: tick.value }); this.feedback.logs.push(`${character.name}: ${tick.type} ${tick.value}.`); this.feedback.vfx.push({ type: tick.type === 'POISON' ? 'POISON' : tick.type === 'BURN' ? 'FIREBALL' : 'HEAL', targetId: character.id }); });
     this.changed = true;
     if (status.defeated) { this.feedback.logs.push(`${character.name} collapsed!`); delete this.actors[character.id]; }
-    else if (stunned) { this.feedback.logs.push(`${character.name} is stunned!`); this.recover(actor, COMBAT_TIMING.classRecoveryMs[character.classType]); }
+    else if (stunned) { this.feedback.logs.push(`${character.name} is stunned!`); this.recover(actor, initiativeDuration(COMBAT_TIMING.baseRecoveryMs, actor.initiative)); }
     else actor.ready = true;
   }
 
@@ -255,7 +259,7 @@ export class CombatRuntime {
     this.feedback.logs.push(...result.logs); this.feedback.vfx.push(...result.vfx);
     if (result.acted && result.vfx.some(v => v.type === 'DAMAGE')) this.feedback.sound = 'attack';
     this.changed = true;
-    this.recover(actor, result.stunned ? COMBAT_TIMING.interruptRecoveryMs : cast.intent.recoveryMs ?? COMBAT_TIMING.enemyRecoveryMs);
+    this.recover(actor, initiativeDuration(result.stunned ? COMBAT_TIMING.interruptRecoveryMs : cast.intent.recoveryMs ?? COMBAT_TIMING.enemyRecoveryMs, actor.initiative));
     this.settle();
     this.enemies = this.enemies.map(e => e.id === actor.actorId && e.hp > 0 ? planEnemyIntent(e, this.enemies, this.player.scrap, this.random) : e);
   }

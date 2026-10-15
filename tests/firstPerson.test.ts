@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { TileType } from '../types';
 import {
   angleToDirection,
+  spawnFacingAngle,
   canOccupyPosition,
   directionToAngle,
   getLookInteraction,
@@ -24,6 +25,13 @@ const openMap = () => {
 };
 
 describe('first-person exploration', () => {
+  it('faces a traversable route on a fresh floor', () => {
+    const map = openMap(); map[1][2] = TileType.WALL;
+    expect(spawnFacingAngle(map, { x: 1, y: 1 })).toBe(Math.PI / 2);
+    map[2][1] = TileType.DOOR;
+    expect(spawnFacingAngle(map, { x: 1, y: 1 })).toBe(0);
+  });
+
   it('migrates old cardinal saves to centered continuous transforms', () => {
     const migrated = normalizePlayerTransform(undefined, { x: 4, y: 7 }, 'N');
     expect(migrated.x).toBe(4.5);

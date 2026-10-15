@@ -24,6 +24,21 @@ Still required before calling Floors 1–5 accepted:
 
 The full browser run was not available in the 2026-10-15 hardening environment: there was no local Chromium, and its remote browser could not reach the isolated local dev server. Do not mark the manual items complete based on the passing unit tests or the saved-fixture checks from earlier waves.
 
+## Initiative and painted look — current follow-up
+
+Completed:
+
+- Explicit initiative for all classes and 28 monster definitions; shared initial gauge and initiative-scaled recovery.
+- Armor/shield load, saved base-stat migration, visible INIT and working Party Stats.
+- Painted first-five-floor wall/floor/gate and sword/shield, perspective ground, corrected prop baseline and fresh-floor facing.
+- 126 automated tests, typecheck and production build pass. See [rules, art provenance and verification](INITIATIVE_AND_PAINTED_LOOK.md).
+- Local Chromium browser smoke passed on desktop and two touch-emulated sizes: new game, stats, save/continue, input cancellation, and a Floor-5 boss fixture. This environment now has a usable local Chromium; the earlier hardening limitation above describes that earlier pass.
+
+Still open:
+
+- Full ordinary-party Floors 1–5 run, balance after initiative changes, and physical-phone performance/comfort.
+- Full painted conversion of creatures, props, other weapons and later biomes; true vaulted geometry and exterior scenes.
+
 ## Completed foundations
 
 - Static local asset pipeline with no runtime Gemini or AI dependency.

@@ -1,3 +1,4 @@
+import { drawPerspectivePlanes, drawDungeonAtmosphere } from '../services/dungeonRender';
 import React, { useEffect, useRef } from 'react';
 import type { CombatSnapshot } from '../services/combatRuntime';
 import { biomeVisuals, enemyVisuals, getDecorationAsset, shieldVisual, vfxVisuals, weaponVisuals } from '../data/assetRegistry';
@@ -72,7 +73,7 @@ const Viewport: React.FC<ViewportProps> = ({
         canvas.width = width;
         canvas.height = height;
         const resizedContext = canvas.getContext('2d');
-        if (resizedContext) resizedContext.imageSmoothingEnabled = false;
+        if (resizedContext) resizedContext.imageSmoothingEnabled = true;
       }
     };
 
@@ -115,7 +116,7 @@ const Viewport: React.FC<ViewportProps> = ({
     const canvas = canvasRef.current;
     const context = canvas?.getContext('2d');
     if (!canvas || !context) return;
-    context.imageSmoothingEnabled = false;
+    context.imageSmoothingEnabled = true;
 
     const render = () => {
       const width = canvas.width;
@@ -153,8 +154,8 @@ const Viewport: React.FC<ViewportProps> = ({
       const positionY = transform.y;
       const directionX = Math.cos(transform.angle);
       const directionY = Math.sin(transform.angle);
-      const planeX = -directionY * 0.66;
-      const planeY = directionX * 0.66;
+      const planeX = -directionY * 0.6;
+      const planeY = directionX * 0.6;
 
       context.fillStyle = '#050505';
       context.fillRect(0, 0, width, height);
@@ -163,7 +164,7 @@ const Viewport: React.FC<ViewportProps> = ({
         return;
       }
 
-      drawTexturedPlanes(context, width, height, ceilingImage, floorImage, biome.ambientColor);
+      drawPerspectivePlanes(context, width, height, ceilingImage, floorImage, transform);
       const zBuffer = drawRaycastWalls({
         context, width, height, map, positionX, positionY,
         directionX, directionY, planeX, planeY,
@@ -175,6 +176,7 @@ const Viewport: React.FC<ViewportProps> = ({
         positionX, positionY, directionX, directionY, planeX, planeY, zBuffer,
       });
 
+      drawDungeonAtmosphere(context, width, height, performance.now());
       if (phase === 'EXPLORE') drawRoomAnchors(context, width, height, floor, transform, planeX, planeY, zBuffer, map);
       const targets = enemies.filter(enemy => enemy.hp > 0);
       const targetPositions = drawEnemySprites({
@@ -204,39 +206,12 @@ const Viewport: React.FC<ViewportProps> = ({
       aria-label="First-person dungeon view"
       data-aether-viewport
       className="absolute inset-0 block h-full w-full cursor-crosshair bg-black"
-      style={{ imageRendering: 'pixelated' }}
+      style={{ imageRendering: 'auto' }}
     />
   );
 };
 
 export default Viewport;
-
-function drawTexturedPlanes(
-  context: CanvasRenderingContext2D,
-  width: number,
-  height: number,
-  ceiling: HTMLImageElement,
-  floor: HTMLImageElement,
-  ambientColor: string,
-) {
-  context.drawImage(ceiling, 0, 0, width, height / 2);
-  context.drawImage(floor, 0, height / 2, width, height / 2);
-
-  const ceilingShade = context.createLinearGradient(0, 0, 0, height / 2);
-  ceilingShade.addColorStop(0, 'rgba(0,0,0,0.82)');
-  ceilingShade.addColorStop(1, 'rgba(0,0,0,0.18)');
-  context.fillStyle = ceilingShade;
-  context.fillRect(0, 0, width, height / 2);
-
-  const floorShade = context.createLinearGradient(0, height / 2, 0, height);
-  floorShade.addColorStop(0, 'rgba(0,0,0,0.1)');
-  floorShade.addColorStop(1, 'rgba(0,0,0,0.68)');
-  context.fillStyle = floorShade;
-  context.fillRect(0, height / 2, width, height / 2);
-
-  context.fillStyle = `${ambientColor}14`;
-  context.fillRect(0, 0, width, height);
-}
 
 function drawRaycastWalls(args: {
   context: CanvasRenderingContext2D;
@@ -256,7 +231,7 @@ function drawRaycastWalls(args: {
   const { context, width, height, map, positionX, positionY, directionX, directionY, planeX, planeY, wallImage, doorImage, exitImage } = args;
   const zBuffer = new Float32Array(width).fill(Infinity);
 
-  for (let screenX = 0; screenX < width; screenX += 4) {
+  for (let screenX = 0; screenX < width; screenX += 2) {
     const cameraX = 2 * screenX / width - 1;
     const rayDirectionX = directionX + planeX * cameraX;
     const rayDirectionY = directionY + planeY * cameraX;
@@ -309,7 +284,7 @@ function drawRaycastWalls(args: {
     const wallDistance = side === 0
       ? (mapX - positionX + (1 - stepX) / 2) / rayDirectionX
       : (mapY - positionY + (1 - stepY) / 2) / rayDirectionY;
-    for (let offset = 0; offset < 4 && screenX + offset < width; offset += 1) zBuffer[screenX + offset] = wallDistance;
+    for (let offset = 0; offset < 2 && screenX + offset < width; offset += 1) zBuffer[screenX + offset] = wallDistance;
 
     const lineHeight = Math.floor(height / Math.max(0.05, wallDistance));
     const drawStart = -lineHeight / 2 + height / 2;
@@ -321,15 +296,10 @@ function drawRaycastWalls(args: {
     let textureX = Math.floor(wallFraction * texture.width);
     if ((side === 0 && rayDirectionX > 0) || (side === 1 && rayDirectionY < 0)) textureX = texture.width - textureX - 1;
 
-    const darkness = Math.max(0.25, 1 - Math.min(0.82, wallDistance / VIEW_DISTANCE));
-    context.save();
-    context.filter = `brightness(${darkness * (side === 1 ? 0.78 : 1)})`;
-    context.drawImage(texture, textureX, 0, 1, texture.height, screenX, drawStart, 4, lineHeight);
-    context.restore();
-
-    const fogAlpha = Math.min(0.76, wallDistance / (VIEW_DISTANCE * 1.5));
-    context.fillStyle = `rgba(0,0,0,${fogAlpha})`;
-    context.fillRect(screenX, drawStart, 4, lineHeight);
+    context.drawImage(texture, textureX, 0, 1, texture.height, screenX, drawStart, 2, lineHeight);
+    const light = Math.max(0.12, (side === 1 ? 0.72 : 0.93) / (1 + wallDistance * 0.16));
+    context.fillStyle = `rgba(0,7,6,${1 - light})`;
+    context.fillRect(screenX, drawStart, 2, lineHeight);
   }
 
   return zBuffer;
@@ -379,11 +349,12 @@ function drawDecorations(args: {
     if (transformY <= 0.05) continue;
 
     const screenX = Math.floor((width / 2) * (1 + transformX / transformY));
-    const scale = sprite.type === 1 ? 0.52 : 0.68;
+    const scale = sprite.type === 1 ? 0.35 : sprite.type === 4 ? 0.12 : 0.4;
     const spriteHeight = Math.abs(Math.floor(height / transformY * scale));
     const spriteWidth = spriteHeight * (image.width / image.height);
     const spriteLeft = Math.floor(screenX - spriteWidth / 2);
-    const groundY = sprite.type === 1 ? height * 0.56 : height * 0.91;
+    // Ground props follow the same floor projection as walls; torches hang above it.
+    const groundY = height * 0.5 + height / transformY * (sprite.type === 1 ? -0.1 : 0.5);
     const spriteTop = Math.floor(groundY - spriteHeight);
     const centerColumn = Math.max(0, Math.min(width - 1, screenX));
     if (transformY >= zBuffer[centerColumn]) continue;
@@ -517,12 +488,16 @@ function drawPlayerHands(args: {
     : getImageAsset(weaponVisuals.unarmed);
   if (!weaponImage || !offhandImage) return;
 
-  const scale = Math.min(1, Math.max(0.55, Math.min(width / 1280, height / 900)));
-  const stepBob = moving ? Math.sin(frame * 0.16) * 4 * scale : 0;
-  const idleBob = moving ? Math.sin(frame * 0.07) * 2 * scale : 0;
-  const bobX = moving ? Math.cos(frame * 0.07) * 2 * scale : 0;
-  context.drawImage(offhandImage, -34 * scale + bobX, height - 158 * scale + idleBob + stepBob, 146 * scale, 158 * scale);
-  context.drawImage(weaponImage, width - 148 * scale - bobX, height - 172 * scale + idleBob + stepBob, 164 * scale, 172 * scale);
+  const sword = getWeaponVisualType(character.equipment.weapon) === 'sword';
+  const hasShield = character.equipment.offhand?.type === 'SHIELD';
+  const weaponHeight = Math.min(height * (sword ? 0.8 : 0.55), width * (sword ? 1.7 : 0.95));
+  const weaponWidth = weaponHeight * weaponImage.width / weaponImage.height;
+  const shieldHeight = Math.min(height * (hasShield ? 0.45 : 0.22), width * (hasShield ? 0.7 : 0.3));
+  const shieldWidth = shieldHeight * offhandImage.width / offhandImage.height;
+  const stepBob = moving ? Math.sin(frame * 0.16) * 3 : Math.sin(frame * 0.025) * 0.6;
+  const bobX = moving ? Math.cos(frame * 0.07) * 2 : 0;
+  context.drawImage(offhandImage, -shieldWidth * 0.25 + bobX, height - shieldHeight + 10 + stepBob, shieldWidth, shieldHeight);
+  context.drawImage(weaponImage, width - weaponWidth + width * 0.02 - bobX, height - weaponHeight + 12 + stepBob, weaponWidth, weaponHeight);
 }
 
 function drawVfx(args: {

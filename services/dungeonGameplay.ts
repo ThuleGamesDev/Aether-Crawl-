@@ -41,7 +41,7 @@ export function roomReward(floor: FloorState, room: DungeonRoom, quality: 'NORMA
   const tier = Math.floor(floor.level / 3) + 1 + (quality === 'RARE' ? 2 : quality === 'GOOD' ? 1 : 0);
   const type = variant || Math.floor(rng() * 3);
   if (quality === 'RARE') return { id: `${room.id}_relic_${variant}`, name: `Expedition Sigil +${tier}`, description: `${quality} floor relic.`, type: 'ACCESSORY', value: tier, statBonus: 'STR', icon: '◆', quantity: 1 };
-  if (type === 1) return { id: `${room.id}_armor_${variant}`, name: `Vault Armor +${tier}`, description: `${quality} floor reward.`, type: 'ARMOR', value: 2 + tier, icon: '👕', quantity: 1 };
+  if (type === 1) return { id: `${room.id}_armor_${variant}`, name: `Vault Armor +${tier}`, description: `${quality} floor reward.`, type: 'ARMOR', armorWeight: 'MEDIUM', value: 2 + tier, icon: '👕', quantity: 1 };
   if (type === 2) return { id: `${room.id}_relic_${variant}`, name: `Expedition Sigil +${tier}`, description: `${quality} floor relic.`, type: 'ACCESSORY', value: tier, statBonus: 'STR', icon: '◆', quantity: 1 };
   return { id: `${room.id}_weapon_${variant}`, name: `Expedition Blade +${tier}`, description: `${quality} floor reward.`, type: 'WEAPON', visualType: 'sword', value: 5 + tier * 2, icon: '🗡', quantity: 1 };
 }
