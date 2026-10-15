@@ -1146,6 +1146,7 @@ const App: React.FC = () => {
               onLook={applyMouseLook}
               onInteract={handleInteract}
               onAction={handleAction}
+              inputBlocked={dungeon.blocking || mapOpen}
             />
           )}
         </div>

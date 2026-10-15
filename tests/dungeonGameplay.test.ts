@@ -10,7 +10,7 @@ const hero = (id: string): Character => ({ id, name: id, classType: 'PALADIN', s
 const player = (): Player => ({ pos: { x:1,y:1 }, dir:'E', transform:{x:1.5,y:1.5,angle:0}, party:[hero('a'),hero('b')], inventory:[], scrap:50 });
 const setup = (level=3,seed=42) => generateDungeon('dungeon',seed,level);
 const find = (floor: FloorState, type: DungeonRoom['type']) => floor.rooms.find(r=>r.type===type)!;
-afterEach(()=>vi.unstubAllGlobals());
+afterEach(()=>{ vi.unstubAllGlobals(); });
 describe('Dungeon Gameplay 2.0 floor plan',()=>{
  it('is identical for the same floor seed and changes with another seed',()=>{
   expect(setup()).toEqual(setup()); expect(setup(3,43).map).not.toEqual(setup().map);

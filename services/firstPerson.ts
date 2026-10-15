@@ -175,9 +175,9 @@ export const getLookInteraction = (
     if (y < 0 || y >= map.length || x < 0 || x >= (map[y]?.length ?? 0)) return null;
 
     const tile = map[y][x];
-    if (isClosedTile(tile)) return null;
     if (tile === TileType.DOOR) return { kind: 'door', x, y };
     if (tile === TileType.EXIT) return { kind: 'exit', x, y };
+    if (isClosedTile(tile)) return null;
 
     const decorationType = decorations[y]?.[x] ?? 0;
     if (decorationType > 1) return { kind: 'prop', x, y, decorationType };

@@ -1,7 +1,7 @@
 import { TileType, type BiomeId, type DungeonRoom, type DungeonRoomType, type FloorState, type Position } from '../types';
 import { floorRandom } from './floorRandom';
 export const cellKey = (p: Position) => `${p.x},${p.y}`;
-export const isClosedTile = (tile: number) => tile === TileType.WALL || tile === TileType.LOCKED || tile === TileType.SECRET;
+export const isClosedTile = (tile: number) => tile === TileType.WALL || tile === TileType.DOOR || tile === TileType.LOCKED || tile === TileType.SECRET;
 const directions = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 export function reachableCells(map: number[][], start: Position = { x: 1, y: 1 }): Position[] {
   const queue = [start], seen = new Set([cellKey(start)]);
