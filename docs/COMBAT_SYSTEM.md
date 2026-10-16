@@ -1,109 +1,60 @@
-# Combat System — initiative timelines
+# Combat — initiative rounds
 
-Combat uses one simulated clock and independent actor timelines. The player controls the active hero and the optional inactive-hero Auto Basic toggle, which defaults OFF. No automatic skills are present. Enemy Intents, existing damage/equipment rules, static assets, boss phases, XP and loot are retained. Enemy sprites remain presentation targets rather than navigable world actors.
+Current behavior after the turn-based follow-up to PR #9. This replaces the Combat 2.5A/B wall-clock timelines and the earlier initiative-speed formula. Existing damage, skills, enemy ability selection, boss phases, rewards and exploration remain integrated.
 
-## Ownership and flow
+## Turn ownership
 
-- `services/combatRuntime.ts`: encounter clock, readiness, recovery, casts, guard expiry, actor lifecycle and terminal outcome latch.
-- `services/combatActions.ts`: atomic player action validation/resolution using the established arithmetic.
-- `services/combat.ts`: damage, armor/shields, status refresh and own-cycle status arithmetic.
-- `services/enemyAI.ts`: advertised intent resolution, weighted next intent, ability-cycle cooldowns, flags, boss phase and summon rules.
-- `data/combatTiming.ts` and `data/enemyAbilities.ts`: timing policy and authored ability values.
-- `hooks/useCombatRuntime.ts`: a single RAF, runtime ref, 10 Hz UI snapshot and one-shot outcome delivery.
-- `App.tsx`: encounter start, feedback, rewards and return to exploration. No turn handoffs, enemy sleeps or combat timeouts remain.
+Each living participant gets **one action per round**. Effective initiative sorts all heroes and monsters together, highest first. Ties use stable actor ID order, independently of array/party order. No random initiative roll or extra fast-actor turn is added.
 
-Previous flow was party index 0 → 1 → 2 → all enemies → party index 0, with fixed 420/350/330 ms wait chains. Current flow is each living actor charging independently. An actor becoming READY never blocks other actors. A hero stays READY until the player acts, a buffered skill executes, or explicitly enabled inactive-hero Auto Basic acts. An enemy begins its announced cast, resolves it once, picks its next intent and recovers.
+Class base initiative remains: Barbarian 9, Paladin 8, Sorcerer 10, Rogue 14, Ranger 13, Cleric 9, Monk 14, Necromancer 9. Equipment load subtracts Light/Medium/Heavy armor 1/2/4 and shield 1, with minimum effective INIT 1. Legacy armor defaults to medium. A starting Ranger acts at INIT 13, a shield-bearing Paladin at INIT 7; a rat at 16 can precede both. Existing saves retain their base initiative and weights; no new save version or combat persistence is introduced.
 
-## Clock and readiness
+The round queue is built from living eligible actors. The active hero waits indefinitely. One accepted Attack, Guard, skill, potion or Flee consumes their turn; an invalid/unaffordable action leaves ownership and resources unchanged. Failed escape still costs the action, and bosses still prevent escape. Other heroes cannot bypass initiative by clicking their cards or using party keys. Keyboard repeat is ignored by the existing input owner.
 
-The clock stores `elapsedMs`, `timeScale` and `paused`. Delta time is applied in bounded 50 ms substeps; timers carry transition overflow so timing does not depend on render frequency. The browser bridge caps long frame deltas to 100 ms, drops hidden-tab catch-up and suspends on full options/map overlays. Timers do not advance while those overlays are open.
+The HUD displays the round, current actor and the remaining queue. Completed actors are marked ACTED, newly revived actors NEXT ROUND. The queue scrolls horizontally on narrow displays. Initial selection and later automatic focus follow the hero whose turn it is. Target switching and skill/potion details do not consume actions. Q/E/R/F, V, G, Tab and LMB retain their action/target roles. Space/B have no combat automation or pause function. There is no Auto Basic, skill buffer, real-time recovery or tactical slowdown.
 
-Each runtime record contains actor ID/side, effective initiative, remaining recovery, recovery duration, readiness, guard expiry and optional cast. It stores no callbacks and is separate from Character/Enemy gameplay data. Heroes and enemies share a 1400 ms initial gauge, divided by their initiative speed; party position gives no timing bonus. Summons receive their own initial timer and never act in the resolving summoner's event.
+## Enemy turns and intents
 
-Base hero recovery is 1000 ms, divided by effective initiative speed. Class base initiative minus equipment load sets that speed; see [the initiative rules](INITIATIVE_AND_PAINTED_LOOK.md). Attack uses 90%, Defend 105%, potion 95%, Flee 110%. Skills use a small policy for normal/heavy/AoE recovery or an optional `Skill.recoveryMs` override. DEX still affects existing damage/crit/defense arithmetic, not timeline speed.
+Each enemy resolves its advertised intent on its own turn, then plans its next intent. A 1000 ms UI presentation delay separates enemy actions; it does not simulate gameplay time. It never runs during a hero decision. Menu/map/skill details suspend pending enemy presentation, as does a hidden document. Closing a menu waits a fresh delay; there is no catch-up burst.
 
-## Enemy Intents and casts
+The runtime exposes explicit `act` and `stepEnemy` transitions and owns no wall-clock timers. A step carries expected actor ID and round; stale callbacks are rejected, including the same enemy becoming first in the next round. Hook cleanup cancels pending presentation on overlay/encounter changes and delivers terminal outcomes once.
 
-The ability registry contains cast and recovery milliseconds. `EnemyIntent` exposes these values and interrupt resistance. Every enemy shows its next action throughout recovery. At cast start the runtime freezes that intent; phase changes cannot replace it midway. The resolver executes that exact ability ID and only then plans the next intent.
+Intents now say **next turn**, with heavy/prepare/summon labels and interruptibility. Old authored cast/recovery milliseconds remain legacy content metadata, but are not combat timing or shown as countdowns. Orc Wind Up → Crushing Blow → Recover and Necromancer ritual preparation remain separate ability turns. Boss phase transitions preserve an already advertised intent and influence the following plan.
 
-Examples: Bite 400 ms, Venom Fang 700 ms, Dark Chant 1500 ms, Crushing Blow 2000 ms, Mass Raise 2500 ms. Cast values are finite and bounded to five seconds. Normal attacks have shorter preparation; heavy, summon and support actions have visible counterplay windows.
+## Guard, stun, statuses and lifecycle
 
-Existing PREPARE → follow-up sequences remain: Orc Wind Up → Crushing Blow → Recover; slime instability → one-time split; Necromancer Phase II ritual preparation → Mass Raise. Ability cooldowns count own resolved actions, not global turns or wall-clock seconds.
+Guard halves incoming damage before existing armor/shield reduction and lasts until the start of the guarding hero’s next turn. It cannot expire while reading a menu. Completion/escape clears all guard flags.
 
-## Tactical controls
+Hero poison/burn/regeneration and effect durations tick once at the beginning of their own turn, before action. A stunned hero loses that turn; other effects tick once even when stunned. Status death removes the actor from the queue and can end the encounter immediately.
 
-- Desktop: Space toggles pause; 1–4 or F1–F4 selects a living party member. Clicking a living party HUD card selects it, including during recovery.
-- Touch: Attack, four quick skills, Guard, Potion, Target, Party cycle and Pause/Resume share the desktop quickbar; More holds All Skills, Bind Potion, Auto and Flee. Buttons are at least 44–48 px; no hover is needed.
-- All Skills, potion binding and skill detail panels reduce simulated speed to 20%; direct party/target switching does not slow combat. Cancel/selection returns to normal speed. Slowdown and pause are independent.
-- Pause freezes enemy casts, hero recovery and guard duration. Menus remain usable. A READY hero may execute one immediate action while paused; its recovery waits until resume. One manual skill buffer is available; no automatic party skill command system is present.
-- LMB on the enemy presentation keeps the existing `selectedEnemyId`. Commands use that living target, or the next living enemy if it was defeated.
+Enemy statuses tick once in the existing enemy-intent resolver on that enemy’s turn. Accepted Stun cancels an interruptible advertised action and consumes that turn; uninterruptible actions and per-ability boss resistance remain in force. Cancellation flags and previous ability/cooldown logic prevent immediate heavy/ritual repetition. No duplicate mid-cast tick path remains.
 
-The viewport remains fullscreen. Party cards show READY or recovery seconds and a compact gauge. Enemy badges show cast time/progress; the selected enemy panel spells out interruptibility and boss resistance. There is no global ENEMY TURN screen.
+Defeated actors leave the queue immediately. Summons and revivals become eligible **next round**, sorted by their initiative, so they cannot attack inside their creator’s action. Enemy/summon caps, reward exclusions for summons, theft settlement, phase/split mechanics, victory/defeat/escape latching and one-time room rewards retain their existing owners. Healing still supports the existing lowest-health-ally/revival behavior.
 
-## Interrupts and boss counterplay
+Saving remains exploration-only. Save migration stores base initiative independently of equipment load; no turn queue or partially resolved combat is serialized.
 
-Accepted STUN cancels an interruptible live cast immediately, consumes one Stun cycle, clears the corresponding preparation flag, suppresses immediate repetition and applies initiative-scaled 650 ms recovery. Unrelated poison/burn/regen effects are not ticked a second time by interruption. A newly stunned READY hero loses readiness and recovers instead of bypassing Stun with a click.
+## First-person hand correction
 
-An explicitly uninterruptible action completes even with Stun present. Ordinary enemy actions are interruptible unless explicitly disabled; boss actions require an authored interrupt flag. Bosses use ability-specific resistance where present: Soul Bolt 35%, Summon Dead 50%, Mass Raise 65%, with the established boss fallback otherwise. Bosses are not universally immune. Phase II activation is an instantaneous existing rule, not a newly invented cast; it preserves the currently announced cast and influences the next intent.
+`services/handPresentation.ts` describes which hand owns each visual. Existing empty-hand and weapon sources were authored for the right hand, while the painted shield is already left-handed. The renderer now mirrors the empty-hand source for the left offhand and keeps the shield unmirrored. Right melee/staff weapons anchor at the lower right; the painted sword rotates slightly inward around the forearm anchor rather than leaning out of frame. All sprites preserve their source aspect ratio.
 
-## Defend and statuses
+The bow is mirrored and placed in the left hand. Its ready pose does not also draw an empty left hand or a shield, avoiding the old duplicated-hand composition. This is presentation only: it adds no new equipment restrictions or shooting animation, and a mechanically equipped shield retains its existing stats. Later equipment work can define two-handed restrictions explicitly. No raster assets were edited or generated for this fix; existing sprites use Canvas transforms.
 
-Defend halves incoming damage before the existing armor/shield reduction for a 2800 ms simulated-time guard window. The window continues across the hero's recovery and is visibly marked GUARD. It freezes under tactical pause and expires automatically. All guard flags are cleared on encounter completion or escape.
+## Validation and limits
 
-Poison/Burn/Regeneration and status durations still count the affected actor's own action cycles: hero readiness transitions, enemy intent resolution. READY idle heroes do not continuously tick statuses or auto-act. Stun is checked before duration expiry. Identical status types refresh the strongest value/duration rather than stacking without limit. Enemy numeric guard remains the existing consumable damage absorption.
+- `npm test`: 119 tests in 13 files passed. The replaced timeline tests now assert turn ownership, mixed initiative rounds, stable ties, unlimited decision waits, double-command rejection, guard duration, stun/status timing, boss intents/phases, summons, revivals, potion/flee costs, terminal outcomes and save migration. Three tests cover hand layout decisions.
+- `npm run typecheck` and `npm run build`: passed.
+- `git diff --check`: passed.
+- Actual local Chromium 153 / Playwright: new game with Paladin/Ranger/Cleric, Floor 1 save, Continue and Party Stats; all seven weapon visual types captured and visually inspected on desktop.
+- Generated Floor-5 exit save fixture → Necromancer: the Ranger stayed unchanged through 5 seconds of idle waiting and 2 seconds in skill details. A wrong-hero hotkey could not change ownership. Arrow Rain consumed 14 MP; an enemy step then handed control to the Cleric, whose state stayed unchanged for another 3 seconds. An open detail menu also held an enemy turn for 1.8 seconds before resolution resumed.
+- Touch emulation at 390×844 and 844×390: boss HUD, turn order, Guard and subsequent enemy/hero handoff; all 12 visible dock buttons were inside each viewport and at least 44×44 px. No page/console errors. Screenshots were inspected at both sizes.
+- Separate boss-outcome fixture with a strengthened level-50 party: one-turn Necromancer victory returned to exploration, granted XP/loot once, saved the defeated-guardian flag, reloaded it, then descended explicitly to Floor 6 while retaining inventory. This checks the outcome boundary, not encounter balance.
+- Browser fixtures are not a played five-floor run; touch emulation is not a physical phone test.
 
-## Lifecycle, rewards and saves
+![Corrected sword and shield](previews/turn-hands-sword.jpg)
 
-Dead actors are removed from the timeline immediately; enemy gameplay records remain for XP/loot accounting. Summons are initialized once, use canonical IDs/static sprites, respect five living enemies, and grant no XP/loot. Necromancer phase flags and soul harvest remain in the existing resolver.
+![Left-held bow](previews/turn-hands-bow.jpg)
 
-Victory, defeat and escape are latched; the hook delivers each encounter outcome once. App grants established XP/loot on victory, handles level-up and returns to first-person exploration on the current floor; E at a cleared exit explicitly descends. Dungeon Gameplay 2.0 settles one-time elite room rewards separately from ordinary loot. Escape clears the encounter without granting victory rewards. A stopped/finished runtime cannot later execute delayed enemy actions.
+![Portrait initiative rounds](previews/turn-combat-portrait.jpg)
 
-Combat is not saved mid-encounter. Saving is disabled while fighting or in its Options overlay. No clock, cast, recovery or guard expiry values enter normal saves; the existing save key/schema and legacy transform migration remain.
+![Landscape initiative rounds](previews/turn-combat-landscape.jpg)
 
-## Tests and follow-up
-
-`tests/combatRuntime.test.ts` covers independent readiness, duplicate-click rejection, pause, 20% slowdown, consistent casts, interrupts/noninterruptible actions, boss resistance, timed Defend, death/outcome latching, summons, boss phase continuity, resource validation, newly stunned READY heroes, frame-size equivalence and invalid cast bounds. Existing combat, enemy AI, dungeon, exploration, room events, save and asset tests remain.
-
-Next wave should measure pacing and interrupt windows on actual touch hardware, then author timing overrides for more skills/enemies. Spatial combat, enemy navigation, projectile physics, party AI and large skill rebalance remain future work.
-
-## Combat 2.5B — direct party control
-
-The selected living hero stays active through readiness and recovery. Selection is independent of READY; no automatic jump to another hero follows an action. Defeated heroes cannot be selected. A recovering active hero receives a small `Recovering · …s` notice when an immediate action is attempted.
-
-| Input | Combat action |
-| --- | --- |
-| LMB on the viewport | Basic attack with the active READY hero; clicking an enemy also selects that target |
-| 1–4 / F1–F4 | Select the corresponding living party member, including during recovery |
-| Q / E / R / F | Use the first four learned skills of the active hero |
-| V | Timed Guard / Defend |
-| G | Use the bound quick potion; default is an HP potion, otherwise the first usable potion |
-| Tab / Shift+Tab | Cycle living targets forward / backward |
-| Space | Tactical pause / resume |
-| B | Toggle inactive-hero Auto Basic; defaults OFF at each encounter |
-| Esc / right-click on the viewport | Cancel the active hero's buffered skill or close the tactical panel; Esc with nothing to cancel opens Options |
-
-LMB acts only on the canvas, never when a HUD button is clicked. Pointer hit testing uses the displayed sprite bounds instead of dividing the screen into invisible target columns. Touch taps on a sprite select only; the large Attack button executes the active hero's attack. Empty touch taps do not replace the target.
-
-### Quick skills and consumables
-
-Quick slots follow the first four entries in each hero's existing learned skill list. Additional skills remain available under More → All Skills. No new skill data, rebalance, player cast or refund mechanic is introduced: current player skills resolve immediately. The cost, recovery, instant execution and actual resolver effect appear on desktop hover and in the touch detail panel. Soul Pact displays its custom HP-to-MP exchange; Ally heals identify the lowest-health target. This does not change existing group_heal/focus behavior despite their older authored descriptions. HP-cost skills display their HP cost rather than a misleading MP label. Holding a touch skill for 450 ms opens its details without using it; short tap uses it. The detail panel also offers an explicit Use button.
-
-More → Bind Potion selects the consumable assigned to G / Potion. Binding does not consume an item or readiness. An explicitly bound exhausted potion leaves the slot empty instead of silently switching between HP and MP. Quick bindings are encounter-local; no save schema changes.
-
-### Conservative automation and one-slot skill buffer
-
-The actor runtime receives the active hero ID, current target ID and an encounter-local Auto Basic toggle. When ON, only inactive READY heroes basic-attack the selected living target. It never spends MP, consumes items or selects skills. There is no fallback to another target when the selected ID is invalid, no active-hero auto-attack, and no automatic action while paused. Auto Basic respects the same status, recovery and outcome rules as manual attacks. More's indicator shows whether it is enabled; B offers a direct toggle.
-
-A quick skill may buffer only during the final 250 ms of the hero's simulated recovery. There is at most one command per actor; extra attempts cannot replace or stack it. LMB, Guard, potions and Flee do not buffer. MP/HP are validated at submission and again when READY, and are consumed only by successful execution. The chosen offensive target is retained: death of that target cancels the buffered skill instead of redirecting it. Stun, actor death, encounter completion, explicit cancel and switching away from that active hero clear its buffer. Pause freezes it; slowdown scales it with the same clock. The party gauge says BUFFERED. Accepting a buffered command closes tactical selection so normal speed can resume.
-
-### Presentation and ownership
-
-`services/combatInput.ts` owns the pure key/touch mapper, living character/target cycling and quick-command selection. `hooks/useCombatControls.ts` routes all combat UI commands through authoritative runtime checks and owns menu, quick binding, notice and auto state. `components/CombatHud.tsx` owns party/timeline/target presentation; `Controls.tsx` owns the shared responsive quickbar and details. `MobileControls.tsx` now owns exploration controls only. The old READY-only Party picker is removed. App coordinates the encounter and rewards rather than implementing these UI handlers.
-
-`services/combatFeedback.ts` defines structured events. Action resolvers report actual HP damage/healing, absorbed enemy guard, player mitigation, criticals and status ticks; the runtime reports interruption and phase transitions once. `hooks/useCombatFeedback.ts` keeps at most 24 floating events for 1.1 wall-clock seconds and plays at most one sound per category in each batch. The canvas distinguishes damage, crit, healing, MP, block, poison/burn, stun, buffs, guard, interrupt and phase text with compact numbers/labels. Existing VFX assets remain; no image generation or new audio pipeline. Player/enemy hits, criticals, block, heal, interrupt and phase have distinct procedural audio cues. Feedback can finish while tactically paused and never advances or blocks the combat clock. No hitstop is added.
-
-The combat dock is centered and capped at 760 px on ultrawide displays. Its party cards expose HP, MP, readiness/recovery, buffered/Guard state, important status icons and the active selection. The two main button rows contain Attack + four skills, then Guard, Potion, Target, Party cycle and Pause. More holds the less frequent options. Controls are 44–48 px tall and the landscape layout keeps them within the viewport. Enemy intent badges retain icon and text; HEAVY, SUMMON and support categories are distinct, and a heavy/summon cast under one second gains a mild outline pulse that stops during pause.
-
-### Spatial preparation
-
-An optional runtime `rangeBand` can hold `melee`, `near` or `far` for future presentation experiments. It is currently unset and unused. Later spatial work must define distance thresholds and movement ownership before applying reach/range rules. No dungeon coordinate, movement, damage, navigation, projectile or aggro behavior depends on these bands in 2.5B.
+Not accepted by this change: a full ordinary-party Floors 1–5 playthrough, physical-phone performance/comfort, or final combat balance. Initiative now changes order rather than action frequency; expensive/AoE skills no longer pay a longer recovery and need playtest observation. No world-space enemies, navigation, new combat abilities or expanded art wave.

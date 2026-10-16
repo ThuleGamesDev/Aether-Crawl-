@@ -24,7 +24,7 @@ Still required before calling Floors 1–5 accepted:
 
 The full browser run was not available in the 2026-10-15 hardening environment: there was no local Chromium, and its remote browser could not reach the isolated local dev server. Do not mark the manual items complete based on the passing unit tests or the saved-fixture checks from earlier waves.
 
-## Initiative and painted look — current follow-up
+## Initiative and painted look — PR #9 history (timing superseded below)
 
 Completed:
 
@@ -38,6 +38,18 @@ Still open:
 
 - Full ordinary-party Floors 1–5 run, balance after initiative changes, and physical-phone performance/comfort.
 - Full painted conversion of creatures, props, other weapons and later biomes; true vaulted geometry and exterior scenes.
+
+## Current follow-up: true initiative rounds and hand correction
+
+Completed:
+
+- One action per living actor per round, sorted by effective initiative with stable ties. Player decisions have no timer.
+- Visible round/turn order, automatic focus on the acting hero; no out-of-turn party commands, Auto Basic, skill buffer, slowdown or recovery gauges.
+- Guard until next own turn, status/stun own-turn resolution, announced enemy intents, boss phases and next-round summon/revival entry.
+- Hand-specific rendering: mirrored left empty hand, left-held bow without a duplicate hand/shield, authored left shield, right melee/caster weapons and inward sword alignment.
+- Updated [combat rules and verification](COMBAT_SYSTEM.md); 119 tests, typecheck and production build pass. Actual desktop/touch-emulated Chromium checks confirm idle hero decisions, detail menus holding enemy presentation, initiative handoff and all seven weapon views.
+
+Open: ordinary-party full Floors 1–5 acceptance, physical-phone testing, and balancing action economy now that initiative changes order rather than action frequency. A separate strengthened-party browser fixture verified boss victory → one-time XP/loot → save/reload → Floor 6 descent. High-cost/AoE skills need observation under the one-action rule. No new spatial enemies or navigation.
 
 ## Completed foundations
 

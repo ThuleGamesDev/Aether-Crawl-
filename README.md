@@ -1,6 +1,6 @@
 # Aether Crawl
 
-Aether Crawl is a local-first, retro fantasy dungeon crawler. Choose a three-character party, explore compact first-person dungeons, fight semi-real-time tactical encounters, collect equipment, and descend through six themed biomes toward their guardians.
+Aether Crawl is a local-first, retro fantasy dungeon crawler. Choose a three-character party, explore compact first-person dungeons, fight turn-based tactical encounters, collect equipment, and descend through six themed biomes toward their guardians.
 
 The project is a playable browser vertical slice built with React, TypeScript, Vite, Tailwind CSS, and a Canvas raycaster. Gameplay, art, narrative text, saves, and audio work without an API key or network access after dependencies have been installed.
 
@@ -8,7 +8,7 @@ The project is a playable browser vertical slice built with React, TypeScript, V
 
 1. Choose three adventurers from eight classes.
 2. Explore a procedurally laid-out dungeon using the on-screen controls.
-3. Fight random encounters and guarded exits in semi-real-time tactical combat.
+3. Fight random encounters and guarded exits in turn-based tactical combat.
 4. Gain XP, choose perks, collect loot, and spend scrap at the crafting menu.
 5. Defeat the guardian at each five-floor milestone and descend into the next biome.
 
@@ -20,7 +20,8 @@ Biomes are selected by dungeon level: Stone Dungeon (1–5), Moss (6–10), Cata
 
 **Mobile:** drag the left virtual stick to move and drag the right half of the view to look. Large touch buttons open Inventory, Skills, Party, Crafting, and the map; E interacts. Turn the device sideways for more room where possible.
 
-Combat uses independent party/enemy action timers. Initiative determines initial readiness and recovery; light heroes and creatures act faster, while armor and shields add load. Effective INIT is visible in combat, Inventory and Party Stats. Use Attack, timed Defend, Skills, potions or Flee when the selected hero is READY. Space toggles tactical pause; 1–4/F1–F4 or READY party cards select a hero. Touch has Party and Pause buttons. Skill/Item/Party selection slows combat to 20%. Enemy badges show announced casts and whether Stun can interrupt them. Click an enemy sprite to target it. Save after the encounter; Menu suspends combat.
+Combat uses initiative rounds: each living hero and monster gets one action, in descending effective INIT order. Equipment load lowers initiative. The active hero waits indefinitely for Attack, Guard, a skill, potion or Flee; other party members cannot act out of turn. Guard lasts until that hero’s next turn. Enemies resolve their advertised intent individually, with a short presentation pause between actions. There is no real-time recovery, input buffer, Auto Basic or tactical slowdown. The HUD shows the current round and remaining turn order. Save after the encounter; Menu suspends enemy presentation. See [combat rules](docs/COMBAT_SYSTEM.md).
+
 
 ## Requirements and setup
 
@@ -53,7 +54,7 @@ All production art is committed under `public/assets/` as individual PNG and Web
 
 Floors 1–5 now use detailed painted stone walls, perspective floors and an arched gate, with larger painted sword/shield foregrounds inspired by the supplied dark fantasy reference. Other weapons, creatures, props and later biomes retain the existing pixel-painted assets. This remains a 2.5D raycaster; curved corridors and an outdoor castle scene are not implemented. Transparent sprites retain real alpha in PNG or WebP.
 
-See [initiative, art provenance and browser verification](docs/INITIATIVE_AND_PAINTED_LOOK.md) for the current rules, checks and limitations.
+See [initiative, art provenance and browser verification](docs/INITIATIVE_AND_PAINTED_LOOK.md) for the original art pass; current combat rules are documented below.
 
 See [the art direction](docs/ART_DIRECTION.md) for visual rules and [the asset pipeline](docs/ASSET_PIPELINE.md) for filenames, registry updates, and addition steps.
 
@@ -97,9 +98,9 @@ See [the combat system guide](docs/COMBAT_SYSTEM.md) for clock/readiness, intent
 
 Saves remain in browser `localStorage` under the existing Aether Crawl save key. The save stores gameplay state only; visual URLs, image payloads, and derived weapon sprite types are excluded. Player position now stores continuous world coordinates and a horizontal angle. Older saves with integer `pos` and cardinal `dir` are migrated to the center of that tile while preserving the old facing; weapon visual types are still recovered from item names when loaded.
 
-## Direct combat controls (2.5B)
+## Turn-based combat controls
 
-Select a living hero with 1–4/F1–F4. LMB attacks; Q/E/R/F use its first four skills; V guards; G uses the bound potion; Tab/Shift+Tab cycles living enemies; Space pauses. B toggles inactive-hero Auto Basic (OFF by default). Skills can buffer in the last 250 ms before READY; Esc/right-click cancels. Touch uses the shared Attack/skill/Guard/Potion/Target/Party/Pause dock; hold a skill for details. More offers all skills, potion binding, Flee and the explicit Auto toggle. See `docs/COMBAT_SYSTEM.md` for timing and resource rules.
+The hero whose initiative turn is highlighted owns the commands. LMB attacks; Q/E/R/F use its first four skills; V guards; G uses the bound potion; Tab/Shift+Tab cycles living enemies. Other party cards cannot change turn ownership. Touch uses Attack/skill/Guard/Potion/Target buttons; hold a skill for details. More offers all skills, potion binding and Flee. Take as much time as needed. See [turn-based combat](docs/COMBAT_SYSTEM.md).
 
 ## Dungeon Gameplay 2.0
 

@@ -3,7 +3,7 @@ import type { CombatCommand } from './combatActions';
 
 export type CombatInput =
   | { type: 'character'; index: number }
-  | { type: 'characterCycle' | 'attack' | 'defend' | 'item' | 'pause' | 'cancel' | 'auto' }
+  | { type: 'attack' | 'defend' | 'item' | 'cancel' }
   | { type: 'targetCycle'; direction: number }
   | { type: 'quickSkill'; slot: number };
 export const QUICK_SKILL_KEYS = ['Q', 'E', 'R', 'F'] as const;
@@ -13,18 +13,15 @@ export function combatKeyInput(code: string, shift = false): CombatInput | null 
   const slot = ['KeyQ', 'KeyE', 'KeyR', 'KeyF'].indexOf(code);
   if (slot >= 0) return { type: 'quickSkill', slot };
   if (code === 'Tab') return { type: 'targetCycle', direction: shift ? -1 : 1 };
-  if (code === 'Space') return { type: 'pause' };
   if (code === 'KeyG') return { type: 'item' };
   if (code === 'KeyV') return { type: 'defend' };
-  if (code === 'KeyB') return { type: 'auto' };
   if (code === 'Escape') return { type: 'cancel' };
   return null;
 }
 export function combatTouchInput(action: string): CombatInput | null {
   if (/^skill[0-3]$/.test(action)) return { type: 'quickSkill', slot: Number(action.slice(-1)) };
   if (action === 'target') return { type: 'targetCycle', direction: 1 };
-  if (action === 'party') return { type: 'characterCycle' };
-  if (['attack', 'defend', 'item', 'pause', 'cancel', 'auto'].includes(action)) return { type: action } as CombatInput;
+  if (['attack', 'defend', 'item', 'cancel'].includes(action)) return { type: action } as CombatInput;
   return null;
 }
 export function cycleTarget(enemies: Enemy[], currentId: string | null, direction = 1): string | null {
@@ -33,14 +30,6 @@ export function cycleTarget(enemies: Enemy[], currentId: string | null, directio
   const index = alive.findIndex(e => e.id === currentId);
   if (index < 0) return alive[direction < 0 ? alive.length - 1 : 0].id;
   return alive[(index + (direction < 0 ? -1 : 1) + alive.length) % alive.length].id;
-}
-export function selectCharacter(party: Character[], index: number, cycle = false): number | null {
-  if (!cycle) return party[index]?.stats.hp > 0 ? index : null;
-  for (let i = 1; i <= party.length; i++) {
-    const next = (index + i) % party.length;
-    if (party[next].stats.hp > 0) return next;
-  }
-  return null;
 }
 export function quickPotion(inventory: Item[], preferredId?: string | null): Item | undefined {
   const usable = inventory.filter(i => i.type === 'POTION' && i.quantity > 0 && (i.id.includes('hp') || i.id.includes('mp')));

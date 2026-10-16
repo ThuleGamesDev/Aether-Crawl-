@@ -3,8 +3,7 @@ import type { Character, ClassType, Player, SaveData } from '../types';
 import { CLASSES } from '../constants';
 import { createEnemyById, loadGame, saveGame } from '../services/gameLogic';
 import { CombatRuntime } from '../services/combatRuntime';
-import { playerRecoveryMs } from '../data/combatTiming';
-import { characterInitiative, equipmentInitiativePenalty, initiativeDuration, initiativeSpeed } from '../services/initiative';
+import { characterInitiative, equipmentInitiativePenalty } from '../services/initiative';
 
 function hero(classType: ClassType): Character {
   const template = CLASSES[classType];
@@ -17,50 +16,16 @@ const player = (party = [hero('PALADIN'), hero('RANGER')]): Player => ({ pos: { 
 afterEach(() => { vi.unstubAllGlobals(); });
 
 describe('initiative and equipment load', () => {
-  it('gives a starting Ranger earlier readiness than a Paladin regardless of party order', () => {
-    const p = player();
-    const a = new CombatRuntime(p, [createEnemyById('stone_golem')]);
-    const b = new CombatRuntime(player([...p.party].reverse()), [createEnemyById('stone_golem')]);
-    expect(a.actors.RANGER.remainingMs).toBeLessThan(a.actors.PALADIN.remainingMs);
-    expect(a.actors.RANGER.remainingMs).toBe(b.actors.RANGER.remainingMs);
-    expect(a.actors.PALADIN.remainingMs).toBe(b.actors.PALADIN.remainingMs);
-    a.advance(a.actors.RANGER.remainingMs);
+  it('orders a Ranger ahead of a shield-bearing Paladin independently of party order', () => {
+    const p = player(), enemy = createEnemyById('stone_golem');
+    const a = new CombatRuntime(p, [enemy]), b = new CombatRuntime(player([...p.party].reverse()), [enemy]);
+    expect(a.order).toEqual(['RANGER', 'PALADIN', enemy.id]); expect(a.order).toEqual(b.order);
     expect(a.isReady('RANGER')).toBe(true); expect(a.isReady('PALADIN')).toBe(false);
   });
-
-  it('uses the same opener for monsters and heroes, so a fast rat can prepare before a Ranger', () => {
-    const rat = createEnemyById('giant_rat'), golem = createEnemyById('stone_golem');
-    const rt = new CombatRuntime(player(), [golem, rat]);
-    expect(rt.actors[rat.id].remainingMs).toBeLessThan(rt.actors.RANGER.remainingMs);
-    expect(rt.actors.RANGER.remainingMs).toBeLessThan(rt.actors[golem.id].remainingMs);
-    rt.advance(rt.actors[rat.id].remainingMs);
-    expect(rt.actors[rat.id].casting).toBeDefined(); expect(rt.isReady('RANGER')).toBe(false);
-  });
-
-  it('applies initiative to recurring actions and authored skill recovery without double-scaling', () => {
-    const ranger = hero('RANGER'), paladin = hero('PALADIN');
-    expect(playerRecoveryMs(ranger, 'attack')).toBeLessThan(playerRecoveryMs(paladin, 'attack'));
-    const rt = new CombatRuntime(player(), [createEnemyById('stone_golem')], () => 0.5);
-    rt.advance(1700); rt.setPaused(true);
-    rt.act({ actorId: ranger.id, type: 'attack', targetId: rt.enemies[0].id });
-    expect(rt.actors.RANGER.recoveryMs).toBe(playerRecoveryMs(ranger, 'attack'));
-    expect(playerRecoveryMs(ranger, 'skill', { ...ranger.skills[0], recoveryMs: 2000 }))
-      .toBe(initiativeDuration(2000, characterInitiative(ranger)));
-  });
-
-  it('makes fast enemies act more often while retaining the full authored windup', () => {
-    const p = player([hero('PALADIN')]); p.party[0].stats.hp = p.party[0].stats.maxHp = 100000;
-    const make = (initiative: number) => ({ ...createEnemyById('giant_rat'), initiative, damage: 1, abilityIds: ['basic_attack'] });
-    const fast = new CombatRuntime(p, [make(16)], () => 0.5);
-    const slow = new CombatRuntime(p, [make(5)], () => 0.5);
-    const fastActions = fast.advance(10000).logs.filter(l => l.includes(' uses ')).length;
-    const slowActions = slow.advance(10000).logs.filter(l => l.includes(' uses ')).length;
-    expect(fastActions).toBeGreaterThan(slowActions);
-    for (const initiative of [5, 16]) {
-      const enemy = { ...make(initiative), intent: { abilityId: 'basic_attack', type: 'HEAVY_ATTACK' as const, label: 'Heavy', shortLabel: 'Heavy', icon: '', castTimeMs: 1800, interruptible: true } };
-      const rt = new CombatRuntime(p, [enemy]); rt.advance(rt.actors[enemy.id].remainingMs);
-      expect(rt.actors[enemy.id].casting?.totalMs).toBe(1800);
-    }
+  it('lets a fast rat precede heroes and heavy armor move a hero later', () => {
+    const p = player(), rat = createEnemyById('giant_rat');
+    p.party[1].equipment.armor = { id: 'heavy', name: '', description: '', type: 'ARMOR', armorWeight: 'HEAVY', value: 4, quantity: 1 };
+    const rt = new CombatRuntime(p, [rat]); expect(rt.order).toEqual([rat.id, 'RANGER', 'PALADIN']); expect(rt.actors.RANGER.initiative).toBe(9);
   });
 
   it('derives armor and shield load without mutating base initiative or scaling it with item tier', () => {
@@ -74,12 +39,11 @@ describe('initiative and equipment load', () => {
     ranger.equipment.armor = null; expect(characterInitiative(ranger)).toBe(base);
   });
 
-  it('bounds extreme initiative values and preserves intentional long action delays', () => {
-    expect(initiativeSpeed(1)).toBe(0.7); expect(initiativeSpeed(30)).toBe(1.5);
-    expect(initiativeDuration(2000, 30)).toBeGreaterThan(initiativeDuration(1000, 30));
-    expect(initiativeDuration(NaN, 10)).toBe(1000);
-    const invalid = hero('RANGER'); invalid.stats.initiative = NaN;
-    expect(characterInitiative(invalid)).toBe(13);
+  it('uses a class fallback for invalid initiative and never drops below one under load', () => {
+    const ranger = hero('RANGER'); ranger.stats.initiative = NaN;
+    expect(characterInitiative(ranger)).toBe(13);
+    ranger.stats.initiative = 1; ranger.equipment.armor = { id: 'heavy', name: '', description: '', type: 'ARMOR', armorWeight: 'HEAVY', value: 4, quantity: 1 };
+    expect(characterInitiative(ranger)).toBe(1);
   });
 
   it('migrates legacy saves and round-trips base initiative and armor weight without cumulative penalties', () => {

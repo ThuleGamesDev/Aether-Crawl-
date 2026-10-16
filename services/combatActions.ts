@@ -1,7 +1,6 @@
 import type { CombatEvent } from './combatFeedback';
 import type { Enemy, Player, VFXType } from '../types';
 import { enemyAbilities } from '../data/enemyAbilities';
-import { playerRecoveryMs } from '../data/combatTiming';
 import { calculatePlayerAttack, calculateSkillPower, createStatusEffect, damageEnemies, upsertStatusEffect } from './combat';
 
 export type CombatCommand = { actorId: string; targetId?: string | null } & (
@@ -18,7 +17,6 @@ export interface PlayerActionResult extends CombatFeedback {
   accepted: boolean;
   player: Player;
   enemies: Enemy[];
-  recoveryMs: number;
   escaped?: boolean;
 }
 
@@ -35,14 +33,13 @@ export const resolvePlayerCombatAction = (initialPlayer: Player, initialEnemies:
       if ((old.guard ?? 0) > (enemy.guard ?? 0)) events.push({ kind: 'block', amount: (old.guard ?? 0) - (enemy.guard ?? 0), targetId: enemy.id });
     }
   };
-  const fail = (message: string): PlayerActionResult => ({ accepted: false, player: initialPlayer, enemies: initialEnemies, recoveryMs: 0, logs: [message], vfx });
+  const fail = (message: string): PlayerActionResult => ({ accepted: false, player: initialPlayer, enemies: initialEnemies, logs: [message], vfx });
   const index = initialPlayer.party.findIndex(character => character.id === command.actorId && character.stats.hp > 0);
   if (index < 0) return fail('That character cannot act.');
   const player: Player = { ...initialPlayer, party: initialPlayer.party.map(c => ({ ...c, stats: { ...c.stats }, statusEffects: [...c.statusEffects] })), inventory: initialPlayer.inventory.map(item => ({ ...item })) };
   const character = player.party[index];
   let enemies = [...initialEnemies];
   const target = enemies.find(enemy => enemy.id === command.targetId && enemy.hp > 0) ?? enemies.find(enemy => enemy.hp > 0);
-  let recoveryMs = playerRecoveryMs(character, command.type);
   let sound: CombatFeedback['sound'];
   let escaped = false;
   const status = (targetId: string, type: Parameters<typeof createStatusEffect>[0], duration: number, value: number, enemyTarget: boolean) => {
@@ -68,7 +65,7 @@ export const resolvePlayerCombatAction = (initialPlayer: Player, initialEnemies:
     sound = 'attack';
   } else if (command.type === 'defend') {
     character.isDefending = true; events.push({ kind: 'guard', targetId: character.id });
-    logs.push(`${character.name} guards for 2.8 seconds.`);
+    logs.push(`${character.name} guards until their next turn.`);
     vfx.push({ type: 'BUFF', targetId: character.id }); sound = 'defend';
   } else if (command.type === 'run') {
     escaped = !enemies.some(enemy => enemy.isBoss) && random() > 0.5;
@@ -79,7 +76,6 @@ export const resolvePlayerCombatAction = (initialPlayer: Player, initialEnemies:
     if (character.stats.mp < skill.cost && skill.id !== 'soul_pact') return fail('Not enough MP!');
     const offensive = skill.type !== 'HEAL' && skill.type !== 'BUFF' && skill.id !== 'soul_pact';
     if (offensive && !target) return fail('No living target.');
-    recoveryMs = playerRecoveryMs(character, 'skill', skill);
     if (skill.id === 'soul_pact') {
       if (character.stats.hp <= 20) return fail('Not enough HP!');
       character.stats.hp -= 20; character.stats.mp = Math.min(character.stats.maxMp, character.stats.mp + 40);
@@ -122,5 +118,5 @@ export const resolvePlayerCombatAction = (initialPlayer: Player, initialEnemies:
     item.quantity -= 1; player.inventory = player.inventory.filter(i => i.quantity > 0);
     logs.push(`${character.name} used ${item.name}.`); vfx.push({ type: 'HEAL', targetId: character.id }); sound = 'heal';
   }
-  return { accepted: true, player, enemies, recoveryMs, logs, vfx, events, sound, escaped };
+  return { accepted: true, player, enemies, logs, vfx, events, sound, escaped };
 };
