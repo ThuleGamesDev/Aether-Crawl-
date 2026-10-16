@@ -1,3 +1,4 @@
+import { handPresentation, type HandPlacement } from '../services/handPresentation';
 import { drawPerspectivePlanes, drawDungeonAtmosphere } from '../services/dungeonRender';
 import React, { useEffect, useRef } from 'react';
 import type { CombatSnapshot } from '../services/combatRuntime';
@@ -430,11 +431,10 @@ function drawEnemySprites(args: {
 
     if (enemy.intent) {
       const intent = enemy.intent;
-      const cast = snapshot?.actors[enemy.id]?.casting;
       const label = intent.minDamage !== undefined && intent.maxDamage !== undefined
         ? `${intent.icon} ${intent.type === 'HEAVY_ATTACK' ? 'HEAVY' : 'ATTACK'} ${intent.minDamage}–${intent.maxDamage}`
         : `${intent.icon} ${intent.type === 'HEAVY_ATTACK' ? 'HEAVY' : intent.type === 'SUMMON' ? 'SUMMON' : intent.type === 'BUFF' || intent.type === 'HEAL' ? intent.type : intent.shortLabel}`;
-      const text = cast ? `${label} ${(cast.remainingMs / 1000).toFixed(1)}s ${cast.interruptible ? '⚡' : '🔒'}` : label;
+      const text = `${label}${snapshot?.turnId === enemy.id ? ' · NOW' : ''}`;
       const badgeWidth = Math.min(slotWidth * 0.94, 150);
       const fontSize = Math.max(18, Math.min(22, badgeWidth / 8));
       context.save();
@@ -449,20 +449,13 @@ function drawEnemySprites(args: {
         : intent.type === 'PREPARE' || intent.type === 'SUMMON' ? 'rgba(69, 35, 91, 0.94)'
         : 'rgba(28, 24, 20, 0.94)';
       context.fillRect(pillX, pillY, pillWidth, pillHeight);
-      const urgent = cast && cast.remainingMs < 1000 && (intent.type === 'HEAVY_ATTACK' || intent.type === 'SUMMON');
       context.strokeStyle = intent.type === 'HEAVY_ATTACK' ? '#ff7b5a' : '#d3b46f';
-      if (urgent && !snapshot?.clock.paused) { context.shadowColor = '#e98550'; context.shadowBlur = 5 + 3 * Math.sin(Date.now() / 160); }
       context.lineWidth = 1;
       context.strokeRect(pillX, pillY, pillWidth, pillHeight);
       context.fillStyle = '#fff5dc';
       context.textAlign = 'center';
       context.textBaseline = 'middle';
       context.fillText(text, centerX, pillY + pillHeight / 2, pillWidth - 6);
-      if (cast) {
-        context.fillStyle = '#29221e'; context.fillRect(pillX, pillY + pillHeight + 1, pillWidth, 4);
-        context.fillStyle = cast.interruptible ? '#ffa34e' : '#9e9ba8';
-        context.fillRect(pillX, pillY + pillHeight + 1, pillWidth * (1 - cast.remainingMs / Math.max(1, cast.totalMs)), 4);
-      }
       context.restore();
     }
   });
@@ -488,16 +481,21 @@ function drawPlayerHands(args: {
     : getImageAsset(weaponVisuals.unarmed);
   if (!weaponImage || !offhandImage) return;
 
-  const sword = getWeaponVisualType(character.equipment.weapon) === 'sword';
-  const hasShield = character.equipment.offhand?.type === 'SHIELD';
-  const weaponHeight = Math.min(height * (sword ? 0.8 : 0.55), width * (sword ? 1.7 : 0.95));
-  const weaponWidth = weaponHeight * weaponImage.width / weaponImage.height;
-  const shieldHeight = Math.min(height * (hasShield ? 0.45 : 0.22), width * (hasShield ? 0.7 : 0.3));
-  const shieldWidth = shieldHeight * offhandImage.width / offhandImage.height;
-  const stepBob = moving ? Math.sin(frame * 0.16) * 3 : Math.sin(frame * 0.025) * 0.6;
-  const bobX = moving ? Math.cos(frame * 0.07) * 2 : 0;
-  context.drawImage(offhandImage, -shieldWidth * 0.25 + bobX, height - shieldHeight + 10 + stepBob, shieldWidth, shieldHeight);
-  context.drawImage(weaponImage, width - weaponWidth + width * 0.02 - bobX, height - weaponHeight + 12 + stepBob, weaponWidth, weaponHeight);
+  const layout = handPresentation(getWeaponVisualType(character.equipment.weapon), character.equipment.offhand?.type === 'SHIELD', width, height);
+  const bob = moving ? Math.sin(frame * 0.16) * 3 : Math.sin(frame * 0.025) * 0.6;
+  const draw = (image: HTMLImageElement, placement: HandPlacement) => {
+    const h = placement.height, w = h * image.width / image.height;
+    context.save();
+    // Anchor the forearm at its screen edge. Mirror only sources authored for the other hand.
+    context.translate(placement.x, placement.y + bob);
+    context.rotate(placement.rotation);
+    if (placement.mirror) context.scale(-1, 1);
+    const left = placement.mirror ? -w : placement.side === 'left' ? -w * 0.16 : -w;
+    context.drawImage(image, left, -h, w, h);
+    context.restore();
+  };
+  if (layout.offhand) draw(offhandImage, layout.offhand);
+  draw(weaponImage, layout.weapon);
 }
 
 function drawVfx(args: {

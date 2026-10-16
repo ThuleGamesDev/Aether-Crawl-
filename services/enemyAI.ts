@@ -78,7 +78,7 @@ const chooseWeighted = <T extends { weight: number }>(items: T[], random: () => 
   return items[items.length - 1];
 };
 
-/** Advertises the next action before that actor begins its cast. */
+/** Advertises the action to be resolved on that actor’s next turn. */
 export const planEnemyIntent = (enemy: Enemy, enemies: Enemy[], scrap: number, random: () => number = Math.random): Enemy => {
   if (enemy.hp <= 0) return enemy;
   const abilityCooldowns = { ...(enemy.abilityCooldowns ?? {}) };
@@ -103,17 +103,20 @@ export const planEnemyIntents = (enemies: Enemy[], scrap: number, random: () => 
   return enemies.map(enemy => enemy.hp > 0 ? planEnemyIntent(enemy, living, scrap, random) : enemy);
 };
 
-/** Cancels a live cast without ticking unrelated damage-over-time effects twice. */
-export const interruptEnemyIntent = (enemy: Enemy): Enemy => {
+/** Shared cancellation policy, independent of status ticking. */
+const cancelEnemyAbility = (enemy: Enemy): Enemy => {
   const ability = enemyAbilities[enemy.intent?.abilityId ?? 'basic_attack'] ?? enemyAbilities.basic_attack;
-  const cancelledFlag = ability.cancelFlagOnInterrupt ?? ability.consumeFlagOnResolve;
   return withFlags({
-    ...enemy,
-    previousAbilityId: ability.id,
+    ...enemy, previousAbilityId: ability.id,
     abilityCooldowns: { ...enemy.abilityCooldowns, [ability.id]: Math.max(1, ability.cooldown ?? 1) },
-    statusEffects: enemy.statusEffects.flatMap(effect => effect.type !== 'STUN' ? [effect] : effect.duration > 1 ? [{ ...effect, duration: effect.duration - 1 }] : []),
-  }, cancelledFlag);
+  }, ability.cancelFlagOnInterrupt ?? ability.consumeFlagOnResolve);
 };
+
+/** Legacy interrupt entry point: consumes stun but never unrelated status ticks. */
+export const interruptEnemyIntent = (enemy: Enemy): Enemy => cancelEnemyAbility({
+  ...enemy,
+  statusEffects: enemy.statusEffects.flatMap(effect => effect.type !== 'STUN' ? [effect] : effect.duration > 1 ? [{ ...effect, duration: effect.duration - 1 }] : []),
+});
 
 export const activateEnemyPhases = (enemies: Enemy[]): { enemies: Enemy[]; logs: string[] } => {
   const logs: string[] = [];
@@ -193,7 +196,7 @@ export const resolveEnemyIntent = (
     wasStunned = true;
     const abilityCooldowns = Object.fromEntries(Object.entries(actor.abilityCooldowns ?? {})
       .map(([id, turns]) => [id, Math.max(0, turns - 1)]));
-    actor = withFlags({ ...actor, previousAbilityId: ability.id, abilityCooldowns }, ability.cancelFlagOnInterrupt);
+    actor = cancelEnemyAbility({ ...actor, abilityCooldowns });
     enemies = enemies.map(enemy => enemy.id === enemyId ? actor! : enemy);
     logs.push(`${actor.name} is stunned and loses ${ability.name}.`);
     return { enemies, party, scrap, logs, vfx, events, acted, defeated: false, stunned: wasStunned };

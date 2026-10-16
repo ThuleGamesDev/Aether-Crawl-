@@ -94,6 +94,7 @@ export interface EnemyIntent {
     description?: string;
     abilityId: string;
     interruptible?: boolean;
+    /** Legacy authored timing metadata; round combat does not count down. */
     castTimeMs?: number;
     recoveryMs?: number;
     interruptResistance?: number;
@@ -103,13 +104,13 @@ export interface StatusEffect {
     id: string;
     type: StatusType;
     name: string;
-    duration: number; // Own action cycles remaining (readiness for heroes, intent resolution for enemies)
+    duration: number; // Own turns remaining (turn start for heroes, intent resolution for enemies)
     value: number; // Dmg per turn, or stat bonus amount
     icon: string;
 }
 
 export interface Skill {
-  /** Optional authored recovery override, in simulated combat milliseconds. */
+  /** Legacy timing metadata, ignored by initiative-round combat. */
   recoveryMs?: number;
   id: string;
   name: string;

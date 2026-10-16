@@ -2,7 +2,7 @@ import { useCallback, useRef } from 'react';
 import type { CombatEvent } from '../services/combatFeedback';
 import { audioService } from '../services/audioService';
 export type FloatingCombatEvent = CombatEvent & { id: number; createdAt: number };
-/** Presentation uses wall time only; it never pauses or advances the combat clock. */
+/** Presentation uses wall time only; it never advances combat turns. */
 export function useCombatFeedback() {
   const eventsRef = useRef<FloatingCombatEvent[]>([]);
   const sequence = useRef(0);

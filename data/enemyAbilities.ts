@@ -23,6 +23,7 @@ export interface EnemyAbilityDefinition {
   damageMultiplier?: number;
   vfxType?: VFXType;
   interruptible?: boolean;
+  /** Legacy authored timing metadata; rounds resolve one ability per enemy turn. */
   castTimeMs?: number;
   recoveryMs?: number;
   interruptResistance?: number;

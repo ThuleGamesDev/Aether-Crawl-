@@ -53,8 +53,11 @@ canvas {
 
 @media (max-height: 500px) and (orientation: landscape) {
   .combat-dock { display: grid; grid-template-columns: 145px minmax(0, 1fr); gap: 0 8px; padding: 4px 8px; width: min(760px, 96vw); }
-  .combat-party-strip { grid-row: 1 / 3; flex-direction: column; margin-bottom: 0; }
-  .combat-notice { grid-column: 2; }
+  .combat-round { grid-column: 1 / -1; grid-row: 1; }
+  .combat-order { grid-column: 1 / -1; grid-row: 2; }
+  .combat-controls { grid-column: 2; grid-row: 3; }
+  .combat-notice { grid-column: 2; grid-row: 4; }
+  .combat-party-strip { grid-column: 1; grid-row: 3 / 5; flex-direction: column; margin-bottom: 0; }
   .combat-party { min-height: 44px; padding: 2px 6px; }
   .combat-target { top: 4px; left: 72%; width: min(360px, 45vw); }
   .combat-dock button { min-height: 44px; }

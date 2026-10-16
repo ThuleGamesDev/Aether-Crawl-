@@ -1,5 +1,7 @@
 # Initiative and painted dungeon pass — 2026-10-15
 
+> Historical record of PR #9. Its readiness, recovery, speed formula and timed Guard rules are superseded by [turn-based combat](COMBAT_SYSTEM.md). Art provenance below still applies. Current browser captures are linked from the combat document.
+
 Based on `main` after merged PR #8 (`e5c97b9`). This extends the existing independent combat timelines; it does not add a second combat system or spatial enemies.
 
 ## Initiative rules
