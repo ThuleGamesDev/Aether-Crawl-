@@ -48,6 +48,8 @@ The production build is written to `dist/`. To preview it locally:
 npm run preview
 ```
 
+The optional `npm run test:run` plays an ordinary party through Floors 1–5 in Chromium. Install its browser with `npx playwright install chromium`; see [run verification, commands and limits](docs/RUN_ACCEPTANCE.md). This is separate from the fast unit suite.
+
 ## Static asset pipeline
 
 All production art is committed under `public/assets/` as individual PNG and WebP files. The runtime only loads those files through `services/assetLoader.ts`; it does not call a generation service or create image data URLs. The title screen waits for the first floor's biome, enemies, weapons, and combat effects. Before a saved floor or the next biome appears, its required local assets are loaded and cached. A missing asset is reported visibly instead of silently replaced by generic art.

@@ -218,7 +218,7 @@ export const resolveEnemyIntent = (
     if (target && targetIndex >= 0) {
       const damage = calculateEnemyAttack(actor, target, effect.multiplier);
       events.push({ kind: 'damage', targetId: target.id, amount: Math.min(target.stats.hp, damage), source: 'enemy' });
-      const unguarded = calculateEnemyAttack(actor, { ...target, isDefending: false, equipment: { ...target.equipment, armor: null, offhand: null } }, effect.multiplier ?? 1);
+      const unguarded = calculateEnemyAttack(actor, { ...target, isDefending: false, statusEffects: target.statusEffects.filter(e => e.type !== 'SHIELD'), equipment: { ...target.equipment, armor: null, offhand: null } }, effect.multiplier ?? 1);
       if (unguarded > damage) events.push({ kind: 'block', targetId: target.id, amount: unguarded - damage });
       party = applyDamageToParty(party, targetIndex, damage);
       logs.push(`${actor.name} uses ${ability.name} on ${target.name} for ${damage} damage.`);
@@ -257,7 +257,7 @@ export const resolveEnemyIntent = (
       if (effect.multiplier) {
         const damage = calculateEnemyAttack(actor, target, effect.multiplier);
         events.push({ kind: 'damage', targetId: target.id, amount: Math.min(target.stats.hp, damage), source: 'enemy' });
-        const unguarded = calculateEnemyAttack(actor, { ...target, isDefending: false, equipment: { ...target.equipment, armor: null, offhand: null } }, effect.multiplier ?? 1);
+        const unguarded = calculateEnemyAttack(actor, { ...target, isDefending: false, statusEffects: target.statusEffects.filter(e => e.type !== 'SHIELD'), equipment: { ...target.equipment, armor: null, offhand: null } }, effect.multiplier ?? 1);
         if (unguarded > damage) events.push({ kind: 'block', targetId: target.id, amount: unguarded - damage });
         party = applyDamageToParty(party, targetIndex, damage);
         vfx.push({ type: 'DAMAGE', targetId: target.id });

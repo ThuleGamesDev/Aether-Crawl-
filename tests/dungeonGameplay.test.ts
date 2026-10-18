@@ -12,6 +12,15 @@ const setup = (level=3,seed=42) => generateDungeon('dungeon',seed,level);
 const find = (floor: FloorState, type: DungeonRoom['type']) => floor.rooms.find(r=>r.type===type)!;
 afterEach(()=>{ vi.unstubAllGlobals(); });
 describe('Dungeon Gameplay 2.0 floor plan',()=>{
+ it('lets E open an ordinary door ahead of a declined choice underfoot',()=>{
+  const map=[[1,1,1,1],[1,0,TileType.DOOR,1],[1,0,1,1],[1,1,1,1]];
+  const room={...find(setup().floor!,'TREASURE'),anchor:{x:1,y:1},cells:[{x:1,y:1}],resolved:false};
+  const floor={...setup().floor!,rooms:[room]};
+  expect(roomInteraction(floor,map,{x:1.5,y:1.5,angle:0})).toBeUndefined();
+  expect(roomInteraction(floor,map,{x:1.5,y:1.5,angle:Math.PI/2})).toEqual(room);
+  map[1][2]=TileType.EMPTY;
+  expect(roomInteraction(floor,map,{x:1.5,y:1.5,angle:0})).toEqual(room);
+ });
  it('is identical for the same floor seed and changes with another seed',()=>{
   expect(setup()).toEqual(setup()); expect(setup(3,43).map).not.toEqual(setup().map);
  });

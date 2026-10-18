@@ -28,13 +28,19 @@ export function visitFloor(floor: FloorState, pos: Position, explored: boolean[]
 export function roomInteraction(floor: FloorState | null, map: number[][], transform: { x: number; y: number; angle: number }): DungeonRoom | undefined {
   if (!floor) return;
   const seen = new Set<string>();
+  let underfoot: DungeonRoom | undefined;
   for (let d = 0; d <= 1.5; d += 0.04) {
     const pos = { x: Math.floor(transform.x + Math.cos(transform.angle) * d), y: Math.floor(transform.y + Math.sin(transform.angle) * d) }, key = cellKey(pos);
     if (seen.has(key)) continue; seen.add(key);
     const room = floor.rooms.find(r => !r.resolved && !['NORMAL', 'BOSS_ANTECHAMBER', 'BOSS'].includes(r.type) && cellKey(r.gate && (map[r.gate.y][r.gate.x] === TileType.LOCKED && !r.unlocked || map[r.gate.y][r.gate.x] === TileType.SECRET && !r.discovered) ? r.gate : r.anchor) === key);
-    if (room) return room;
-    if (map[pos.y]?.[pos.x] === undefined || isClosedTile(map[pos.y][pos.x]) || map[pos.y][pos.x] === TileType.DOOR) return;
+    if (d === 0) underfoot = room;
+    else if (room) return room;
+    const tile = map[pos.y]?.[pos.x];
+    // A declined choice under the player must not hide the ordinary door ahead.
+    if (tile === TileType.DOOR) return;
+    if (tile === undefined || isClosedTile(tile)) return underfoot;
   }
+  return underfoot;
 }
 export function roomReward(floor: FloorState, room: DungeonRoom, quality: 'NORMAL' | 'GOOD' | 'RARE', variant = 0): Item {
   const rng = floorRandom(floor.seed ^ floorHash(room.id + quality + variant));

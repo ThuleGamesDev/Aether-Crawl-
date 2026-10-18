@@ -32,6 +32,12 @@ Defeated actors leave the queue immediately. Summons and revivals become eligibl
 
 Saving remains exploration-only. Save migration stores base initiative independently of equipment load; no turn queue or partially resolved combat is serialized.
 
+## Skill ranks and SHIELD hardening
+
+Purchased ranks now add 15% of rank-one damage/healing/effect strength per rank, capped by the authored maximum, at unchanged MP cost. Damage/healing round down, status strength rounds to nearest integer. Soul Pact restores proportionally more MP while still costing 20 HP. Missing/invalid legacy rank metadata falls back safely. Shared details and perk text describe this rule.
+
+Hero SHIELD status now reduces each incoming attack by its value after Guard and before equipment (minimum hit 1), for its existing own-turn duration. It is not depleted as a pool and does not absorb poison/burn. Block feedback includes the mitigation. These were previously disconnected effects, not new abilities. See [run evidence and balance limits](RUN_ACCEPTANCE.md).
+
 ## First-person hand correction
 
 `services/handPresentation.ts` describes which hand owns each visual. Existing empty-hand and weapon sources were authored for the right hand, while the painted shield is already left-handed. The renderer now mirrors the empty-hand source for the left offhand and keeps the shield unmirrored. Right melee/staff weapons anchor at the lower right; the painted sword rotates slightly inward around the forearm anchor rather than leaning out of frame. All sprites preserve their source aspect ratio.
@@ -58,3 +64,7 @@ The bow is mirrored and placed in the left hand. Its ready pose does not also dr
 ![Landscape initiative rounds](previews/turn-combat-landscape.jpg)
 
 Not accepted by this change: a full ordinary-party Floors 1–5 playthrough, physical-phone performance/comfort, or final combat balance. Initiative now changes order rather than action frequency; expensive/AoE skills no longer pay a longer recovery and need playtest observation. No world-space enemies, navigation, new combat abilities or expanded art wave.
+
+## Normal expedition follow-up
+
+The strengthened-fixture limitation above describes the earlier round-conversion pass. A later ordinary-start five-floor browser expedition and a touch-emulated checkpoint run are now recorded in [Floors 1–5 acceptance](RUN_ACCEPTANCE.md). Physical-phone and broad balance acceptance remain open.

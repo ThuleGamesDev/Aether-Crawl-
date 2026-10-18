@@ -81,16 +81,27 @@ export const calculateEnemyAttack = (enemy: Enemy, target: Character, multiplier
   if (weakness) damage = Math.max(1, damage - weakness.value);
 
   if (target.isDefending) damage = Math.floor(damage / 2);
+  const shield = target.statusEffects.find(effect => effect.type === 'SHIELD');
+  if (shield) damage -= Math.max(0, shield.value);
   if (target.equipment.armor) damage -= target.equipment.armor.value;
   if (target.equipment.offhand?.type === 'SHIELD') damage -= target.equipment.offhand.value;
   return Math.max(1, damage);
 };
 
+/** Each purchased rank adds 15% power; authored max rank bounds old/malformed saves. */
+export const skillRankMultiplier = (skill: Skill): number => {
+  const max = Number.isFinite(skill.maxLevel) ? Math.max(1, Math.floor(skill.maxLevel)) : 1;
+  const rank = Number.isFinite(skill.level) ? Math.floor(skill.level) : 1;
+  return 1 + 0.15 * (Math.max(1, Math.min(max, rank)) - 1);
+};
+export const skillEffectValue = (skill: Skill): number => Math.round((skill.effect?.val ?? 0) * skillRankMultiplier(skill));
+export const soulPactRestoration = (skill: Skill): number => Math.floor(40 * skillRankMultiplier(skill));
+
 export const calculateSkillPower = (character: Character, skill: Skill): number => {
   let stat = character.stats.int;
   if (skill.scalingStat === 'STR') stat = character.stats.str;
   if (skill.scalingStat === 'DEX') stat = character.stats.dex;
-  return skill.basePower + Math.floor(stat * skill.scaling);
+  return Math.floor((skill.basePower + Math.floor(stat * skill.scaling)) * skillRankMultiplier(skill));
 };
 
 export const damageEnemies = (enemies: Enemy[], targetId: string, damage: number, multiTarget = false): Enemy[] =>

@@ -9,7 +9,7 @@ export const generatePerksForCharacter = (character: Character): Perk[] => {
       type: 'UPGRADE',
       skillId: skill.id,
       title: `Upgrade: ${skill.name} (Lv.${skill.level + 1})`,
-      description: 'Increase power/efficiency.',
+      description: 'Adds 15% of rank-one power or effect strength. MP cost stays unchanged.',
       cost: 0,
     }));
   const knownSkillIds = character.skills.map(skill => skill.id);

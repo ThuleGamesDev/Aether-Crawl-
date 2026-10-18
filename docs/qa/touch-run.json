@@ -1,0 +1,158 @@
+{
+  "startLevel": 1,
+  "endLevel": 1,
+  "resumedFrom": "../qa/normal-run/floor-1-rest.json",
+  "party": [
+    "Paladin",
+    "Ranger",
+    "Cleric"
+  ],
+  "floors": [
+    {
+      "level": 1,
+      "seed": 1372047133,
+      "start": [
+        {
+          "name": "Paladin",
+          "level": 1,
+          "hp": 109,
+          "maxHp": 110,
+          "mp": 40,
+          "maxMp": 40
+        },
+        {
+          "name": "Ranger",
+          "level": 1,
+          "hp": 99,
+          "maxHp": 100,
+          "mp": 40,
+          "maxMp": 50
+        },
+        {
+          "name": "Cleric",
+          "level": 1,
+          "hp": 96,
+          "maxHp": 100,
+          "mp": 60,
+          "maxMp": 60
+        }
+      ],
+      "end": [
+        {
+          "name": "Paladin",
+          "level": 2,
+          "hp": 125,
+          "maxHp": 125,
+          "mp": 45,
+          "maxMp": 45
+        },
+        {
+          "name": "Ranger",
+          "level": 2,
+          "hp": 114,
+          "maxHp": 115,
+          "mp": 45,
+          "maxMp": 55
+        },
+        {
+          "name": "Cleric",
+          "level": 2,
+          "hp": 91,
+          "maxHp": 115,
+          "mp": 45,
+          "maxMp": 65
+        }
+      ]
+    }
+  ],
+  "encounters": [
+    {
+      "floor": 1,
+      "foes": [
+        "bandit_king"
+      ],
+      "start": [
+        {
+          "name": "Paladin",
+          "level": 1,
+          "hp": 109,
+          "maxHp": 110,
+          "mp": 40,
+          "maxMp": 40
+        },
+        {
+          "name": "Ranger",
+          "level": 1,
+          "hp": 99,
+          "maxHp": 100,
+          "mp": 40,
+          "maxMp": 50
+        },
+        {
+          "name": "Cleric",
+          "level": 1,
+          "hp": 96,
+          "maxHp": 100,
+          "mp": 60,
+          "maxMp": 60
+        }
+      ],
+      "turns": 6,
+      "end": [
+        {
+          "name": "Paladin",
+          "level": 2,
+          "hp": 110,
+          "maxHp": 125,
+          "mp": 25,
+          "maxMp": 45
+        },
+        {
+          "name": "Ranger",
+          "level": 2,
+          "hp": 114,
+          "maxHp": 115,
+          "mp": 45,
+          "maxMp": 55
+        },
+        {
+          "name": "Cleric",
+          "level": 2,
+          "hp": 91,
+          "maxHp": 115,
+          "mp": 45,
+          "maxMp": 65
+        }
+      ]
+    }
+  ],
+  "choices": [],
+  "perks": [
+    {
+      "floor": 1,
+      "hero": "Paladin",
+      "perk": "Full Restore"
+    },
+    {
+      "floor": 1,
+      "hero": "Ranger",
+      "perk": "Upgrade: Blur (Lv.2)"
+    },
+    {
+      "floor": 1,
+      "hero": "Cleric",
+      "perk": "Upgrade: Restoration (Lv.2)"
+    }
+  ],
+  "equipment": [],
+  "reloads": [
+    {
+      "floor": 1,
+      "label": "guardian"
+    }
+  ],
+  "errors": [],
+  "touchMapCancellation": true,
+  "touchLayouts": true,
+  "complete": true
+}
