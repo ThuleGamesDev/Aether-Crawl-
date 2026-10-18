@@ -28,7 +28,7 @@ export default function CombatHud({ combat, control, selectedEnemyId }: { combat
           const actor = snapshot.actors[hero.id], active = snapshot.turnId === hero.id;
           return <button key={hero.id} aria-label={`Select ${hero.name}`} aria-pressed={active} disabled={!active} onClick={() => control.select(index)} className={'combat-party min-h-12 min-w-0 flex-1 rounded border px-2 py-1 text-left text-[10px] text-white ' + (active ? 'border-amber-200 bg-amber-900/50' : 'border-white/15 bg-slate-950/70')}>
             <span className="block truncate font-bold">{hero.name} {active ? '◀' : ''}</span><span className="block text-[9px] text-amber-100">INIT {characterInitiative(hero)}</span>
-            <span className="block truncate text-[8px]">HP {hero.stats.hp}/{hero.stats.maxHp} · MP {hero.stats.mp}/{hero.stats.maxMp}</span>
+            <span className="block text-[9px]">HP {hero.stats.hp}/{hero.stats.maxHp}</span><span className="block text-[9px] text-blue-200">MP {hero.stats.mp}/{hero.stats.maxMp}</span>
             <span className="block truncate text-[9px] text-amber-200">{hero.stats.hp <= 0 ? 'DEFEATED' : active ? 'YOUR TURN' : actor?.eligibleRound > snapshot.round ? 'NEXT ROUND' : actor?.actedRound === snapshot.round ? 'ACTED' : 'WAITING'}{hero.isDefending ? ' · GUARD' : ''} {hero.statusEffects.map(e => e.icon).join('')}</span>
           </button>;
         })}

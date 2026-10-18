@@ -1,3 +1,5 @@
+import { skillEffectSummary } from './services/combatInput';
+import { addInventoryItem, equipInventoryItem, scrapInventoryItem } from './services/inventory';
 import { characterInitiative, CLASS_INITIATIVE, equipmentInitiativePenalty } from './services/initiative';
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -445,16 +447,7 @@ const App: React.FC = () => {
   };
 
   const addToInventory = (item: Item) => {
-      setPlayer(p => {
-          const newInv = [...p.inventory];
-          const existing = newInv.find(i => i.name === item.name);
-          if (existing) {
-              existing.quantity += item.quantity;
-          } else {
-              newInv.push(item);
-          }
-          return { ...p, inventory: newInv };
-      });
+      setPlayer(p => addInventoryItem(p, item));
   };
 
   const handleCraft = (recipeId: string) => {
@@ -533,7 +526,6 @@ const App: React.FC = () => {
               const char = { ...np[charIndex] };
               char.skills = char.skills.map(s => s.id === perk.skillId ? { ...s, level: s.level + 1 } : s);
               np[charIndex] = char;
-              addLog(`${char.name} upgraded ${perk.skillId}!`, 'levelup');
               return { ...p, party: np };
           });
       } else {
@@ -542,11 +534,12 @@ const App: React.FC = () => {
              setPlayer(p => {
                  const np = [...p.party];
                  np[charIndex] = { ...np[charIndex], skills: [...np[charIndex].skills, skill] };
-                 addLog(`${np[charIndex].name} learned ${skill.name}!`, 'levelup');
                  return { ...p, party: np };
              });
           }
       }
+      if (perk.type === 'UPGRADE') addLog(`${player.party[charIndex].name} upgraded ${perk.skillId}!`, 'levelup');
+      else if (perk.skillId) { const learned = MASTER_SKILL_POOL.find(s => s.id === perk.skillId); if (learned) addLog(`${player.party[charIndex].name} learned ${learned.name}!`, 'levelup'); }
       const newQueue = levelUpQueue.slice(1);
       setLevelUpQueue(newQueue);
       if (newQueue.length > 0) {
@@ -607,7 +600,7 @@ const App: React.FC = () => {
            if (boss) {
                setLevelBossDefeated(true);
                pendingLevelChangeRef.current = false;
-               if (dungeonLevel % 5 === 0) { addLog(`The ${boss.name} is defeated! The way down is open.`, 'story'); } 
+               if (dungeonLevel % 5 === 0) { addLog(`${boss.name} is defeated! The way down is open.`, 'story'); }
                else { addLog(`The dungeon guardian falls. The exit is clear.`, 'story'); }
            }
            setEnemies([]);
@@ -729,51 +722,12 @@ const App: React.FC = () => {
   };
 
   const handleEquip = (itemId: string, charIndex: number) => {
-      setPlayer(p => {
-          const inv = [...p.inventory];
-          const itemIdx = inv.findIndex(i => i.id === itemId);
-          if (itemIdx === -1) return p;
-          const item = inv[itemIdx];
-          const char = p.party[charIndex];
-          const newChar = { ...char, equipment: { ...char.equipment } };
-          let oldItem: Item | null = null;
-          if (item.type === 'WEAPON') { oldItem = newChar.equipment.weapon; newChar.equipment.weapon = { ...item, isEquipped: true }; } 
-          else if (item.type === 'ARMOR') { oldItem = newChar.equipment.armor; newChar.equipment.armor = { ...item, isEquipped: true }; } 
-          else if (item.type === 'SHIELD') { oldItem = newChar.equipment.offhand; newChar.equipment.offhand = { ...item, isEquipped: true }; } 
-          else if (item.type === 'ACCESSORY') {
-              oldItem = newChar.equipment.accessory; newChar.equipment.accessory = { ...item, isEquipped: true };
-              if (item.statBonus) {
-                   const val = item.value;
-                   if (item.statBonus === 'STR') newChar.stats.str += val; if (item.statBonus === 'DEX') newChar.stats.dex += val;
-                   if (item.statBonus === 'INT') newChar.stats.int += val; if (item.statBonus === 'HP') newChar.stats.maxHp += val;
-                   if (item.statBonus === 'MP') newChar.stats.maxMp += val;
-              }
-          }
-          if (oldItem) {
-              if (oldItem.type === 'ACCESSORY' && oldItem.statBonus) {
-                   const val = oldItem.value;
-                   if (oldItem.statBonus === 'STR') newChar.stats.str -= val; if (oldItem.statBonus === 'DEX') newChar.stats.dex -= val;
-                   if (oldItem.statBonus === 'INT') newChar.stats.int -= val; if (oldItem.statBonus === 'HP') newChar.stats.maxHp -= val;
-                   if (oldItem.statBonus === 'MP') newChar.stats.maxMp -= val;
-              }
-              const existing = inv.find(i => i.id === oldItem!.id);
-              if (existing) existing.quantity++; else inv.push({ ...oldItem, isEquipped: false });
-          }
-          inv[itemIdx].quantity--; if (inv[itemIdx].quantity <= 0) inv.splice(itemIdx, 1);
-          const newParty = [...p.party]; newParty[charIndex] = newChar;
-          return { ...p, party: newParty, inventory: inv };
-      });
+      setPlayer(p => equipInventoryItem(p, itemId, charIndex));
       audioService.playItemGet();
   };
 
   const handleScrap = (itemId: string) => {
-      setPlayer(p => {
-          const inv = [...p.inventory];
-          const idx = inv.findIndex(i => i.id === itemId);
-          if (idx === -1) return p;
-          inv[idx].quantity--; if (inv[idx].quantity <= 0) inv.splice(idx, 1);
-          return { ...p, inventory: inv, scrap: p.scrap + 10 };
-      });
+      setPlayer(p => scrapInventoryItem(p, itemId));
   };
 
   // --- RENDER HELPERS ---
@@ -1199,7 +1153,7 @@ const App: React.FC = () => {
                             </div>
                             <div className="text-blue-400 font-mono text-lg font-bold">{selectedSkill.cost} MP</div>
                         </div>
-                        <p className="text-gray-300 text-sm mb-4 leading-relaxed italic border-l-2 border-gray-600 pl-3">{selectedSkill.description}</p>
+                        <p className="text-gray-300 text-sm mb-4 leading-relaxed italic border-l-2 border-gray-600 pl-3">{selectedSkill.description}</p><p className="mb-4 text-sm text-amber-100">{skillEffectSummary(player.party[viewCharIndex], selectedSkill)}</p>
                         
                         <div className="grid grid-cols-2 gap-2 text-xs">
                              <div className="bg-gray-900 p-2 rounded">

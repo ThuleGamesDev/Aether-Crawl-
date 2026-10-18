@@ -91,3 +91,7 @@ Validation on this branch:
 - Full browser/manual run: not performed. No local Chromium is installed, and the remote browser cannot reach this isolated local dev server. The first-run Floors 1–5 flow, touch behavior on a real device, pacing and reward balance remain open playtest items.
 
 The earlier saved-fixture smoke checks recorded for Dungeon Gameplay 2.0 are useful subsystem evidence, but do not replace a normal new-party expedition through the fifth-floor guardian. See [the roadmap](ROADMAP.md) for the remaining acceptance work and the deferred combat sequence.
+
+## 2026-10-18 integration follow-up
+
+A real ordinary-start five-floor browser expedition has now completed; the earlier unavailable-browser note is historical. It exercised actual choices, equipment, elites, guardians and six save/reload comparisons. The current interaction ray lets an ordinary closed door ahead take priority over an unresolved optional choice underfoot, so declining a room does not trap the main route. Details, seeds, evidence and remaining limits are in [the run acceptance record](RUN_ACCEPTANCE.md).

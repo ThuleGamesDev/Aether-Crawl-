@@ -1,3 +1,4 @@
+import { calculateSkillPower, skillEffectValue, soulPactRestoration } from './combat';
 import type { Character, Enemy, Item } from '../types';
 import type { CombatCommand } from './combatActions';
 
@@ -53,14 +54,14 @@ export function quickCommand(character: Character | undefined, targetId: string 
 
 /** Describes the current resolver, including legacy special cases, instead of promising unauthored behavior. */
 export function skillEffectSummary(character: Character, skill: Character['skills'][number]): string {
-  if (skill.id === 'soul_pact') return 'Spend 20 HP to restore up to 40 MP.';
-  const stat = skill.scalingStat === 'STR' ? character.stats.str : skill.scalingStat === 'DEX' ? character.stats.dex : character.stats.int;
-  const power = skill.basePower + Math.floor(stat * skill.scaling);
+  if (skill.id === 'soul_pact') return `Spend 20 HP to restore up to ${soulPactRestoration(skill)} MP.`;
+  const power = calculateSkillPower(character, skill);
   const ally = skill.targetType === 'ALLY' ? 'the lowest-health ally' : 'self';
   let text = skill.type === 'HEAL' ? `Restore up to ${power} HP to ${ally}.`
     : skill.type === 'BUFF' ? `Buff ${ally}.`
     : `Deal ${power} damage to ${skill.targetType === 'MULTI' ? 'all living enemies' : 'the selected target'}.`;
   if (skill.type === 'DRAIN') text += ` Restore up to ${Math.floor(power * 0.8)} HP to self.`;
+  if (skill.effect?.type === 'SHIELD') text += ` Reduce each incoming attack by ${skillEffectValue(skill)} damage (minimum hit 1).`;
   if (skill.effect) text += ` ${skill.effect.type} · ${Math.round(skill.effect.chance * 100)}% · ${skill.effect.duration} cycles.`;
   return text;
 }

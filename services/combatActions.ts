@@ -1,7 +1,7 @@
 import type { CombatEvent } from './combatFeedback';
 import type { Enemy, Player, VFXType } from '../types';
 import { enemyAbilities } from '../data/enemyAbilities';
-import { calculatePlayerAttack, calculateSkillPower, createStatusEffect, damageEnemies, upsertStatusEffect } from './combat';
+import { calculatePlayerAttack, calculateSkillPower, skillEffectValue, soulPactRestoration, createStatusEffect, damageEnemies, upsertStatusEffect } from './combat';
 
 export type CombatCommand = { actorId: string; targetId?: string | null } & (
   | { type: 'attack' | 'defend' | 'run' }
@@ -78,7 +78,7 @@ export const resolvePlayerCombatAction = (initialPlayer: Player, initialEnemies:
     if (offensive && !target) return fail('No living target.');
     if (skill.id === 'soul_pact') {
       if (character.stats.hp <= 20) return fail('Not enough HP!');
-      character.stats.hp -= 20; character.stats.mp = Math.min(character.stats.maxMp, character.stats.mp + 40);
+      character.stats.hp -= 20; character.stats.mp = Math.min(character.stats.maxMp, character.stats.mp + soulPactRestoration(skill));
       logs.push(`${character.name} trades life for power.`); vfx.push({ type: 'DARK', targetId: character.id });
     } else {
       if (skill.id === 'sacrifice') {
@@ -94,7 +94,7 @@ export const resolvePlayerCombatAction = (initialPlayer: Player, initialEnemies:
           events.push({ kind: 'heal', targetId: ally.id, amount: ally.stats.hp - oldHp });
           logs.push(`${character.name} heals ${ally.name} for ${power}.`); sound = 'heal';
           vfx.push({ type: 'HEAL', targetId: ally.id });
-        } else if (skill.effect) { status(ally.id, skill.effect.type, skill.effect.duration, skill.effect.val, false); vfx.push({ type: 'BUFF', targetId: ally.id }); }
+        } else if (skill.effect) { status(ally.id, skill.effect.type, skill.effect.duration, skillEffectValue(skill), false); vfx.push({ type: 'BUFF', targetId: ally.id }); }
       } else if (target) {
         const before = enemies;
         enemies = damageEnemies(enemies, target.id, power, skill.targetType === 'MULTI'); damageFeedback(before, enemies);
@@ -103,7 +103,7 @@ export const resolvePlayerCombatAction = (initialPlayer: Player, initialEnemies:
         if (skill.type === 'DRAIN') { const oldHp = character.stats.hp; character.stats.hp = Math.min(character.stats.maxHp, character.stats.hp + Math.floor(power * 0.8)); events.push({ kind: 'heal', targetId: character.id, amount: character.stats.hp - oldHp }); }
         if (skill.effect && random() < skill.effect.chance) {
           const targets = skill.targetType === 'MULTI' ? enemies.filter(e => e.hp > 0) : enemies.filter(e => e.id === target.id && e.hp > 0);
-          targets.forEach(e => status(e.id, skill.effect!.type, skill.effect!.duration, skill.effect!.val, true));
+          targets.forEach(e => status(e.id, skill.effect!.type, skill.effect!.duration, skillEffectValue(skill), true));
         }
       }
     }

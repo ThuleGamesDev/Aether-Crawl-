@@ -1,67 +1,45 @@
 # Aether Crawl roadmap
 
-## Current goal: a production-ready Floors 1–5 slice
+## Current boundary: Floors 1–5
 
-The first five floors are the current integration boundary. Existing exploration, combat, room, event, hazard, save and mobile systems should work as one normal expedition before more combat scope is added.
+**Normal-party automated browser expedition: completed. Human/physical-phone acceptance and broad balance: open.**
 
-### Hardening status
+On 2026-10-18, a fresh Paladin/Ranger/Cleric party completed the five-floor chain with normal controls and earned resources. The run won 18 encounters including three optional elites and the Necromancer. Six save/Continue comparisons retained party, map and floor state. A genuine Floor-4 checkpoint was used to continue after a driver heading issue. See [the acceptance record, seeds, ledgers, screenshots and limitations](RUN_ACCEPTANCE.md).
 
-**Code and automated checks: complete for this pass. Full slice acceptance: still open.**
+Completed in this hardening pass:
 
-Completed in this pass:
+- Pure loot/equip/scrap transactions: no state mutation or whole-stack equipment; reversible accessory stats.
+- Real skill-rank power/effects and working SHIELD mitigation with matching descriptions/feedback.
+- Ordinary doors remain usable when an optional choice underfoot is declined.
+- Separate visible HP/MP lines on narrow combat cards.
+- Reproducible opt-in browser driver; read-only diagnostics and normal game inputs, no stat/position overrides.
+- 130 tests across 15 suites, typecheck and production build passed.
+- Touch-emulated portrait/landscape combat, held-touch map cancellation, guardian victory and save/Continue passed; physical hardware was not tested.
 
-- Closed ordinary doors now block movement and remain interactable with E.
-- Floor reachability uses the same closed-door rule as player collision.
-- Mobile movement and look input are cancelled while the map or a room decision is open.
-- Typecheck and production build pass; 116 automated tests pass.
+Before calling the slice production-ready:
 
-Still required before calling Floors 1–5 accepted:
+1. Play blind on a real phone: exploration, target/intention readability, inventory, rest and room choices.
+2. Sample more seeds and parties. This expedition knew the map, deliberately equipped rewards, used meditation on all floors and chose Full Restore eight times.
+3. Tune AoE/armor/MP sustain from evidence; early rats are easy, later elites and summons are more expensive. Avoid blanket HP inflation from a single sample.
+4. Audit remaining ability/content consistency, including legacy group-heal/Focus behavior; exercise crafting, fleeing and defeat with ordinary parties.
 
-- Play a new run with an ordinary three-character party from party selection through the fifth-floor guardian.
-- Save and reload during the run, including after room choices and after guardian victory before descent.
-- Check combat intent readability, room pacing, keys/scrap, resting and optional elite pressure on desktop and a phone-sized screen.
-- Tune the first-run experience from observed play; the current automated fixtures verify rules and state, not balance.
+## Existing foundations
 
-The full browser run was not available in the 2026-10-15 hardening environment: there was no local Chromium, and its remote browser could not reach the isolated local dev server. Do not mark the manual items complete based on the passing unit tests or the saved-fixture checks from earlier waves.
+- Static local assets; no runtime image generation or API key requirement.
+- Fullscreen first-person exploration, continuous movement, minimap and mobile controls.
+- Enemy intents, weighted authored abilities, statuses, phases, summons and rewards.
+- Current combat: one action per actor per initiative round, unlimited hero decision time, visible order, Guard until next own turn. Rounds supersede the earlier Combat 2.5A/B clocks and PR #9 initiative-speed formula.
+- Class/enemy initiative, equipment load and legacy-save migration.
+- Painted first-five-floor wall/floor/gate and hand-specific weapon presentation. Other artwork remains partly legacy.
+- Seeded room placement, treasure/elites/shrines/rest/locked/secret/boss areas, events/hazards and persistent room decisions.
+- Closed-door collision and input cancellation while decisions/map are open.
 
-## Initiative and painted look — PR #9 history (timing superseded below)
+Historical implementation notes: [initiative/art pass](INITIATIVE_AND_PAINTED_LOOK.md), [current combat](COMBAT_SYSTEM.md), [dungeon gameplay](DUNGEON_GAMEPLAY.md). Historical test counts and environment limitations in older records describe those earlier passes, not the current acceptance state.
 
-Completed:
+## Deferred scope
 
-- Explicit initiative for all classes and 28 monster definitions; shared initial gauge and initiative-scaled recovery.
-- Armor/shield load, saved base-stat migration, visible INIT and working Party Stats.
-- Painted first-five-floor wall/floor/gate and sword/shield, perspective ground, corrected prop baseline and fresh-floor facing.
-- 126 automated tests, typecheck and production build pass. See [rules, art provenance and verification](INITIATIVE_AND_PAINTED_LOOK.md).
-- Local Chromium browser smoke passed on desktop and two touch-emulated sizes: new game, stats, save/continue, input cancellation, and a Floor-5 boss fixture. This environment now has a usable local Chromium; the earlier hardening limitation above describes that earlier pass.
+- World-space enemy placement/projection/occlusion/range rules.
+- Spatial approach/retreat/charge, line of sight and navigation after spatial ownership is defined.
+- Full painted art conversion, true vaulted geometry and outside castle scenes.
 
-Still open:
-
-- Full ordinary-party Floors 1–5 run, balance after initiative changes, and physical-phone performance/comfort.
-- Full painted conversion of creatures, props, other weapons and later biomes; true vaulted geometry and exterior scenes.
-
-## Current follow-up: true initiative rounds and hand correction
-
-Completed:
-
-- One action per living actor per round, sorted by effective initiative with stable ties. Player decisions have no timer.
-- Visible round/turn order, automatic focus on the acting hero; no out-of-turn party commands, Auto Basic, skill buffer, slowdown or recovery gauges.
-- Guard until next own turn, status/stun own-turn resolution, announced enemy intents, boss phases and next-round summon/revival entry.
-- Hand-specific rendering: mirrored left empty hand, left-held bow without a duplicate hand/shield, authored left shield, right melee/caster weapons and inward sword alignment.
-- Updated [combat rules and verification](COMBAT_SYSTEM.md); 119 tests, typecheck and production build pass. Actual desktop/touch-emulated Chromium checks confirm idle hero decisions, detail menus holding enemy presentation, initiative handoff and all seven weapon views.
-
-Open: ordinary-party full Floors 1–5 acceptance, physical-phone testing, and balancing action economy now that initiative changes order rather than action frequency. A separate strengthened-party browser fixture verified boss victory → one-time XP/loot → save/reload → Floor 6 descent. High-cost/AoE skills need observation under the one-action rule. No new spatial enemies or navigation.
-
-## Completed foundations
-
-- Static local asset pipeline with no runtime Gemini or AI dependency.
-- First-person exploration, minimap and mobile movement controls.
-- Combat 2.0 enemy intents and pilot abilities.
-- Combat 2.5A semi-real-time timelines and Combat 2.5B direct party control, quick actions and feedback.
-- Dungeon Gameplay 2.0 seeded rooms, side content, room events, environmental hazards, save/load and first-five-floor budgets.
-
-## Deferred after slice acceptance
-
-1. **World-space enemies, without navigation:** placement, projection, occlusion, distance/range presentation and target selection.
-2. **Spatial enemy behavior:** approach/retreat/charge and line-of-sight/path behavior, after movement ownership and spatial rules are defined.
-
-Neither step belongs in the current Floors 1–5 hardening change. Reassess the order after the ordinary-party mobile playtest.
+These are separate waves. The current pass adds no combat system, enemy navigation, new class/ability or broad feature expansion.

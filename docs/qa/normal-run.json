@@ -1,0 +1,1707 @@
+{
+  "mode": "Browser UI automation; ordinary new-game Paladin/Ranger/Cleric; read-only state inspection for route planning",
+  "normalStart": true,
+  "stateOrPositionOverrides": false,
+  "segments": [
+    {
+      "floors": "1 to 4 locked-room checkpoint",
+      "stopped": "driver heading tolerance too strict; resumed the genuine saved game"
+    },
+    {
+      "floors": "4 to 5 guardian",
+      "completed": true
+    }
+  ],
+  "floors": [
+    {
+      "level": 1,
+      "seed": 1372047133,
+      "start": [
+        {
+          "name": "Paladin",
+          "level": 1,
+          "hp": 110,
+          "maxHp": 110,
+          "mp": 40,
+          "maxMp": 40
+        },
+        {
+          "name": "Ranger",
+          "level": 1,
+          "hp": 100,
+          "maxHp": 100,
+          "mp": 50,
+          "maxMp": 50
+        },
+        {
+          "name": "Cleric",
+          "level": 1,
+          "hp": 100,
+          "maxHp": 100,
+          "mp": 60,
+          "maxMp": 60
+        }
+      ],
+      "end": [
+        {
+          "name": "Paladin",
+          "level": 2,
+          "hp": 125,
+          "maxHp": 125,
+          "mp": 45,
+          "maxMp": 45
+        },
+        {
+          "name": "Ranger",
+          "level": 2,
+          "hp": 115,
+          "maxHp": 115,
+          "mp": 55,
+          "maxMp": 55
+        },
+        {
+          "name": "Cleric",
+          "level": 2,
+          "hp": 111,
+          "maxHp": 115,
+          "mp": 45,
+          "maxMp": 65
+        }
+      ]
+    },
+    {
+      "level": 2,
+      "seed": 695477773,
+      "start": [
+        {
+          "name": "Paladin",
+          "level": 2,
+          "hp": 125,
+          "maxHp": 125,
+          "mp": 45,
+          "maxMp": 45
+        },
+        {
+          "name": "Ranger",
+          "level": 2,
+          "hp": 115,
+          "maxHp": 115,
+          "mp": 55,
+          "maxMp": 55
+        },
+        {
+          "name": "Cleric",
+          "level": 2,
+          "hp": 111,
+          "maxHp": 115,
+          "mp": 45,
+          "maxMp": 65
+        }
+      ],
+      "end": [
+        {
+          "name": "Paladin",
+          "level": 2,
+          "hp": 112,
+          "maxHp": 125,
+          "mp": 35,
+          "maxMp": 45
+        },
+        {
+          "name": "Ranger",
+          "level": 2,
+          "hp": 105,
+          "maxHp": 115,
+          "mp": 47,
+          "maxMp": 55
+        },
+        {
+          "name": "Cleric",
+          "level": 2,
+          "hp": 67,
+          "maxHp": 115,
+          "mp": 45,
+          "maxMp": 65
+        }
+      ]
+    },
+    {
+      "level": 3,
+      "seed": 1976150598,
+      "start": [
+        {
+          "name": "Paladin",
+          "level": 2,
+          "hp": 112,
+          "maxHp": 125,
+          "mp": 35,
+          "maxMp": 45
+        },
+        {
+          "name": "Ranger",
+          "level": 2,
+          "hp": 105,
+          "maxHp": 115,
+          "mp": 47,
+          "maxMp": 55
+        },
+        {
+          "name": "Cleric",
+          "level": 2,
+          "hp": 67,
+          "maxHp": 115,
+          "mp": 45,
+          "maxMp": 65
+        }
+      ],
+      "end": [
+        {
+          "name": "Paladin",
+          "level": 3,
+          "hp": 121,
+          "maxHp": 140,
+          "mp": 40,
+          "maxMp": 50
+        },
+        {
+          "name": "Ranger",
+          "level": 3,
+          "hp": 119,
+          "maxHp": 130,
+          "mp": 52,
+          "maxMp": 60
+        },
+        {
+          "name": "Cleric",
+          "level": 3,
+          "hp": 111,
+          "maxHp": 130,
+          "mp": 50,
+          "maxMp": 70
+        }
+      ]
+    },
+    {
+      "level": 4,
+      "seed": 3266253470,
+      "start": [
+        {
+          "name": "Paladin",
+          "level": 3,
+          "hp": 120,
+          "maxHp": 140,
+          "mp": 40,
+          "maxMp": 50
+        },
+        {
+          "name": "Ranger",
+          "level": 3,
+          "hp": 117,
+          "maxHp": 160,
+          "mp": 24,
+          "maxMp": 60
+        },
+        {
+          "name": "Cleric",
+          "level": 3,
+          "hp": 110,
+          "maxHp": 150,
+          "mp": 50,
+          "maxMp": 70
+        }
+      ],
+      "end": [
+        {
+          "name": "Paladin",
+          "level": 4,
+          "hp": 155,
+          "maxHp": 155,
+          "mp": 55,
+          "maxMp": 55
+        },
+        {
+          "name": "Ranger",
+          "level": 4,
+          "hp": 175,
+          "maxHp": 175,
+          "mp": 65,
+          "maxMp": 65
+        },
+        {
+          "name": "Cleric",
+          "level": 4,
+          "hp": 165,
+          "maxHp": 165,
+          "mp": 75,
+          "maxMp": 75
+        }
+      ]
+    },
+    {
+      "level": 5,
+      "seed": 2659626991,
+      "start": [
+        {
+          "name": "Paladin",
+          "level": 4,
+          "hp": 155,
+          "maxHp": 155,
+          "mp": 55,
+          "maxMp": 55
+        },
+        {
+          "name": "Ranger",
+          "level": 4,
+          "hp": 175,
+          "maxHp": 175,
+          "mp": 65,
+          "maxMp": 65
+        },
+        {
+          "name": "Cleric",
+          "level": 4,
+          "hp": 165,
+          "maxHp": 165,
+          "mp": 75,
+          "maxMp": 75
+        }
+      ],
+      "end": [
+        {
+          "name": "Paladin",
+          "level": 5,
+          "hp": 170,
+          "maxHp": 170,
+          "mp": 60,
+          "maxMp": 60
+        },
+        {
+          "name": "Ranger",
+          "level": 5,
+          "hp": 190,
+          "maxHp": 190,
+          "mp": 70,
+          "maxMp": 70
+        },
+        {
+          "name": "Cleric",
+          "level": 5,
+          "hp": 180,
+          "maxHp": 180,
+          "mp": 80,
+          "maxMp": 80
+        }
+      ]
+    }
+  ],
+  "encounters": [
+    {
+      "floor": 1,
+      "foes": [
+        "giant_rat",
+        "giant_rat"
+      ],
+      "start": [
+        {
+          "name": "Paladin",
+          "level": 1,
+          "hp": 110,
+          "maxHp": 110,
+          "mp": 40,
+          "maxMp": 40
+        },
+        {
+          "name": "Ranger",
+          "level": 1,
+          "hp": 100,
+          "maxHp": 100,
+          "mp": 50,
+          "maxMp": 50
+        },
+        {
+          "name": "Cleric",
+          "level": 1,
+          "hp": 100,
+          "maxHp": 100,
+          "mp": 60,
+          "maxMp": 60
+        }
+      ],
+      "end": [
+        {
+          "name": "Paladin",
+          "level": 1,
+          "hp": 109,
+          "maxHp": 110,
+          "mp": 40,
+          "maxMp": 40
+        },
+        {
+          "name": "Ranger",
+          "level": 1,
+          "hp": 100,
+          "maxHp": 100,
+          "mp": 36,
+          "maxMp": 50
+        },
+        {
+          "name": "Cleric",
+          "level": 1,
+          "hp": 98,
+          "maxHp": 100,
+          "mp": 60,
+          "maxMp": 60
+        }
+      ]
+    },
+    {
+      "floor": 1,
+      "foes": [
+        "giant_rat",
+        "giant_rat"
+      ],
+      "start": [
+        {
+          "name": "Paladin",
+          "level": 1,
+          "hp": 109,
+          "maxHp": 110,
+          "mp": 40,
+          "maxMp": 40
+        },
+        {
+          "name": "Ranger",
+          "level": 1,
+          "hp": 100,
+          "maxHp": 100,
+          "mp": 36,
+          "maxMp": 50
+        },
+        {
+          "name": "Cleric",
+          "level": 1,
+          "hp": 98,
+          "maxHp": 100,
+          "mp": 60,
+          "maxMp": 60
+        }
+      ],
+      "end": [
+        {
+          "name": "Paladin",
+          "level": 1,
+          "hp": 109,
+          "maxHp": 110,
+          "mp": 40,
+          "maxMp": 40
+        },
+        {
+          "name": "Ranger",
+          "level": 1,
+          "hp": 99,
+          "maxHp": 100,
+          "mp": 22,
+          "maxMp": 50
+        },
+        {
+          "name": "Cleric",
+          "level": 1,
+          "hp": 96,
+          "maxHp": 100,
+          "mp": 60,
+          "maxMp": 60
+        }
+      ]
+    },
+    {
+      "floor": 1,
+      "foes": [
+        "cursed_knight"
+      ],
+      "start": [
+        {
+          "name": "Paladin",
+          "level": 1,
+          "hp": 109,
+          "maxHp": 110,
+          "mp": 40,
+          "maxMp": 40
+        },
+        {
+          "name": "Ranger",
+          "level": 1,
+          "hp": 99,
+          "maxHp": 100,
+          "mp": 40,
+          "maxMp": 50
+        },
+        {
+          "name": "Cleric",
+          "level": 1,
+          "hp": 96,
+          "maxHp": 100,
+          "mp": 60,
+          "maxMp": 60
+        }
+      ],
+      "end": [
+        {
+          "name": "Paladin",
+          "level": 2,
+          "hp": 124,
+          "maxHp": 125,
+          "mp": 25,
+          "maxMp": 45
+        },
+        {
+          "name": "Ranger",
+          "level": 2,
+          "hp": 82,
+          "maxHp": 115,
+          "mp": 45,
+          "maxMp": 55
+        },
+        {
+          "name": "Cleric",
+          "level": 2,
+          "hp": 111,
+          "maxHp": 115,
+          "mp": 45,
+          "maxMp": 65
+        }
+      ]
+    },
+    {
+      "floor": 2,
+      "foes": [
+        "giant_rat",
+        "giant_rat"
+      ],
+      "start": [
+        {
+          "name": "Paladin",
+          "level": 2,
+          "hp": 125,
+          "maxHp": 125,
+          "mp": 45,
+          "maxMp": 45
+        },
+        {
+          "name": "Ranger",
+          "level": 2,
+          "hp": 115,
+          "maxHp": 115,
+          "mp": 55,
+          "maxMp": 55
+        },
+        {
+          "name": "Cleric",
+          "level": 2,
+          "hp": 111,
+          "maxHp": 115,
+          "mp": 45,
+          "maxMp": 65
+        }
+      ],
+      "end": [
+        {
+          "name": "Paladin",
+          "level": 2,
+          "hp": 123,
+          "maxHp": 125,
+          "mp": 45,
+          "maxMp": 45
+        },
+        {
+          "name": "Ranger",
+          "level": 2,
+          "hp": 115,
+          "maxHp": 115,
+          "mp": 41,
+          "maxMp": 55
+        },
+        {
+          "name": "Cleric",
+          "level": 2,
+          "hp": 111,
+          "maxHp": 115,
+          "mp": 45,
+          "maxMp": 65
+        }
+      ]
+    },
+    {
+      "floor": 2,
+      "foes": [
+        "giant_rat",
+        "giant_rat"
+      ],
+      "start": [
+        {
+          "name": "Paladin",
+          "level": 2,
+          "hp": 123,
+          "maxHp": 125,
+          "mp": 45,
+          "maxMp": 45
+        },
+        {
+          "name": "Ranger",
+          "level": 2,
+          "hp": 115,
+          "maxHp": 115,
+          "mp": 41,
+          "maxMp": 55
+        },
+        {
+          "name": "Cleric",
+          "level": 2,
+          "hp": 111,
+          "maxHp": 115,
+          "mp": 45,
+          "maxMp": 65
+        }
+      ],
+      "end": [
+        {
+          "name": "Paladin",
+          "level": 2,
+          "hp": 122,
+          "maxHp": 125,
+          "mp": 45,
+          "maxMp": 45
+        },
+        {
+          "name": "Ranger",
+          "level": 2,
+          "hp": 115,
+          "maxHp": 115,
+          "mp": 27,
+          "maxMp": 55
+        },
+        {
+          "name": "Cleric",
+          "level": 2,
+          "hp": 109,
+          "maxHp": 115,
+          "mp": 45,
+          "maxMp": 65
+        }
+      ]
+    },
+    {
+      "floor": 2,
+      "foes": [
+        "dungeon_warden"
+      ],
+      "start": [
+        {
+          "name": "Paladin",
+          "level": 2,
+          "hp": 112,
+          "maxHp": 125,
+          "mp": 45,
+          "maxMp": 45
+        },
+        {
+          "name": "Ranger",
+          "level": 2,
+          "hp": 105,
+          "maxHp": 115,
+          "mp": 47,
+          "maxMp": 55
+        },
+        {
+          "name": "Cleric",
+          "level": 2,
+          "hp": 99,
+          "maxHp": 115,
+          "mp": 65,
+          "maxMp": 65
+        }
+      ],
+      "end": [
+        {
+          "name": "Paladin",
+          "level": 2,
+          "hp": 112,
+          "maxHp": 125,
+          "mp": 35,
+          "maxMp": 45
+        },
+        {
+          "name": "Ranger",
+          "level": 2,
+          "hp": 105,
+          "maxHp": 115,
+          "mp": 47,
+          "maxMp": 55
+        },
+        {
+          "name": "Cleric",
+          "level": 2,
+          "hp": 67,
+          "maxHp": 115,
+          "mp": 45,
+          "maxMp": 65
+        }
+      ]
+    },
+    {
+      "floor": 3,
+      "foes": [
+        "giant_rat",
+        "goblin_scavenger"
+      ],
+      "start": [
+        {
+          "name": "Paladin",
+          "level": 2,
+          "hp": 112,
+          "maxHp": 125,
+          "mp": 35,
+          "maxMp": 45
+        },
+        {
+          "name": "Ranger",
+          "level": 2,
+          "hp": 105,
+          "maxHp": 115,
+          "mp": 47,
+          "maxMp": 55
+        },
+        {
+          "name": "Cleric",
+          "level": 2,
+          "hp": 67,
+          "maxHp": 115,
+          "mp": 45,
+          "maxMp": 65
+        }
+      ],
+      "end": [
+        {
+          "name": "Paladin",
+          "level": 2,
+          "hp": 111,
+          "maxHp": 125,
+          "mp": 35,
+          "maxMp": 45
+        },
+        {
+          "name": "Ranger",
+          "level": 2,
+          "hp": 104,
+          "maxHp": 115,
+          "mp": 33,
+          "maxMp": 55
+        },
+        {
+          "name": "Cleric",
+          "level": 2,
+          "hp": 115,
+          "maxHp": 115,
+          "mp": 33,
+          "maxMp": 65
+        }
+      ]
+    },
+    {
+      "floor": 3,
+      "foes": [
+        "giant_rat",
+        "goblin_scavenger"
+      ],
+      "start": [
+        {
+          "name": "Paladin",
+          "level": 2,
+          "hp": 111,
+          "maxHp": 125,
+          "mp": 45,
+          "maxMp": 45
+        },
+        {
+          "name": "Ranger",
+          "level": 2,
+          "hp": 104,
+          "maxHp": 115,
+          "mp": 55,
+          "maxMp": 55
+        },
+        {
+          "name": "Cleric",
+          "level": 2,
+          "hp": 115,
+          "maxHp": 115,
+          "mp": 59,
+          "maxMp": 65
+        }
+      ],
+      "end": [
+        {
+          "name": "Paladin",
+          "level": 2,
+          "hp": 110,
+          "maxHp": 125,
+          "mp": 45,
+          "maxMp": 45
+        },
+        {
+          "name": "Ranger",
+          "level": 2,
+          "hp": 104,
+          "maxHp": 115,
+          "mp": 41,
+          "maxMp": 55
+        },
+        {
+          "name": "Cleric",
+          "level": 2,
+          "hp": 114,
+          "maxHp": 115,
+          "mp": 59,
+          "maxMp": 65
+        }
+      ]
+    },
+    {
+      "floor": 3,
+      "foes": [
+        "acid_spider",
+        "skeleton_warrior"
+      ],
+      "start": [
+        {
+          "name": "Paladin",
+          "level": 2,
+          "hp": 110,
+          "maxHp": 125,
+          "mp": 45,
+          "maxMp": 45
+        },
+        {
+          "name": "Ranger",
+          "level": 2,
+          "hp": 104,
+          "maxHp": 115,
+          "mp": 41,
+          "maxMp": 55
+        },
+        {
+          "name": "Cleric",
+          "level": 2,
+          "hp": 114,
+          "maxHp": 115,
+          "mp": 59,
+          "maxMp": 65
+        }
+      ],
+      "end": [
+        {
+          "name": "Paladin",
+          "level": 2,
+          "hp": 109,
+          "maxHp": 125,
+          "mp": 45,
+          "maxMp": 45
+        },
+        {
+          "name": "Ranger",
+          "level": 2,
+          "hp": 104,
+          "maxHp": 115,
+          "mp": 27,
+          "maxMp": 55
+        },
+        {
+          "name": "Cleric",
+          "level": 2,
+          "hp": 114,
+          "maxHp": 115,
+          "mp": 49,
+          "maxMp": 65
+        }
+      ]
+    },
+    {
+      "floor": 3,
+      "foes": [
+        "dungeon_warden"
+      ],
+      "start": [
+        {
+          "name": "Paladin",
+          "level": 2,
+          "hp": 109,
+          "maxHp": 125,
+          "mp": 45,
+          "maxMp": 45
+        },
+        {
+          "name": "Ranger",
+          "level": 2,
+          "hp": 104,
+          "maxHp": 115,
+          "mp": 47,
+          "maxMp": 55
+        },
+        {
+          "name": "Cleric",
+          "level": 2,
+          "hp": 114,
+          "maxHp": 115,
+          "mp": 65,
+          "maxMp": 65
+        }
+      ],
+      "end": [
+        {
+          "name": "Paladin",
+          "level": 3,
+          "hp": 121,
+          "maxHp": 140,
+          "mp": 40,
+          "maxMp": 50
+        },
+        {
+          "name": "Ranger",
+          "level": 3,
+          "hp": 119,
+          "maxHp": 130,
+          "mp": 52,
+          "maxMp": 60
+        },
+        {
+          "name": "Cleric",
+          "level": 3,
+          "hp": 111,
+          "maxHp": 130,
+          "mp": 50,
+          "maxMp": 70
+        }
+      ]
+    },
+    {
+      "floor": 4,
+      "foes": [
+        "giant_rat",
+        "goblin_scavenger"
+      ],
+      "start": [
+        {
+          "name": "Paladin",
+          "level": 3,
+          "hp": 121,
+          "maxHp": 140,
+          "mp": 40,
+          "maxMp": 50
+        },
+        {
+          "name": "Ranger",
+          "level": 3,
+          "hp": 119,
+          "maxHp": 130,
+          "mp": 52,
+          "maxMp": 60
+        },
+        {
+          "name": "Cleric",
+          "level": 3,
+          "hp": 111,
+          "maxHp": 130,
+          "mp": 50,
+          "maxMp": 70
+        }
+      ],
+      "end": [
+        {
+          "name": "Paladin",
+          "level": 3,
+          "hp": 120,
+          "maxHp": 140,
+          "mp": 40,
+          "maxMp": 50
+        },
+        {
+          "name": "Ranger",
+          "level": 3,
+          "hp": 118,
+          "maxHp": 130,
+          "mp": 38,
+          "maxMp": 60
+        },
+        {
+          "name": "Cleric",
+          "level": 3,
+          "hp": 111,
+          "maxHp": 130,
+          "mp": 50,
+          "maxMp": 70
+        }
+      ]
+    },
+    {
+      "floor": 4,
+      "foes": [
+        "giant_rat",
+        "goblin_scavenger"
+      ],
+      "start": [
+        {
+          "name": "Paladin",
+          "level": 3,
+          "hp": 120,
+          "maxHp": 140,
+          "mp": 40,
+          "maxMp": 50
+        },
+        {
+          "name": "Ranger",
+          "level": 3,
+          "hp": 118,
+          "maxHp": 130,
+          "mp": 38,
+          "maxMp": 60
+        },
+        {
+          "name": "Cleric",
+          "level": 3,
+          "hp": 111,
+          "maxHp": 130,
+          "mp": 50,
+          "maxMp": 70
+        }
+      ],
+      "end": [
+        {
+          "name": "Paladin",
+          "level": 3,
+          "hp": 120,
+          "maxHp": 140,
+          "mp": 40,
+          "maxMp": 50
+        },
+        {
+          "name": "Ranger",
+          "level": 3,
+          "hp": 117,
+          "maxHp": 130,
+          "mp": 24,
+          "maxMp": 60
+        },
+        {
+          "name": "Cleric",
+          "level": 3,
+          "hp": 110,
+          "maxHp": 130,
+          "mp": 50,
+          "maxMp": 70
+        }
+      ]
+    },
+    {
+      "floor": 4,
+      "foes": [
+        "orc_brute",
+        "dark_cultist",
+        "skeleton_warrior"
+      ],
+      "start": [
+        {
+          "name": "Paladin",
+          "level": 3,
+          "hp": 120,
+          "maxHp": 140,
+          "mp": 40,
+          "maxMp": 50
+        },
+        {
+          "name": "Ranger",
+          "level": 3,
+          "hp": 117,
+          "maxHp": 160,
+          "mp": 24,
+          "maxMp": 60
+        },
+        {
+          "name": "Cleric",
+          "level": 3,
+          "hp": 110,
+          "maxHp": 150,
+          "mp": 50,
+          "maxMp": 70
+        }
+      ],
+      "end": [
+        {
+          "name": "Paladin",
+          "level": 3,
+          "hp": 99,
+          "maxHp": 140,
+          "mp": 30,
+          "maxMp": 50
+        },
+        {
+          "name": "Ranger",
+          "level": 3,
+          "hp": 117,
+          "maxHp": 160,
+          "mp": 10,
+          "maxMp": 60
+        },
+        {
+          "name": "Cleric",
+          "level": 3,
+          "hp": 126,
+          "maxHp": 150,
+          "mp": 28,
+          "maxMp": 70
+        }
+      ]
+    },
+    {
+      "floor": 4,
+      "foes": [
+        "dungeon_warden"
+      ],
+      "start": [
+        {
+          "name": "Paladin",
+          "level": 3,
+          "hp": 99,
+          "maxHp": 140,
+          "mp": 48,
+          "maxMp": 50
+        },
+        {
+          "name": "Ranger",
+          "level": 3,
+          "hp": 117,
+          "maxHp": 160,
+          "mp": 31,
+          "maxMp": 60
+        },
+        {
+          "name": "Cleric",
+          "level": 3,
+          "hp": 126,
+          "maxHp": 150,
+          "mp": 53,
+          "maxMp": 70
+        }
+      ],
+      "end": [
+        {
+          "name": "Paladin",
+          "level": 4,
+          "hp": 103,
+          "maxHp": 155,
+          "mp": 33,
+          "maxMp": 55
+        },
+        {
+          "name": "Ranger",
+          "level": 4,
+          "hp": 132,
+          "maxHp": 175,
+          "mp": 36,
+          "maxMp": 65
+        },
+        {
+          "name": "Cleric",
+          "level": 4,
+          "hp": 130,
+          "maxHp": 165,
+          "mp": 38,
+          "maxMp": 75
+        }
+      ]
+    },
+    {
+      "floor": 5,
+      "foes": [
+        "giant_rat",
+        "goblin_scavenger"
+      ],
+      "start": [
+        {
+          "name": "Paladin",
+          "level": 4,
+          "hp": 155,
+          "maxHp": 155,
+          "mp": 55,
+          "maxMp": 55
+        },
+        {
+          "name": "Ranger",
+          "level": 4,
+          "hp": 175,
+          "maxHp": 175,
+          "mp": 65,
+          "maxMp": 65
+        },
+        {
+          "name": "Cleric",
+          "level": 4,
+          "hp": 165,
+          "maxHp": 165,
+          "mp": 75,
+          "maxMp": 75
+        }
+      ],
+      "end": [
+        {
+          "name": "Paladin",
+          "level": 4,
+          "hp": 155,
+          "maxHp": 155,
+          "mp": 55,
+          "maxMp": 55
+        },
+        {
+          "name": "Ranger",
+          "level": 4,
+          "hp": 175,
+          "maxHp": 175,
+          "mp": 51,
+          "maxMp": 65
+        },
+        {
+          "name": "Cleric",
+          "level": 4,
+          "hp": 164,
+          "maxHp": 165,
+          "mp": 75,
+          "maxMp": 75
+        }
+      ]
+    },
+    {
+      "floor": 5,
+      "foes": [
+        "giant_rat",
+        "goblin_scavenger"
+      ],
+      "start": [
+        {
+          "name": "Paladin",
+          "level": 4,
+          "hp": 155,
+          "maxHp": 155,
+          "mp": 55,
+          "maxMp": 55
+        },
+        {
+          "name": "Ranger",
+          "level": 4,
+          "hp": 175,
+          "maxHp": 175,
+          "mp": 51,
+          "maxMp": 65
+        },
+        {
+          "name": "Cleric",
+          "level": 4,
+          "hp": 164,
+          "maxHp": 165,
+          "mp": 75,
+          "maxMp": 75
+        }
+      ],
+      "end": [
+        {
+          "name": "Paladin",
+          "level": 4,
+          "hp": 155,
+          "maxHp": 155,
+          "mp": 55,
+          "maxMp": 55
+        },
+        {
+          "name": "Ranger",
+          "level": 4,
+          "hp": 175,
+          "maxHp": 175,
+          "mp": 37,
+          "maxMp": 65
+        },
+        {
+          "name": "Cleric",
+          "level": 4,
+          "hp": 163,
+          "maxHp": 165,
+          "mp": 75,
+          "maxMp": 75
+        }
+      ]
+    },
+    {
+      "floor": 5,
+      "foes": [
+        "orc_brute",
+        "dark_cultist",
+        "skeleton_warrior"
+      ],
+      "start": [
+        {
+          "name": "Paladin",
+          "level": 4,
+          "hp": 155,
+          "maxHp": 155,
+          "mp": 55,
+          "maxMp": 55
+        },
+        {
+          "name": "Ranger",
+          "level": 4,
+          "hp": 175,
+          "maxHp": 175,
+          "mp": 37,
+          "maxMp": 65
+        },
+        {
+          "name": "Cleric",
+          "level": 4,
+          "hp": 163,
+          "maxHp": 165,
+          "mp": 75,
+          "maxMp": 75
+        }
+      ],
+      "end": [
+        {
+          "name": "Paladin",
+          "level": 4,
+          "hp": 155,
+          "maxHp": 155,
+          "mp": 45,
+          "maxMp": 55
+        },
+        {
+          "name": "Ranger",
+          "level": 4,
+          "hp": 165,
+          "maxHp": 175,
+          "mp": 9,
+          "maxMp": 65
+        },
+        {
+          "name": "Cleric",
+          "level": 4,
+          "hp": 126,
+          "maxHp": 165,
+          "mp": 65,
+          "maxMp": 75
+        }
+      ]
+    },
+    {
+      "floor": 5,
+      "foes": [
+        "the_necromancer"
+      ],
+      "start": [
+        {
+          "name": "Paladin",
+          "level": 4,
+          "hp": 155,
+          "maxHp": 155,
+          "mp": 55,
+          "maxMp": 55
+        },
+        {
+          "name": "Ranger",
+          "level": 4,
+          "hp": 165,
+          "maxHp": 175,
+          "mp": 32,
+          "maxMp": 65
+        },
+        {
+          "name": "Cleric",
+          "level": 4,
+          "hp": 126,
+          "maxHp": 165,
+          "mp": 75,
+          "maxMp": 75
+        }
+      ],
+      "end": [
+        {
+          "name": "Paladin",
+          "level": 5,
+          "hp": 143,
+          "maxHp": 170,
+          "mp": 10,
+          "maxMp": 60
+        },
+        {
+          "name": "Ranger",
+          "level": 5,
+          "hp": 180,
+          "maxHp": 190,
+          "mp": 9,
+          "maxMp": 70
+        },
+        {
+          "name": "Cleric",
+          "level": 5,
+          "hp": 115,
+          "maxHp": 180,
+          "mp": 30,
+          "maxMp": 80
+        }
+      ]
+    }
+  ],
+  "choices": [
+    {
+      "floor": 1,
+      "type": "TREASURE",
+      "choice": "Claim equipment\nGuaranteed GOOD equipment: Vault Armor +2."
+    },
+    {
+      "floor": 1,
+      "type": "EVENT",
+      "choice": "Scavenge the expedition\nOne floor key and 8 scrap instead of a blessing."
+    },
+    {
+      "floor": 1,
+      "type": "LOCKED",
+      "choice": "Use an Iron Key\n1 floor key (1 available). Open a vault containing guaranteed RARE equipment."
+    },
+    {
+      "floor": 1,
+      "type": "LOCKED",
+      "choice": "Claim vault equipment\nGuaranteed Expedition Sigil +3."
+    },
+    {
+      "floor": 1,
+      "type": "REST",
+      "choice": "Meditate\nRecover 35% maximum MP instead of HP."
+    },
+    {
+      "floor": 2,
+      "type": "TREASURE",
+      "choice": "Claim equipment\nGuaranteed GOOD equipment: Expedition Sigil +2."
+    },
+    {
+      "floor": 2,
+      "type": "LOCKED",
+      "choice": "Force the lock\nStrongest living STR: 15. 65% vs DC 13; failure wounds living heroes for 8% max HP. One attempt; key/scrap remain available."
+    },
+    {
+      "floor": 2,
+      "type": "TRAP",
+      "choice": "LEAVE \u00b7 decide later"
+    },
+    {
+      "floor": 2,
+      "type": "REST",
+      "choice": "Meditate\nRecover 35% maximum MP instead of HP."
+    },
+    {
+      "floor": 3,
+      "type": "TREASURE",
+      "choice": "Claim equipment\nGuaranteed GOOD equipment: Expedition Sigil +3."
+    },
+    {
+      "floor": 3,
+      "type": "EVENT",
+      "choice": "Scavenge the expedition\nOne floor key and 8 scrap instead of a blessing."
+    },
+    {
+      "floor": 3,
+      "type": "LOCKED",
+      "choice": "Use an Iron Key\n1 floor key (1 available). Open a vault containing guaranteed RARE equipment."
+    },
+    {
+      "floor": 3,
+      "type": "LOCKED",
+      "choice": "Claim vault equipment\nGuaranteed Expedition Sigil +4."
+    },
+    {
+      "floor": 3,
+      "type": "SECRET",
+      "choice": "LEAVE \u00b7 decide later"
+    },
+    {
+      "floor": 3,
+      "type": "SHRINE",
+      "choice": "Borrow aether\nRestore 40% maximum MP. Every hero suffers \u22123 attack damage from Weakness for three own cycles in the next encounter."
+    },
+    {
+      "floor": 3,
+      "type": "ELITE",
+      "choice": "Challenge\nController + striker/support alliance. Guaranteed GOOD equipment +15 scrap on victory; fleeing grants nothing."
+    },
+    {
+      "floor": 3,
+      "type": "REST",
+      "choice": "Meditate\nRecover 35% maximum MP instead of HP."
+    },
+    {
+      "floor": 4,
+      "type": "TREASURE",
+      "choice": "Claim equipment\nGuaranteed GOOD equipment: Vault Armor +3."
+    },
+    {
+      "floor": 4,
+      "type": "LOCKED",
+      "choice": "Break the seal with scrap\nSpend 15 scrap; no check or wound."
+    },
+    {
+      "floor": 4,
+      "type": "LOCKED",
+      "choice": "Claim vault equipment\nGuaranteed Expedition Sigil +4."
+    },
+    {
+      "floor": 4,
+      "type": "SECRET",
+      "choice": "Leave the relic; salvage\nGain 15 scrap and one floor key without a curse."
+    },
+    {
+      "floor": 4,
+      "type": "TRAP",
+      "choice": "Use safe tools\nPay 8 scrap for safe tools to recover 15 scrap (net +7), without hazard consequences."
+    },
+    {
+      "floor": 4,
+      "type": "ELITE",
+      "choice": "Challenge\nController + striker/support alliance. Guaranteed GOOD equipment +15 scrap on victory; fleeing grants nothing."
+    },
+    {
+      "floor": 4,
+      "type": "REST",
+      "choice": "Meditate\nRecover 35% maximum MP instead of HP."
+    },
+    {
+      "floor": 5,
+      "type": "TREASURE",
+      "choice": "Claim equipment\nGuaranteed GOOD equipment: Vault Armor +3."
+    },
+    {
+      "floor": 5,
+      "type": "EVENT",
+      "choice": "Scavenge the expedition\nOne floor key and 8 scrap instead of a blessing."
+    },
+    {
+      "floor": 5,
+      "type": "LOCKED",
+      "choice": "Use an Iron Key\n1 floor key (1 available). Open a vault containing guaranteed RARE equipment."
+    },
+    {
+      "floor": 5,
+      "type": "LOCKED",
+      "choice": "Claim vault equipment\nGuaranteed Expedition Sigil +4."
+    },
+    {
+      "floor": 5,
+      "type": "SECRET",
+      "choice": "Leave the relic; salvage\nGain 15 scrap and one floor key without a curse."
+    },
+    {
+      "floor": 5,
+      "type": "ELITE",
+      "choice": "Challenge\nController + striker/support alliance. Guaranteed GOOD equipment +15 scrap on victory; fleeing grants nothing."
+    },
+    {
+      "floor": 5,
+      "type": "REST",
+      "choice": "Meditate\nRecover 35% maximum MP instead of HP."
+    }
+  ],
+  "perks": [
+    {
+      "floor": 1,
+      "hero": "Paladin",
+      "perk": "Full Restore"
+    },
+    {
+      "floor": 1,
+      "hero": "Ranger",
+      "perk": "Full Restore"
+    },
+    {
+      "floor": 1,
+      "hero": "Cleric",
+      "perk": "Upgrade: Restoration (Lv.2)"
+    },
+    {
+      "floor": 3,
+      "hero": "Paladin",
+      "perk": "Upgrade: Holy Smite (Lv.2)"
+    },
+    {
+      "floor": 3,
+      "hero": "Ranger",
+      "perk": "Upgrade: Blur (Lv.2)"
+    },
+    {
+      "floor": 3,
+      "hero": "Cleric",
+      "perk": "Upgrade: Holy Smite (Lv.2)"
+    },
+    {
+      "floor": 4,
+      "hero": "Paladin",
+      "perk": "Full Restore"
+    },
+    {
+      "floor": 4,
+      "hero": "Ranger",
+      "perk": "Full Restore"
+    },
+    {
+      "floor": 4,
+      "hero": "Cleric",
+      "perk": "Full Restore"
+    },
+    {
+      "floor": 5,
+      "hero": "Paladin",
+      "perk": "Full Restore"
+    },
+    {
+      "floor": 5,
+      "hero": "Ranger",
+      "perk": "Full Restore"
+    },
+    {
+      "floor": 5,
+      "hero": "Cleric",
+      "perk": "Full Restore"
+    }
+  ],
+  "equipment": [
+    {
+      "floor": 1,
+      "hero": "Paladin",
+      "item": "Vault Armor +2"
+    },
+    {
+      "floor": 1,
+      "hero": "Paladin",
+      "item": "Amulet of Wisdom +1"
+    },
+    {
+      "floor": 1,
+      "hero": "Ranger",
+      "item": "Charm of Speed +1"
+    },
+    {
+      "floor": 1,
+      "hero": "Cleric",
+      "item": "Expedition Sigil +3"
+    },
+    {
+      "floor": 2,
+      "hero": "Ranger",
+      "item": "Heavy Armor +2"
+    },
+    {
+      "floor": 2,
+      "hero": "Paladin",
+      "item": "Blade +1"
+    },
+    {
+      "floor": 2,
+      "hero": "Ranger",
+      "item": "Shield +1"
+    },
+    {
+      "floor": 2,
+      "hero": "Paladin",
+      "item": "Expedition Sigil +2"
+    },
+    {
+      "floor": 3,
+      "hero": "Cleric",
+      "item": "Shield +2"
+    },
+    {
+      "floor": 3,
+      "hero": "Ranger",
+      "item": "Expedition Sigil +3"
+    },
+    {
+      "floor": 3,
+      "hero": "Paladin",
+      "item": "Shield +2"
+    },
+    {
+      "floor": 3,
+      "hero": "Paladin",
+      "item": "Expedition Sigil +4"
+    },
+    {
+      "floor": 3,
+      "hero": "Ranger",
+      "item": "Shield +2"
+    },
+    {
+      "floor": 3,
+      "hero": "Cleric",
+      "item": "Vault Armor +3"
+    },
+    {
+      "floor": 4,
+      "hero": "Ranger",
+      "item": "Ring of Life +3"
+    },
+    {
+      "floor": 4,
+      "hero": "Cleric",
+      "item": "Ring of Life +2"
+    },
+    {
+      "floor": 4,
+      "hero": "Ranger",
+      "item": "Dagger +2"
+    },
+    {
+      "floor": 4,
+      "hero": "Paladin",
+      "item": "Vault Armor +3"
+    },
+    {
+      "floor": 4,
+      "hero": "Cleric",
+      "item": "Expedition Blade +3"
+    },
+    {
+      "floor": 5,
+      "hero": "Paladin",
+      "item": "Mace +2"
+    }
+  ],
+  "reloads": [
+    {
+      "floor": 1,
+      "label": "guardian"
+    },
+    {
+      "floor": 2,
+      "label": "treasure"
+    },
+    {
+      "floor": 2,
+      "label": "guardian"
+    },
+    {
+      "floor": 3,
+      "label": "guardian"
+    },
+    {
+      "floor": 4,
+      "label": "guardian"
+    },
+    {
+      "floor": 5,
+      "label": "guardian"
+    }
+  ],
+  "errors": [],
+  "complete": true
+}
