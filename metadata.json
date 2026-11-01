@@ -1,5 +1,5 @@
 {
   "name": "Aether Crawl",
-  "description": "A local-first retro fantasy dungeon crawler with static production art, turn-based combat, party progression, inventory management, and six dungeon biomes.",
+  "description": "A solo dark-fantasy first-person action RPG with real-time combat, a generated dungeon, loot, equipment, and eight playable classes.",
   "requestFramePermissions": []
 }

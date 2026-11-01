@@ -1,5 +1,7 @@
 # Static Asset Pipeline
 
+> Historical pipeline for the legacy Canvas renderer. FPS-R1 currently creates its pixel textures and pilot sprites procedurally at runtime, caches them in `presentation/AssetManager.ts`, and does not use this static image loader in its active viewport. See [FPS-R1 architecture](FPS_R1_ARCHITECTURE.md).
+
 ## Runtime rule
 
 Every gameplay image is a static repository file under `public/assets/`. React and Canvas do not call an image-generation API, create image data URLs, or synthesize replacement textures. Required floor assets are preloaded through `services/assetLoader.ts` and cached as `HTMLImageElement` instances. Rendering reuses those instances.

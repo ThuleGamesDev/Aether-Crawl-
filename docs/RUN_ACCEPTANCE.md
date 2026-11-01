@@ -1,4 +1,6 @@
-# Floors 1–5 run validation — 2026-10-18
+# Legacy party-run validation — 2026-10-18
+
+> Archived evidence for the former three-character, turn-based game. This report does not validate FPS-R1. The active browser runner is now `npm run test:run`; its scope and the current validation limits are documented in [FPS_R1_ARCHITECTURE.md](FPS_R1_ARCHITECTURE.md).
 
 Base: merged PR #10 on `main` (`88189ed`). A normal-start Paladin / Ranger / Cleric expedition has now completed all five floors through the Necromancer using the browser UI. This is **automated integration evidence**, not a manual or physical-phone acceptance claim.
 

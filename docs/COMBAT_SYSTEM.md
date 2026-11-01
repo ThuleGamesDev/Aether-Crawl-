@@ -1,5 +1,7 @@
 # Combat — initiative rounds
 
+> Archived design notes for the former party combat mode. FPS-R1 has continuous world-space action combat with no turns; see [the active architecture and controls](FPS_R1_ARCHITECTURE.md).
+
 Current behavior after the turn-based follow-up to PR #9. This replaces the Combat 2.5A/B wall-clock timelines and the earlier initiative-speed formula. Existing damage, skills, enemy ability selection, boss phases, rewards and exploration remain integrated.
 
 ## Turn ownership
