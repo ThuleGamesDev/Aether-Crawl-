@@ -4,10 +4,20 @@ import { buildFloorPlan } from './dungeonPlan';
 import { MAP_SIZE } from '../constants';
 import { BiomeId, DungeonData, Position, TileType } from '../types';
 
-export const generateDungeon = (_biome: BiomeId = 'dungeon', seed = Math.floor(Math.random() * 4294967296), level = 1): DungeonData => {
+export interface DungeonGenerationOptions {
+  /** Used by the FPS runtime only; legacy callers keep their original 12x12 footprint. */
+  mapSize?: number;
+  guardianArenaRadius?: number;
+}
+
+export const generateDungeon = (_biome: BiomeId = 'dungeon', seed = Math.floor(Math.random() * 4294967296), level = 1, options: DungeonGenerationOptions = {}): DungeonData => {
   const random = floorRandom(seed);
-  const map = Array(MAP_SIZE).fill(0).map(() => Array(MAP_SIZE).fill(TileType.WALL));
-  const decorations = Array(MAP_SIZE).fill(0).map(() => Array(MAP_SIZE).fill(0));
+  const mapSize = options.mapSize ?? MAP_SIZE;
+  const arenaRadius = Math.max(0, Math.floor(options.guardianArenaRadius ?? 0));
+  if (!Number.isInteger(mapSize) || mapSize < 11 || mapSize > 64) throw new Error('Dungeon map size must be an integer from 11 to 64.');
+  if (arenaRadius > 0 && (mapSize < arenaRadius * 2 + 7 || mapSize % 2 === 0)) throw new Error('Guardian arenas require an odd map with sufficient interior space.');
+  const map = Array(mapSize).fill(0).map(() => Array(mapSize).fill(TileType.WALL));
+  const decorations = Array(mapSize).fill(0).map(() => Array(mapSize).fill(0));
 
   // Recursive Backtracker
   const stack: Position[] = [];
@@ -37,7 +47,7 @@ export const generateDungeon = (_biome: BiomeId = 'dungeon', seed = Math.floor(M
       const nx = current.x + d.x;
       const ny = current.y + d.y;
       
-      if (nx > 0 && nx < MAP_SIZE - 1 && ny > 0 && ny < MAP_SIZE - 1 && map[ny][nx] === TileType.WALL) {
+      if (nx > 0 && nx < mapSize - 1 && ny > 0 && ny < mapSize - 1 && map[ny][nx] === TileType.WALL) {
         neighbors.push({ x: nx, y: ny });
       }
     }
@@ -57,9 +67,10 @@ export const generateDungeon = (_biome: BiomeId = 'dungeon', seed = Math.floor(M
   let bestDist = 0;
   let exitPos = { x: 1, y: 1 };
   
-  for(let y=1; y<MAP_SIZE-1; y++) {
-      for(let x=1; x<MAP_SIZE-1; x++) {
+  for(let y=1; y<mapSize-1; y++) {
+      for(let x=1; x<mapSize-1; x++) {
           if (map[y][x] === TileType.EMPTY) {
+              if (arenaRadius > 0 && (x < arenaRadius + 1 || y < arenaRadius + 1 || x >= mapSize - arenaRadius - 1 || y >= mapSize - arenaRadius - 1)) continue;
               const dist = Math.abs(x - start.x) + Math.abs(y - start.y);
               if (dist > bestDist) {
                   bestDist = dist;
@@ -70,10 +81,23 @@ export const generateDungeon = (_biome: BiomeId = 'dungeon', seed = Math.floor(M
   }
   map[exitPos.y][exitPos.x] = TileType.EXIT;
 
+  if (arenaRadius > 0) {
+    for (let y = exitPos.y - arenaRadius; y <= exitPos.y + arenaRadius; y += 1) {
+      for (let x = exitPos.x - arenaRadius; x <= exitPos.x + arenaRadius; x += 1) {
+        if (x > 0 && y > 0 && x < mapSize - 1 && y < mapSize - 1) {
+          map[y][x] = TileType.EMPTY;
+          decorations[y][x] = 0;
+        }
+      }
+    }
+    map[exitPos.y][exitPos.x] = TileType.EXIT;
+  }
+
   // Add Loops (remove some walls to make it less linear)
   for(let i=0; i<5; i++) {
-      const rx = Math.floor(random() * (MAP_SIZE - 2)) + 1;
-      const ry = Math.floor(random() * (MAP_SIZE - 2)) + 1;
+      const rx = Math.floor(random() * (mapSize - 2)) + 1;
+      const ry = Math.floor(random() * (mapSize - 2)) + 1;
+      if (arenaRadius > 0 && Math.max(Math.abs(rx - exitPos.x), Math.abs(ry - exitPos.y)) <= arenaRadius + 1) continue;
       if (map[ry][rx] === TileType.WALL) {
           // check if it connects two empty spaces
           let connections = 0;
@@ -88,8 +112,8 @@ export const generateDungeon = (_biome: BiomeId = 'dungeon', seed = Math.floor(M
 
   // DECORATIONS PASS
   // 1: Torch (Walls), 2: Barrel, 3: Crate, 4: Bones, 5-6: biome-specific props
-  for(let y=1; y<MAP_SIZE-1; y++) {
-      for(let x=1; x<MAP_SIZE-1; x++) {
+  for(let y=1; y<mapSize-1; y++) {
+      for(let x=1; x<mapSize-1; x++) {
           // Wall Decorations
           if (map[y][x] === TileType.WALL) {
               // Check if adjacent to floor
@@ -104,7 +128,7 @@ export const generateDungeon = (_biome: BiomeId = 'dungeon', seed = Math.floor(M
           // Floor Decorations
           else if (map[y][x] === TileType.EMPTY) {
               // Don't block start or exit
-              if ((x === start.x && y === start.y) || (x === exitPos.x && y === exitPos.y)) continue;
+              if ((x === start.x && y === start.y) || (x === exitPos.x && y === exitPos.y) || (arenaRadius > 0 && Math.max(Math.abs(x - exitPos.x), Math.abs(y - exitPos.y)) <= arenaRadius)) continue;
 
               const rand = random();
               if (rand < 0.05) decorations[y][x] = 2; // Barrel
@@ -116,6 +140,6 @@ export const generateDungeon = (_biome: BiomeId = 'dungeon', seed = Math.floor(M
       }
   }
 
-  const floor = buildFloorPlan(map, decorations, level, _biome, seed);
+  const floor = buildFloorPlan(map, decorations, level, _biome, seed, true, arenaRadius);
   return { map, decorations, floor };
 };

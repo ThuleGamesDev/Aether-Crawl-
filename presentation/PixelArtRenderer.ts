@@ -4,12 +4,12 @@ import type { BiomeId, WeaponVisualType } from '../types';
 interface Palette { wall: string; wallLight: string; floor: string; floorLight: string; accent: string; }
 
 const palettes: Record<BiomeId, Palette> = {
-  dungeon: { wall: '#342d2a', wallLight: '#6e5b4d', floor: '#252222', floorLight: '#51483e', accent: '#e9a34a' },
-  moss: { wall: '#293b32', wallLight: '#60875e', floor: '#1c2a24', floorLight: '#3c5c41', accent: '#92d277' },
-  catacombs: { wall: '#303642', wallLight: '#7d8296', floor: '#1c2028', floorLight: '#454b5c', accent: '#83b9e3' },
-  obsidian: { wall: '#302331', wallLight: '#895271', floor: '#1b151f', floorLight: '#492d4e', accent: '#da5f88' },
-  frost: { wall: '#33434a', wallLight: '#9bb9c2', floor: '#1b2b31', floorLight: '#506b75', accent: '#a8e5f1' },
-  gilded: { wall: '#493d2b', wallLight: '#b59a58', floor: '#27221a', floorLight: '#61523a', accent: '#ffd26c' },
+  dungeon: { wall: '#4c463e', wallLight: '#857967', floor: '#242322', floorLight: '#49433a', accent: '#b4874f' },
+  moss: { wall: '#3d4a40', wallLight: '#78826c', floor: '#1d2622', floorLight: '#38453b', accent: '#77946c' },
+  catacombs: { wall: '#4b4944', wallLight: '#858073', floor: '#202020', floorLight: '#48443d', accent: '#ad7651' },
+  obsidian: { wall: '#30292a', wallLight: '#695855', floor: '#181617', floorLight: '#352a29', accent: '#a34f40' },
+  frost: { wall: '#3e4d4b', wallLight: '#7c9490', floor: '#1a2423', floorLight: '#35413d', accent: '#739491' },
+  gilded: { wall: '#393132', wallLight: '#756151', floor: '#191718', floorLight: '#3a302e', accent: '#bd794a' },
 };
 
 export function createPixelTexture(kind: 'wall' | 'floor' | 'ceiling' | 'door' | 'exit' | 'loot' | 'enemy', biome: BiomeId, visualId = ''): THREE.CanvasTexture {
@@ -45,27 +45,28 @@ export function createWeaponTexture(weaponType: WeaponVisualType, classId: strin
   const context = canvas.getContext('2d');
   if (!context) throw new Error('Canvas 2D is unavailable for weapon sprite preparation.');
   context.imageSmoothingEnabled = false;
-  const sleeve = classId === 'SORCERER' || classId === 'NECROMANCER' ? '#453b7a' : classId === 'PALADIN' || classId === 'CLERIC' ? '#987b49' : '#633d2e';
+  const sleeve = classId === 'SORCERER' ? '#3e6764' : classId === 'NECROMANCER' ? '#60333a' : classId === 'PALADIN' || classId === 'CLERIC' ? '#9b7644' : '#733c32';
   context.fillStyle = '#151418';
   context.fillRect(38, 47, 16, 17);
   context.fillStyle = sleeve;
   context.fillRect(34, 42, 18, 20);
   context.fillStyle = '#b78262';
   context.fillRect(38, 36, 13, 12);
-  if (weaponType === 'staff') {
-    context.fillStyle = '#503820'; context.fillRect(48, 5, 5, 49);
-    context.fillStyle = classId === 'NECROMANCER' ? '#a568eb' : '#65cce7'; context.fillRect(43, 2, 15, 9);
+  if (weaponType === 'staff' || weaponType === 'mace') {
+    context.fillStyle = '#68472c'; context.fillRect(48, 5, 5, 49);
+    context.fillStyle = classId === 'NECROMANCER' ? '#a94e52' : classId === 'SORCERER' ? '#83aaa0' : '#c39858'; context.fillRect(43, 2, 15, 9);
     context.fillStyle = '#e1d4a6'; context.fillRect(47, 1, 7, 3);
   } else if (weaponType === 'axe') {
     context.fillStyle = '#614329'; context.fillRect(45, 16, 5, 38);
-    context.fillStyle = '#b5bbc1'; context.fillRect(37, 10, 18, 12); context.fillRect(34, 13, 6, 8);
-    context.fillStyle = '#e9e4d7'; context.fillRect(39, 10, 11, 4);
+    context.fillStyle = '#b4874f'; context.fillRect(37, 10, 9, 13); context.fillRect(48, 10, 9, 13);
+    context.fillStyle = '#e2c48a'; context.fillRect(38, 10, 7, 4); context.fillRect(49, 10, 7, 4);
+  } else if (weaponType === 'spear') {
+    context.fillStyle = '#765333'; context.fillRect(48, 15, 4, 42);
+    context.fillStyle = '#c8c2aa'; context.fillRect(46, 6, 8, 14); context.fillRect(43, 18, 14, 3);
+    context.fillStyle = '#e1d6b9'; context.fillRect(48, 7, 3, 9);
   } else if (weaponType === 'bow') {
     context.fillStyle = '#8a562d'; context.fillRect(44, 9, 5, 40); context.fillRect(39, 12, 5, 7); context.fillRect(39, 39, 5, 7);
     context.fillStyle = '#d9d1bd'; context.fillRect(49, 13, 2, 32);
-  } else if (weaponType === 'mace') {
-    context.fillStyle = '#53402f'; context.fillRect(47, 21, 5, 34);
-    context.fillStyle = '#a9adb1'; context.fillRect(40, 8, 18, 15); context.fillStyle = '#d9d6c8'; context.fillRect(43, 8, 11, 5);
   } else {
     context.fillStyle = '#6c5038'; context.fillRect(47, 35, 5, 18);
     context.fillStyle = weaponType === 'dagger' ? '#c4c5bd' : '#d5d7d2';

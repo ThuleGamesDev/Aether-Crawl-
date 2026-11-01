@@ -5,8 +5,9 @@ import type { DungeonWorldState } from '../world/DungeonWorld';
 import { AssetManager } from '../presentation/AssetManager';
 import { animateEnemySprite, createEnemySprite } from '../presentation/SpriteAnimator';
 import { WeaponPresenter } from '../presentation/WeaponPresenter';
-import { VFXSystem } from '../presentation/VFXSystem';
+import { VFXSystem, type PixelEffectId } from '../presentation/VFXSystem';
 import { WorldGeometry } from '../world/WorldGeometry';
+import { getEnemyAttackDefinition } from '../data/enemyAttacks';
 
 export const DEFAULT_PIXEL_RENDER_SCALE = 0.56;
 export const MOBILE_PIXEL_RENDER_SCALE = DEFAULT_PIXEL_RENDER_SCALE * 0.78;
@@ -38,6 +39,7 @@ export class SceneRenderer {
   private readonly availableProjectiles: THREE.Mesh[] = [];
   private readonly projectileGeometry = new THREE.SphereGeometry(0.09, 6, 6);
   private readonly projectileMaterials = new Map<string, THREE.MeshBasicMaterial>();
+  private readonly enemyTelegraphs = new Map<string, THREE.Mesh<THREE.CircleGeometry, THREE.MeshBasicMaterial>>();
   private readonly vfx: VFXSystem;
   private readonly weapon: WeaponPresenter;
   private geometry: WorldGeometry;
@@ -61,7 +63,7 @@ export class SceneRenderer {
     this.geometry = new WorldGeometry(world, this.assets);
     this.scene.add(this.geometry.group);
     this.worldRevision = world.worldRevision;
-    this.vfx = new VFXSystem(this.scene, window.matchMedia?.('(max-width: 767px)').matches ? 24 : 48);
+    this.vfx = new VFXSystem(this.scene, this.assets, window.matchMedia?.('(max-width: 767px)').matches ? 24 : 48);
     const defaultProjectileMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.96 });
     this.projectileMaterials.set('__default', defaultProjectileMaterial);
     for (let index = 0; index < 64; index += 1) {
@@ -128,7 +130,8 @@ export class SceneRenderer {
     for (const event of events) {
       const tint = event.color ?? (event.kind === 'enemyDeath' ? '#ffbd68' : '#fff0ad');
       const count = event.kind === 'area' ? 18 : event.kind === 'enemyDeath' ? 12 : 7;
-      this.vfx.burst(event.position, tint, count, event.scale ?? 1);
+      const effect: PixelEffectId = event.kind === 'enemyDeath' ? 'soul_ash' : event.kind === 'pickup' ? 'laurel_light' : event.kind === 'area' ? 'promethean_flame' : event.kind === 'dodge' ? 'cistern_splash' : 'bronze_impact';
+      this.vfx.burst(event.position, tint, count, event.scale ?? 1, effect);
     }
     this.vfx.update(deltaSeconds);
     this.renderer.render(this.scene, this.camera);
@@ -139,6 +142,9 @@ export class SceneRenderer {
     for (const [id, sprite] of this.enemySprites) {
       if (!ids.has(id)) { this.scene.remove(sprite); sprite.material.dispose(); this.enemySprites.delete(id); }
     }
+    for (const [id, mesh] of this.enemyTelegraphs) {
+      if (!ids.has(id)) { this.scene.remove(mesh); mesh.geometry.dispose(); mesh.material.dispose(); this.enemyTelegraphs.delete(id); }
+    }
     for (const enemy of enemies) {
       let sprite = this.enemySprites.get(enemy.id);
       if (!sprite) {
@@ -147,6 +153,29 @@ export class SceneRenderer {
         this.scene.add(sprite);
       }
       animateEnemySprite(sprite, enemy, this.elapsedSeconds);
+      let warning = this.enemyTelegraphs.get(enemy.id);
+      const attack = enemy.state === 'ATTACK_WINDUP' ? getEnemyAttackDefinition(enemy.attackSetId, enemy.activeAttackId) : undefined;
+      if (!attack) {
+        if (warning) warning.visible = false;
+        continue;
+      }
+      if (!warning) {
+        const radius = attack.radius ?? attack.range;
+        const arc = attack.shape === 'CONE' ? attack.arcRadians ?? 0.9 : attack.shape === 'PROJECTILE' || attack.shape === 'DRAIN' ? 0.18 : Math.PI * 2;
+        const geometry = new THREE.CircleGeometry(1, 28, -arc / 2, arc);
+        const material = new THREE.MeshBasicMaterial({ color: attack.telegraphColor, transparent: true, opacity: 0.24, depthWrite: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1 });
+        warning = new THREE.Mesh(geometry, material);
+        warning.rotation.x = -Math.PI / 2;
+        warning.renderOrder = 2;
+        warning.name = 'AttackTelegraph_' + enemy.id;
+        this.enemyTelegraphs.set(enemy.id, warning);
+        this.scene.add(warning);
+        warning.scale.setScalar(radius);
+      }
+      warning.visible = true;
+      warning.position.set(enemy.position.x, 0.027, enemy.position.z);
+      warning.rotation.set(-Math.PI / 2, -(enemy.facingYaw ?? 0), 0);
+      warning.material.opacity = 0.15 + Math.sin(this.elapsedSeconds * 17) * 0.07;
     }
   }
 
@@ -210,8 +239,10 @@ export class SceneRenderer {
     this.geometry.dispose();
     for (const sprite of this.enemySprites.values()) sprite.material.dispose();
     for (const sprite of this.lootSprites.values()) sprite.material.dispose();
+    for (const mesh of this.enemyTelegraphs.values()) { mesh.geometry.dispose(); mesh.material.dispose(); }
     this.enemySprites.clear();
     this.lootSprites.clear();
+    this.enemyTelegraphs.clear();
     for (const mesh of this.projectilePool) this.scene.remove(mesh);
     for (const material of this.projectileMaterials.values()) material.dispose();
     this.projectileMeshes.clear();
