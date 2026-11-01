@@ -1,5 +1,7 @@
 # First-person exploration
 
+> Historical notes for the former Canvas raycaster. FPS-R1 uses a Three.js/WebGL 2 scene and the controller under `player/`; see [the active architecture](FPS_R1_ARCHITECTURE.md).
+
 The dungeon remains a generated `number[][]` grid. The player now also has a continuous world transform:
 
 - `x` and `y` are world coordinates; whole numbers mark tile boundaries.

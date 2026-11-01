@@ -1,5 +1,7 @@
 # Dungeon Gameplay 2.0 — rooms, secrets, risk and reward
 
+> The room and reward descriptions below were written for the legacy party runtime. FPS-R1 adapts the reusable room types to one hero; see [FPS-R1 architecture](FPS_R1_ARCHITECTURE.md).
+
 ## Floor ownership
 
 The existing 12×12 recursive maze generator remains the foundation. `generateDungeon(biome, seed, level)` uses the small local `floorRandom` helper for maze, loops, decorations and gameplay placement. Combat/ordinary loot randomness is not rewritten. Saved maps and room plans are loaded verbatim, never regenerated.

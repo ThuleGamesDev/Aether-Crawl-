@@ -1,3 +1,4 @@
+// Archived party-combat browser runner. It targets the legacy UI and is not the active npm run test:run command.
 // Opt-in browser run using normal controls. React state is read only for navigation/diagnostics.
 // It does not call game transitions or alter party stats, positions, maps, resources or rewards.
 // Requires Playwright and an installed Chromium; see docs/RUN_ACCEPTANCE.md.

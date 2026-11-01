@@ -338,3 +338,107 @@ export interface FloorState {
   pendingEncounterId: string | null;
   pendingEffects: Array<{ type: StatusType; value: number; duration: number }>;
 }
+
+/** Player-owned state for the active solo action-RPG runtime. */
+export interface SoloCharacterStats {
+  hp: number;
+  maxHp: number;
+  mp: number;
+  maxMp: number;
+  str: number;
+  dex: number;
+  int: number;
+  xp: number;
+  level: number;
+  damageBonus: number;
+  armor: number;
+}
+
+export type EquipmentSlot = 'weapon' | 'armor' | 'offhand' | 'accessory';
+export type ItemRarity = 'COMMON' | 'MAGIC' | 'RARE' | 'UNIQUE';
+
+export interface ItemAffixInstance {
+  id: string;
+  value: number;
+}
+
+export interface ItemInstance extends Omit<Item, 'quantity' | 'isEquipped'> {
+  instanceId: string;
+  itemLevel: number;
+  rarity: ItemRarity;
+  affixes: ItemAffixInstance[];
+  uniqueEffectId?: string;
+  quantity: number;
+}
+
+export interface LearnedSkill {
+  abilityId: string;
+  rank: number;
+}
+
+export interface ActiveStatus {
+  id: string;
+  statusId: string;
+  durationSeconds: number;
+  magnitude: number;
+}
+
+export interface Vector3Like {
+  x: number;
+  y: number;
+  z: number;
+}
+
+export interface PlayerCharacter {
+  id: string;
+  classId: ClassType;
+  name: string;
+  position: Vector3Like;
+  rotation: { yaw: number; pitch: number };
+  stats: SoloCharacterStats;
+  equipment: Record<EquipmentSlot, ItemInstance | null>;
+  inventory: ItemInstance[];
+  skills: LearnedSkill[];
+  statusEffects: ActiveStatus[];
+}
+
+export type WorldEnemyState = 'IDLE' | 'AGGRO' | 'APPROACH' | 'ATTACK_WINDUP' | 'ATTACK' | 'RECOVER' | 'HURT' | 'DEAD';
+
+export interface WorldEnemy {
+  id: string;
+  definitionId: string;
+  name: string;
+  visualId: string;
+  position: Vector3Like;
+  /** Horizontal collision radius used by the solo world controller. */
+  collisionRadius?: number;
+  health: number;
+  maxHealth: number;
+  damage: number;
+  xpReward: number;
+  state: WorldEnemyState;
+  stateTimer: number;
+  attackCooldown: number;
+  attackRange: number;
+  attackTelegraphSeconds: number;
+  rewardGranted: boolean;
+  roomId?: string;
+  isBoss: boolean;
+}
+
+export interface WorldProjectile {
+  id: number;
+  position: Vector3Like;
+  velocity: Vector3Like;
+  radius: number;
+  damage: number;
+  remainingSeconds: number;
+  sourceAbilityId: string;
+  color: string;
+}
+
+export interface WorldLootDrop {
+  id: string;
+  position: Vector3Like;
+  item: ItemInstance;
+}

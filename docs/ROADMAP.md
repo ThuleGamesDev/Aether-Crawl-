@@ -1,5 +1,7 @@
 # Aether Crawl roadmap
 
+> This roadmap describes the legacy party / initiative vertical slice. The active solo FPS foundation is tracked in [FPS-R1 architecture](FPS_R1_ARCHITECTURE.md); future work should use that document as the current baseline.
+
 ## Current boundary: Floors 1–5
 
 **Normal-party automated browser expedition: completed. Human/physical-phone acceptance and broad balance: open.**

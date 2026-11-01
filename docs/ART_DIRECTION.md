@@ -1,5 +1,7 @@
 # Aether Crawl Art Direction
 
+> Archived painted-art guidance for the legacy Canvas build. FPS-R1 uses a separate **Dark Fantasy Retro FPS Pixel Art** direction with nearest-neighbor textures and a low-resolution WebGL viewport; see [FPS-R1 architecture](FPS_R1_ARCHITECTURE.md).
+
 ## Visual identity
 
 Aether Crawl is moving toward a detailed, dark fantasy painted first-person look: worn stone, deep green-black shadows, warm torchlight, leather gloves and large readable weapons. Floors 1–5 walls/floor/gate and the sword/shield foreground have been converted. Smooth sampling and perspective ground projection preserve detail on desktop and narrow screens. Existing monsters, other weapons, props and later biomes still use the earlier pixel-painted library; their conversion is open.
