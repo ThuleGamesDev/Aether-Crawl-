@@ -1,6 +1,7 @@
 import type { PlayerCharacter, WorldEnemy } from '../types';
 import type { InputFrame } from '../engine/InputSystem';
 import { moveWithEntitySlide } from '../world/CollisionWorld';
+import { movementSpeedMultiplier } from '../combat/StatusSystem';
 
 export const MOUSE_LOOK_SENSITIVITY = 0.0025;
 export const MAX_CAMERA_PITCH = 1.18;
@@ -17,6 +18,7 @@ export interface PlayerControllerState {
   dodgeCooldown: number;
   invulnerabilitySeconds: number;
   bobSeconds: number;
+  guarding: boolean;
 }
 
 export const createPlayerControllerState = (): PlayerControllerState => ({
@@ -26,6 +28,7 @@ export const createPlayerControllerState = (): PlayerControllerState => ({
   dodgeCooldown: 0,
   invulnerabilitySeconds: 0,
   bobSeconds: 0,
+  guarding: false,
 });
 
 export interface PlayerControllerUpdate {
@@ -69,8 +72,12 @@ export function updatePlayerController(
     dodgeStarted = true;
   }
 
+  const hasShield = player.equipment.offhand?.type === 'SHIELD';
+  nextState.guarding = hasShield && input.secondaryDown && nextState.dodgeSeconds <= 0;
+
   if (nextState.dodgeSeconds <= 0) {
-    const speed = input.sprint ? PLAYER_SPRINT_SPEED : PLAYER_WALK_SPEED;
+    const speed = (input.sprint && !nextState.guarding ? PLAYER_SPRINT_SPEED : PLAYER_WALK_SPEED)
+      * movementSpeedMultiplier(player.statusEffects) * (nextState.guarding ? 0.55 : 1);
     const targetX = normalizedX * speed, targetZ = normalizedZ * speed;
     const acceleration = intentLength > 0.01 ? 26 : 34;
     nextState.velocityX = approach(nextState.velocityX, targetX, acceleration * dt);

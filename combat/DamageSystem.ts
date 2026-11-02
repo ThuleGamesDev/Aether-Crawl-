@@ -1,6 +1,7 @@
 import type { PlayerCharacter, WorldEnemy } from '../types';
 import type { AbilityDefinition } from './AbilityRegistry';
 import { hasLineOfSight } from '../world/CollisionWorld';
+import { incomingDamageMultiplier, outgoingDamageMultiplier, statusMagnitude } from './StatusSystem';
 
 export function calculatePlayerDamage(player: PlayerCharacter, ability: AbilityDefinition, multiplier = 1): number {
   const weaponPower = player.equipment.weapon?.value ?? 0;
@@ -13,12 +14,15 @@ export function calculatePlayerDamage(player: PlayerCharacter, ability: AbilityD
   const accessory = player.equipment.accessory;
   const accessoryStat = statKey.toUpperCase();
   const primaryStat = player.stats[statKey] + (accessory?.statBonus === accessoryStat ? accessory.value : 0);
-  return Math.max(1, Math.round((ability.damage + primaryStat * 0.62 + weaponPower + player.stats.damageBonus + statusBonus) * Math.max(0.25, multiplier)));
+  const counterMultiplier = ability.kind === 'MELEE' ? 1 + statusMagnitude(player.statusEffects, 'COUNTER') : 1;
+  return Math.max(1, Math.round((ability.damage + primaryStat * 0.62 + weaponPower + player.stats.damageBonus + statusBonus)
+    * Math.max(0.25, multiplier) * outgoingDamageMultiplier(player.statusEffects) * counterMultiplier));
 }
 
 export function applyEnemyDamage(enemy: WorldEnemy, amount: number): { enemy: WorldEnemy; defeated: boolean } {
   if (enemy.health <= 0 || enemy.state === 'DEAD') return { enemy, defeated: false };
-  const health = Math.max(0, enemy.health - Math.max(0, Math.floor(amount)));
+  const guarded = Math.round(Math.max(0, amount) * incomingDamageMultiplier(enemy.statusEffects));
+  const health = Math.max(0, enemy.health - Math.max(0, Math.floor(guarded)));
   const defeated = health <= 0;
   return {
     enemy: { ...enemy, health, state: defeated ? 'DEAD' : 'HURT', stateTimer: defeated ? 1.1 : 0.2 },
@@ -41,7 +45,8 @@ export function resolveMeleeAttack(
     const distance = Math.hypot(dx, dz);
     const angle = Math.atan2(dz, dx);
     const difference = Math.atan2(Math.sin(angle - player.rotation.yaw), Math.cos(angle - player.rotation.yaw));
-    if (distance > ability.range || Math.abs(difference) > arc / 2 || !hasLineOfSight(map, player.position.x, player.position.z, enemy.position.x, enemy.position.z, 0.18)) return enemy;
+    const reach = ability.range + Math.min(0.35, (enemy.collisionRadius ?? 0.28) * 0.4);
+    if (distance > reach || Math.abs(difference) > arc / 2 || !hasLineOfSight(map, player.position.x, player.position.z, enemy.position.x, enemy.position.z, 0.18)) return enemy;
     const hit = applyEnemyDamage(enemy, damage);
     hitEnemyIds.push(enemy.id);
     return hit.enemy;
@@ -68,8 +73,11 @@ export function resolveAreaAttack(
   return { enemies: updated, hitEnemyIds };
 }
 
-export function calculateIncomingDamage(enemy: WorldEnemy, player: PlayerCharacter): number {
-  return Math.max(1, Math.ceil(enemy.damage - player.stats.armor * 0.45));
+export function calculateIncomingDamage(enemy: WorldEnemy, player: PlayerCharacter, shieldBlock = false): number {
+  const weakness = outgoingDamageMultiplier(enemy.statusEffects);
+  const guard = incomingDamageMultiplier(player.statusEffects);
+  const block = shieldBlock ? 0.28 : 1;
+  return Math.max(1, Math.ceil(Math.max(0, enemy.damage * weakness - player.stats.armor * 0.45) * guard * block));
 }
 
 export function projectileDirection(yaw: number, pitch: number): { x: number; y: number; z: number } {

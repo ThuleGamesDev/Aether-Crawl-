@@ -64,11 +64,17 @@ Each generated floor has a start, a connected main route, optional spaces, a Gua
 
 ## Guardian hierarchy
 
-1. **Bronze Gatekeeper** — shield bash and slow sweeping strike.
-2. **Serpent Priestess** — venom orb and readable fang-cone attack.
-3. **Cyclopean Mason** — block slam and floor shockwave.
-4. **Lamia of the Cistern** — fast lunge and limited life-drain bolt.
-5. **Threadbound Warden** — thread projectile and short red-thread ritual.
+1. **Bronze Gatekeeper** — a prepared shield bash, broad slow sword sweep, and short guard phase teach spacing and dodge timing.
+2. **Serpent Priestess** — a venom orb, readable poison cone, and short coil ritual teach projectile and area avoidance.
+3. **Cyclopean Mason** — a heavy slam, thrown block, and wide ground shockwave reward distance and deliberate movement.
+4. **Lamia of the Cistern** — a fast lunge, limited life-drain bolt, and bounded retreat pressure the player without indefinite kiting.
+5. **Threadbound Warden** — a curse bolt and ritual shield give way at half health to delayed red sigils and a stronger curse pattern.
+
+Guardian actions follow real-time windup, active, and recovery phases. Telegraphs mark the danger before damage. Player movement, wall collision, Dodge, and Hoplite shield block are valid ways to avoid or mitigate attacks; no encounter relies on hidden instant damage.
+
+## Combat readability
+
+The six early enemy families express their role through a small set of stable attacks: the Rat leaps, the Revenant guards and bashes, Arachne's Brood controls space with venom and web, the Bull-Cult Enforcer commits to a telegraphed charge, the Acolyte pressures from range, and the Tomb Plunderer throws a javelin before briefly retreating. These patterns use line of sight, attack cooldowns, authored telegraph times, and short recovery windows. Poison, Burn, Slow, Stagger, Weakness, and Guard are simulation-time effects rather than turn-based statuses.
 
 The same five non-Minotaur Guardian identities may cycle on later floors until future content replaces them. The Minotaur is a single later main boss with a configurable depth, not an alias for any of these Guardians.
 

@@ -1,8 +1,10 @@
 import * as THREE from 'three';
 import type { BiomeId, WeaponVisualType } from '../types';
-import { createEnemyTexture, createPixelTexture, createWeaponTexture } from './PixelArtRenderer';
+import { createCombatEffectTexture, createEnemyTexture, createPixelTexture, createWeaponTexture } from './PixelArtRenderer';
 import { biomeVisuals, enemyVisuals, propVisuals, shieldVisual, vfxVisuals, weaponVisuals } from '../data/assetRegistry';
 import type { PixelEffectId } from './VFXSystem';
+
+const proceduralVfx = new Set<PixelEffectId>(['bronze_slash', 'spear_thrust', 'shield_impact', 'blood_hit', 'poison_splash', 'web_impact', 'fire_burst', 'stone_shockwave', 'chthonic_bolt', 'boss_death_burst']);
 
 export class AssetManager {
   private readonly textures = new Map<string, THREE.CanvasTexture>();
@@ -47,13 +49,14 @@ export class AssetManager {
     const key = 'vfx:' + effectId;
     let texture = this.textures.get(key);
     if (!texture) {
-      texture = createPixelTexture('loot', 'dungeon');
+      texture = proceduralVfx.has(effectId) ? createCombatEffectTexture(effectId) : createPixelTexture('loot', 'dungeon');
       this.textures.set(key, texture);
-      const vfxId: Record<PixelEffectId, keyof typeof vfxVisuals> = {
+      const vfxId: Partial<Record<PixelEffectId, keyof typeof vfxVisuals>> = {
         bronze_impact: 'DAMAGE', laurel_light: 'HEAL', promethean_flame: 'FIREBALL',
         soul_ash: 'ENEMY_DEATH', cistern_splash: 'ICE', oracle_spark: 'LIGHTNING', serpent_venom: 'POISON',
       };
-      this.loadLocal(texture, vfxVisuals[vfxId[effectId]]);
+      const fallback = vfxId[effectId];
+      if (fallback) this.loadLocal(texture, vfxVisuals[fallback]);
     }
     return texture;
   }

@@ -1,6 +1,7 @@
-import type { Vector3Like, WorldEnemy, WorldProjectile } from '../types';
+import type { StatusApplication, Vector3Like, WorldEnemy, WorldProjectile } from '../types';
 import { applyEnemyDamage } from './DamageSystem';
 import { isWorldSolid } from '../world/CollisionWorld';
+import { applyRealtimeStatus } from './StatusSystem';
 
 export interface ProjectileImpact {
   position: { x: number; y: number; z: number };
@@ -9,6 +10,8 @@ export interface ProjectileImpact {
   playerHit?: boolean;
   ownerEnemyId?: string;
   abilityId: string;
+  statusEffect?: StatusApplication;
+  healOwnerRatio?: number;
 }
 
 export interface ProjectileUpdateResult {
@@ -41,14 +44,19 @@ export function updateProjectiles(projectiles: WorldProjectile[], enemies: World
         break;
       }
       if (current.faction === 'ENEMY' && playerPosition && Math.hypot(playerPosition.x - current.position.x, playerPosition.z - current.position.z) < 0.34 + current.radius && Math.abs(1.15 - current.position.y) < 0.78) {
-        impacts.push({ position: current.position, color: current.color, abilityId: current.sourceAbilityId, playerHit: true, ownerEnemyId: current.ownerEnemyId });
+        impacts.push({ position: current.position, color: current.color, abilityId: current.sourceAbilityId, playerHit: true, ownerEnemyId: current.ownerEnemyId, statusEffect: current.statusEffect, healOwnerRatio: current.healOwnerRatio });
         consumed = true;
         break;
       }
       const target = current.faction !== 'ENEMY' ? nextEnemies.find(enemy => enemy.health > 0 && enemy.state !== 'DEAD' && Math.hypot(enemy.position.x - current.position.x, enemy.position.z - current.position.z) < (enemy.collisionRadius ?? 0.28) + current.radius && Math.abs(0.72 - current.position.y) < 1.0) : undefined;
       if (target) {
-        nextEnemies = nextEnemies.map(enemy => enemy.id === target.id ? applyEnemyDamage(enemy, current.damage).enemy : enemy);
-        impacts.push({ position: current.position, color: current.color, enemyId: target.id, abilityId: current.sourceAbilityId, ownerEnemyId: current.ownerEnemyId });
+        nextEnemies = nextEnemies.map(enemy => {
+          if (enemy.id !== target.id) return enemy;
+          let hit = applyEnemyDamage(enemy, current.damage).enemy;
+          if (current.statusEffect) hit = { ...hit, statusEffects: applyRealtimeStatus(hit.statusEffects, current.statusEffect, current.sourceAbilityId) };
+          return hit;
+        });
+        impacts.push({ position: current.position, color: current.color, enemyId: target.id, abilityId: current.sourceAbilityId, ownerEnemyId: current.ownerEnemyId, statusEffect: current.statusEffect, healOwnerRatio: current.healOwnerRatio });
         consumed = true;
         break;
       }

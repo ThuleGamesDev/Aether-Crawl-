@@ -384,6 +384,17 @@ export interface ActiveStatus {
   statusId: string;
   durationSeconds: number;
   magnitude: number;
+  /** Time until the next real-time tick for damage-over-time effects. */
+  tickRemainingSeconds?: number;
+}
+
+export type RealtimeStatusId = 'POISON' | 'BURN' | 'SLOW' | 'STAGGER' | 'WEAKNESS' | 'GUARD' | 'COUNTER';
+
+export interface StatusApplication {
+  statusId: RealtimeStatusId;
+  durationSeconds: number;
+  magnitude: number;
+  tickIntervalSeconds?: number;
 }
 
 export interface Vector3Like {
@@ -405,7 +416,8 @@ export interface PlayerCharacter {
   statusEffects: ActiveStatus[];
 }
 
-export type WorldEnemyState = 'IDLE' | 'AGGRO' | 'APPROACH' | 'ATTACK_WINDUP' | 'ATTACK' | 'RECOVER' | 'HURT' | 'DEAD';
+export type WorldEnemyState = 'IDLE' | 'ALERT' | 'AGGRO' | 'APPROACH' | 'CHASE' | 'REPOSITION' | 'RETREAT' | 'ATTACK_WINDUP' | 'ATTACK_ACTIVE' | 'ATTACK' | 'RECOVER' | 'HURT' | 'STAGGER' | 'DEAD';
+export type WorldEnemyRole = 'CHASER' | 'TANK' | 'SKIRMISHER' | 'CONTROLLER' | 'HEAVY' | 'SUPPORT';
 
 export interface WorldEnemy {
   id: string;
@@ -427,7 +439,17 @@ export interface WorldEnemy {
   attackSetId?: string;
   attackIndex?: number;
   activeAttackId?: string;
+  lastAttackId?: string;
   facingYaw?: number;
+  behaviorRole?: WorldEnemyRole;
+  statusEffects?: ActiveStatus[];
+  phase?: number;
+  phaseTransitioned?: boolean;
+  repositionCooldownSeconds?: number;
+  pathRefreshSeconds?: number;
+  pathTargetCell?: { x: number; y: number };
+  pathStep?: { x: number; y: number };
+  telegraphPosition?: Vector3Like;
   rewardGranted: boolean;
   roomId?: string;
   isBoss: boolean;
@@ -444,6 +466,8 @@ export interface WorldProjectile {
   color: string;
   faction?: 'PLAYER' | 'ENEMY';
   ownerEnemyId?: string;
+  statusEffect?: StatusApplication;
+  healOwnerRatio?: number;
 }
 
 export interface WorldLootDrop {

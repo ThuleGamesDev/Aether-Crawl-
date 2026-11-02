@@ -24,6 +24,6 @@ Every generated floor contains one canonical Guardian in a reachable, cleared ar
 - Migration embeds the old floor into a larger map, preserves the seed, floor, player stats, position relative to the old topology, equipment, inventory, item instance IDs, enemies, loot, and cleared/rewarded Guardian state, then adds the new arena and canonical Guardian identity.
 - The v2 key is written only after the user selects Continue (or saves in the active run). Invalid v2 or R1 data is reported and left untouched; it is not silently replaced with a new expedition.
 
-## Current limitations
+## R2A baseline limitations and R2B follow-up
 
-The first five Guardians use simple attack sets and a small telegraph language rather than full boss phase graphs. Floors 6+ temporarily cycle the five pilot Guardians. The Minotaur depth and final encounter remain unconfigured. Full class skill trees, affixes, Uniques, and large-scale animation production remain future waves.
+At the R2A merge, the first five Guardians used simple attack sets and a small telegraph language rather than full boss phase graphs. FPS-R2B expands these patterns and gives the Threadbound Warden a one-time phase transition. Floors 6+ still temporarily cycle the five pilot Guardians. The Minotaur depth and final encounter remain unconfigured. Full class skill trees, affixes, Uniques, and large-scale animation production remain future waves. See the [R2B combat audit](FPS_R2B_COMBAT_AUDIT.md) for the current combat architecture and its limits.

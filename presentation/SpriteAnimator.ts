@@ -21,30 +21,68 @@ export function animateEnemySprite(sprite: THREE.Sprite, enemy: WorldEnemy, elap
   const size = enemyVisuals[enemy.visualId]?.scale ?? 1;
   const baseWidth = rat ? 0.88 : enemy.isBoss ? 1.55 : 0.98 * size;
   const baseHeight = rat ? 0.7 : enemy.isBoss ? 1.95 : 1.55 * size;
-  const moving = enemy.state === 'APPROACH' || enemy.state === 'AGGRO';
-  const bob = moving ? Math.abs(Math.sin(elapsedSeconds * 11 + enemy.position.x)) * 0.045 : Math.sin(elapsedSeconds * 2 + enemy.position.z) * 0.025;
-  sprite.position.set(enemy.position.x, 0.035 + bob, enemy.position.z);
-  sprite.rotation.z = enemy.state === 'ATTACK_WINDUP' ? Math.sin(elapsedSeconds * 14) * 0.08 : enemy.state === 'HURT' ? -0.12 : 0;
-  if (enemy.state === 'ATTACK_WINDUP') {
-    sprite.scale.y = baseHeight * 0.92;
-    sprite.scale.x = baseWidth * 1.08;
-    material.color.set('#ffae72');
-  } else if (enemy.state === 'ATTACK') {
-    sprite.scale.y = baseHeight * 1.06;
-    material.color.set('#ff875e');
-  } else if (enemy.state === 'HURT') {
-    sprite.scale.y = baseHeight;
-    material.color.set('#fff0dc');
-  } else if (enemy.state === 'DEAD') {
-    sprite.scale.y = Math.max(0.18, baseHeight * (0.28 + enemy.stateTimer * 0.25));
-    sprite.material.opacity = Math.max(0, Math.min(1, enemy.stateTimer / 1.1));
-    sprite.visible = enemy.stateTimer > 0.02;
-    material.color.set('#8f7b78');
-  } else {
-    sprite.visible = true;
-    sprite.scale.x = baseWidth;
-    sprite.scale.y = baseHeight;
-    sprite.material.opacity = 1;
-    material.color.set('#ffffff');
+  const moving = ['CHASE', 'APPROACH', 'AGGRO', 'REPOSITION', 'RETREAT'].includes(enemy.state);
+  const phase = elapsedSeconds * (rat ? 13.5 : 10.5) + enemy.position.x * 2.1 + enemy.position.z;
+  const gait = Math.sin(phase);
+  let bob = 0;
+  let scaleX = baseWidth, scaleY = baseHeight, tilt = 0;
+  let tint = '#ffffff';
+  let opacity = 1;
+  if (moving) {
+    bob = Math.max(0, gait) * (rat ? 0.055 : 0.035);
+    scaleY *= 1 + Math.abs(gait) * 0.018;
+    tilt = gait * (rat ? 0.04 : 0.025);
+  } else if (enemy.state === 'IDLE') {
+    const breath = Math.sin(elapsedSeconds * 2.2 + enemy.position.x) * 0.012;
+    scaleY *= 1 + breath;
+    scaleX *= 1 - breath * 0.45;
   }
+
+  const windup = enemy.state === 'ATTACK_WINDUP' ? Math.min(1, Math.max(0, 1 - enemy.stateTimer / Math.max(0.08, enemy.attackTelegraphSeconds))) : 0;
+  if (enemy.state === 'ALERT' || enemy.state === 'AGGRO') {
+    scaleX *= 1.035;
+    tint = '#e2bf86';
+  } else if (enemy.state === 'ATTACK_WINDUP') {
+    scaleX *= 1 + windup * (enemy.isBoss ? 0.12 : 0.08);
+    scaleY *= 1 - windup * 0.1;
+    tilt = -windup * 0.07;
+    tint = windup > 0.7 ? '#ffcb75' : '#e8a86b';
+  } else if (enemy.state === 'ATTACK_ACTIVE' || enemy.state === 'ATTACK') {
+    scaleX *= 1.1;
+    scaleY *= 1.035;
+    tilt = -0.055;
+    tint = '#ff9363';
+  } else if (enemy.state === 'RECOVER') {
+    scaleY *= 0.96;
+    tint = '#d8c0a0';
+  } else if (enemy.state === 'HURT') {
+    scaleX *= 0.94;
+    scaleY *= 1.04;
+    tilt = -0.14;
+    tint = '#fff0dc';
+  } else if (enemy.state === 'STAGGER') {
+    scaleX *= 0.9;
+    scaleY *= 1.08;
+    tilt = Math.sin(elapsedSeconds * 24) * 0.11;
+    tint = '#e9e4ce';
+  } else if (enemy.state === 'DEAD') {
+    const death = Math.max(0, Math.min(1, enemy.stateTimer / 1.1));
+    scaleY *= Math.max(0.12, 0.18 + death * 0.82);
+    scaleX *= 1 + (1 - death) * 0.14;
+    tilt = (enemy.id.charCodeAt(enemy.id.length - 1) % 2 ? 1 : -1) * (1 - death) * 0.42;
+    opacity = death;
+    tint = '#8f7b78';
+  }
+
+  const status = enemy.statusEffects?.find(effect => effect.durationSeconds > 0);
+  if (status && enemy.state !== 'HURT' && enemy.state !== 'STAGGER' && enemy.state !== 'DEAD') {
+    tint = status.statusId === 'POISON' ? '#b3c96f' : status.statusId === 'BURN' ? '#f59a55' : status.statusId === 'SLOW' ? '#8fbfca' : status.statusId === 'GUARD' ? '#e0bd72' : '#d58d8e';
+  }
+
+  sprite.position.set(enemy.position.x, 0.035 + bob, enemy.position.z);
+  sprite.rotation.z = tilt;
+  sprite.scale.set(scaleX, scaleY, 1);
+  material.color.set(tint);
+  material.opacity = opacity;
+  sprite.visible = enemy.state !== 'DEAD' || enemy.stateTimer > 0.02;
 }

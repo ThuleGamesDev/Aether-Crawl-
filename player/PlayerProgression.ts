@@ -101,23 +101,29 @@ export function unequipItem(player: PlayerCharacter, slot: EquipmentSlot): Playe
 }
 
 export function makeEnemyDrop(enemy: WorldEnemy, floorLevel: number): ItemInstance {
-  const guardianLoot: Record<string, { name: string; description: string }> = {
-    guardian_bronze_gatekeeper: { name: 'Gatekeeper’s Bronze Seal', description: 'A hammered seal taken from the guardian at the first descent.' },
-    guardian_serpent_priestess: { name: 'Serpent Priestess’ Votive Fang', description: 'A venom-dark votive fang from the serpent galleries.' },
-    guardian_cyclopean_mason: { name: 'Mason’s Bronze Plumb', description: 'A bronze weight used to set the stones of the Cyclopean Halls.' },
-    guardian_lamia_cistern: { name: 'Lamia’s Cistern Laurel', description: 'A tarnished laurel clasp recovered from the still water.' },
-    guardian_threadbound_warden: { name: 'Warden’s Labyrinth Thread', description: 'A red thread that once marked the guardian’s ritual boundary.' },
+  const guardianLoot: Record<string, Item> = {
+    guardian_bronze_gatekeeper: { id: 'guardian_aspis', name: 'Guardian’s Aspis', description: 'A bronze-faced shield whose rim still bears the Gatekeeper’s final blow.', type: 'SHIELD', value: 5, icon: '◉', quantity: 1 },
+    guardian_serpent_priestess: { id: 'serpent_fang', name: 'Serpent Fang', description: 'A curved ritual kopis that cuts cleanly through venom-soaked linen.', type: 'WEAPON', value: 8, visualType: 'dagger', icon: '⌁', quantity: 1 },
+    guardian_cyclopean_mason: { id: 'cyclopean_hammer', name: 'Cyclopean Hammer', description: 'A bronze-capped stoneworker’s hammer with a heavy, balanced head.', type: 'WEAPON', value: 10, visualType: 'mace', icon: '⚒', quantity: 1 },
+    guardian_lamia_cistern: { id: 'lamia_veil', name: 'Lamia’s Veil', description: 'Water-dark linen that turns aside a little of the Cistern’s chill.', type: 'ARMOR', value: 6, armorWeight: 'LIGHT', icon: '▧', quantity: 1 },
+    guardian_threadbound_warden: { id: 'threadbound_seal', name: 'Threadbound Seal', description: 'A chthonic seal that steadies the mind against curses.', type: 'ACCESSORY', value: 7, statBonus: 'INT', icon: '⌘', quantity: 1 },
   };
-  const trophy = guardianLoot[enemy.definitionId];
-  if (trophy) return createItemInstance({ id: 'guardian_trophy_' + enemy.definitionId, name: trophy.name, description: trophy.description, type: 'ACCESSORY', value: 3 + floorLevel, statBonus: 'INT', icon: '⌘', quantity: 1 }, 'drop_' + enemy.id, floorLevel, 'RARE');
+  const guardianReward = guardianLoot[enemy.definitionId];
+  if (guardianReward) return createItemInstance({ ...guardianReward, id: guardianReward.id + '_' + enemy.definitionId, value: guardianReward.value + Math.max(0, Math.floor((floorLevel - 1) / 2)) }, 'drop_' + enemy.id, floorLevel, 'RARE');
   if (enemy.definitionId === 'giant_rat') {
     return createItemInstance({ id: 'rat_hide_' + enemy.id, name: 'Cretan Rat Pelt', description: 'A tough pelt from a cave scavenger of the old palace.', type: 'ARMOR', value: 2 + Math.floor(floorLevel / 2), armorWeight: 'LIGHT', icon: '▧', quantity: 1 }, 'drop_' + enemy.id, floorLevel);
   }
   if (enemy.definitionId === 'skeleton_warrior') {
     return createItemInstance({ id: 'bone_charm_' + enemy.id, name: 'Chthonic Seal', description: 'A cold seal that sharpens the bearer’s resolve.', type: 'ACCESSORY', value: 2 + Math.floor(floorLevel / 2), statBonus: 'STR', icon: '◇', quantity: 1 }, 'drop_' + enemy.id, floorLevel, enemy.isBoss ? 'RARE' : 'COMMON');
   }
-  const reward = enemy.isBoss ? 'Bronze Xiphos of the Fallen' : 'Labyrinth Bronze Xiphos';
-  return createItemInstance({ id: 'dungeon_cache_' + enemy.id, name: reward, description: 'A bronze blade recovered from the buried halls.', type: 'WEAPON', value: 3 + floorLevel, visualType: 'sword', icon: '†', quantity: 1 }, 'drop_' + enemy.id, floorLevel);
+  const weapon = enemy.attackSetId === 'plunderer' || enemy.attackSetId === 'empusa'
+    ? { name: 'Bronze Kopis of the Fallen', visualType: 'dagger' as const, icon: '⌁' }
+    : enemy.attackSetId === 'raider'
+      ? { name: 'Dory of the Lost Guard', visualType: 'spear' as const, icon: '↗' }
+      : enemy.attackSetId === 'brute' || enemy.attackSetId === 'bull_enforcer'
+        ? { name: 'Bronze Mace of the Deep', visualType: 'mace' as const, icon: '⚒' }
+        : { name: 'Labyrinth Xiphos', visualType: 'sword' as const, icon: '†' };
+  return createItemInstance({ id: 'dungeon_cache_' + enemy.id, name: weapon.name, description: 'A bronze weapon recovered from the buried halls.', type: 'WEAPON', value: 3 + floorLevel, visualType: weapon.visualType, icon: weapon.icon, quantity: 1 }, 'drop_' + enemy.id, floorLevel);
 }
 
 export function consumePotion(player: PlayerCharacter, instanceId: string): PlayerCharacter | null {

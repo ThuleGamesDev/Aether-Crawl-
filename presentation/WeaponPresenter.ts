@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { PlayerCharacter, WeaponVisualType } from '../types';
 import type { ActivePlayerAction } from '../player/PlayerCombat';
 import { AssetManager } from './AssetManager';
+import { getAbility } from '../combat/AbilityRegistry';
 
 const weaponFor = (player: PlayerCharacter): WeaponVisualType => player.equipment.weapon?.visualType ?? (player.classId === 'MONK' ? 'unarmed' : player.classId === 'SORCERER' || player.classId === 'NECROMANCER' ? 'staff' : 'sword');
 
@@ -19,20 +20,37 @@ export class WeaponPresenter {
     camera.add(this.shield);
   }
 
-  update(player: PlayerCharacter, action: ActivePlayerAction | null, isMoving: boolean, elapsedSeconds: number): void {
+  update(player: PlayerCharacter, action: ActivePlayerAction | null, isMoving: boolean, guarding: boolean, elapsedSeconds: number): void {
     const weapon = weaponFor(player);
     const key = weapon + ':' + player.classId;
     if (key !== this.currentKey) this.setWeapon(weapon, player.classId, key);
     if (!this.sprite) return;
     const phase = action?.phase;
+    const ability = action ? getAbility(action.abilityId) : undefined;
     const gait = isMoving ? Math.sin(elapsedSeconds * 10) : Math.sin(elapsedSeconds * 1.4) * 0.08;
     const swing = phase === 'WINDUP' ? -0.22 : phase === 'ACTIVE' ? 0.38 : phase === 'RECOVERY' ? 0.13 : 0;
-    this.sprite.position.set(0.68 + gait * 0.04, -0.48 + gait * 0.055 + swing * 0.18, -1.05);
-    this.sprite.rotation.z = swing + (isMoving ? Math.sin(elapsedSeconds * 10) * 0.025 : 0);
-    this.sprite.rotation.x = phase === 'WINDUP' ? 0.2 : 0;
+    const style = ability?.meleeStyle;
+    let weaponX = 0.68 + gait * 0.04;
+    let weaponY = -0.48 + gait * 0.055 + swing * 0.18;
+    let weaponZ = -1.05;
+    let weaponRotation = swing;
+    if (style === 'THRUST') {
+      weaponZ -= phase === 'ACTIVE' ? 0.34 : phase === 'WINDUP' ? -0.12 : 0;
+      weaponRotation = phase === 'WINDUP' ? -0.18 : phase === 'ACTIVE' ? 0.02 : 0;
+    } else if (style === 'BASH') {
+      weaponZ -= phase === 'ACTIVE' ? 0.22 : 0;
+      weaponRotation = phase === 'WINDUP' ? -0.14 : phase === 'ACTIVE' ? 0.14 : 0;
+    } else if (ability?.kind === 'PROJECTILE') {
+      weaponRotation = phase === 'WINDUP' ? -0.1 : phase === 'ACTIVE' ? 0.08 : 0;
+      weaponY += phase === 'WINDUP' ? 0.03 : 0;
+    }
+    this.sprite.position.set(weaponX, weaponY, weaponZ);
+    this.sprite.rotation.z = weaponRotation + (isMoving ? Math.sin(elapsedSeconds * 10) * 0.025 : 0);
+    this.sprite.rotation.x = phase === 'WINDUP' ? 0.2 : style === 'THRUST' && phase === 'ACTIVE' ? -0.1 : 0;
     this.shield.visible = Boolean(player.equipment.offhand);
-    this.shield.position.set(-0.66 + gait * 0.025, -0.43 + gait * 0.035 + swing * 0.08, -1.12);
-    this.shield.rotation.z = -swing * 0.42;
+    this.shield.position.set(-0.66 + gait * 0.025, -0.43 + gait * 0.035 + swing * 0.08 + (guarding ? 0.08 : 0), guarding ? -0.99 : -1.12);
+    this.shield.scale.set(guarding ? 0.44 : 0.38, guarding ? 0.44 : 0.38, 1);
+    this.shield.rotation.z = guarding ? -0.12 : -swing * 0.42;
   }
 
   private setWeapon(weapon: WeaponVisualType, classId: string, key: string): void {
