@@ -1,6 +1,7 @@
 import type { BiomeId, BiomeVisualDefinition, EnemyVisualDefinition, VFXType, WeaponVisualType } from '../types';
 import { FLOOR_ENEMY_ROSTERS, FLOOR_GUARDIANS, getFloorGuardianDefinition, LABYRINTH_THEMES } from './mazeContent';
 import { biomeBossDefinitions, enemyDefinitions, miniBossDefinitions, normalEnemyDefinitions } from './enemies';
+import { CHARACTER_RIG_MANIFEST } from './characterRigs';
 
 const asset = (path: string) => `/assets/${path}`;
 const themeSlug: Record<BiomeId, string> = {
@@ -54,6 +55,7 @@ export const weaponVisuals: Record<WeaponVisualType, string> = {
 };
 
 export const shieldVisual = asset('maze/hands/aspis.png');
+export const characterRigAtlasPath = CHARACTER_RIG_MANIFEST.atlasPath;
 
 export const vfxVisuals: Record<VFXType, string> = {
   DAMAGE: asset('maze/vfx/bronze_impact.png'),
@@ -122,6 +124,7 @@ export const getLevelAssetPaths = (level: number): string[] => {
     ...activeEnemies.map(enemy => enemyVisuals[enemy.fpsVisualId]?.sprite).filter((path): path is string => Boolean(path)),
     enemyVisuals[boss.visualId].sprite,
     ...Object.values(weaponVisuals), shieldVisual,
+    characterRigAtlasPath,
     ...Object.values(vfxVisuals),
   ])];
 };
@@ -130,6 +133,7 @@ export const collectAssetPaths = (): string[] => [...new Set([
   ...Object.keys(biomeVisuals).flatMap(biomeId => getBiomeAssetPaths(biomeId as BiomeId)),
   ...Object.values(enemyVisuals).map(visual => visual.sprite),
   ...Object.values(weaponVisuals), shieldVisual,
+  characterRigAtlasPath,
   ...Object.values(vfxVisuals),
   ...Object.values(propVisuals),
 ])];

@@ -4,10 +4,16 @@ import type { ActivePlayerAction } from '../player/PlayerCombat';
 import type { DungeonWorldState } from '../world/DungeonWorld';
 import { AssetManager } from '../presentation/AssetManager';
 import { animateEnemySprite, createEnemySprite } from '../presentation/SpriteAnimator';
+import { CharacterRigAnimator } from '../presentation/CharacterRigAnimator';
+import { CHARACTER_RIG_MANIFEST, getCharacterRigDefinition } from '../data/characterRigs';
 import { WeaponPresenter } from '../presentation/WeaponPresenter';
 import { VFXSystem, type PixelEffectId } from '../presentation/VFXSystem';
 import { WorldGeometry } from '../world/WorldGeometry';
 import { getEnemyAttackDefinition } from '../data/enemyAttacks';
+
+type EnemyVisualInstance =
+  | { kind: 'legacy'; sprite: THREE.Sprite }
+  | { kind: 'rig'; animator: CharacterRigAnimator };
 
 export const DEFAULT_PIXEL_RENDER_SCALE = 0.56;
 export const MOBILE_PIXEL_RENDER_SCALE = DEFAULT_PIXEL_RENDER_SCALE * 0.78;
@@ -35,7 +41,7 @@ export class SceneRenderer {
   readonly scene = new THREE.Scene();
   readonly camera = new THREE.PerspectiveCamera(72, 1, 0.045, 34);
   private readonly assets = new AssetManager();
-  private readonly enemySprites = new Map<string, THREE.Sprite>();
+  private readonly enemyVisuals = new Map<string, EnemyVisualInstance>();
   private readonly lootSprites = new Map<string, THREE.Sprite>();
   private readonly projectileMeshes = new Map<number, THREE.Mesh>();
   private readonly projectilePool: THREE.Mesh[] = [];
@@ -66,6 +72,7 @@ export class SceneRenderer {
     this.geometry = new WorldGeometry(world, this.assets);
     this.scene.add(this.geometry.group);
     this.worldRevision = world.worldRevision;
+    this.assets.characterRigAtlas();
     this.vfx = new VFXSystem(this.scene, this.assets, window.matchMedia?.('(max-width: 767px)').matches ? 24 : 48);
     const defaultProjectileMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.96 });
     this.projectileMaterials.set('__default', defaultProjectileMaterial);
@@ -119,6 +126,8 @@ export class SceneRenderer {
     const { world, player, enemies, projectiles, loot, action, isMoving, guarding, cameraBob, deltaSeconds, elapsedSeconds, events } = args;
     this.elapsedSeconds = elapsedSeconds;
     if (world.worldRevision !== this.worldRevision) {
+      this.clearEnemyVisuals();
+      this.clearEnemyTelegraphs();
       this.scene.remove(this.geometry.group);
       this.geometry.dispose();
       this.geometry = new WorldGeometry(world, this.assets);
@@ -128,7 +137,7 @@ export class SceneRenderer {
     this.camera.position.set(player.position.x, 1.52 + cameraBob, player.position.z);
     this.camera.rotation.set(player.rotation.pitch, -player.rotation.yaw - Math.PI / 2, 0, 'YXZ');
     this.weapon.update(player, action, isMoving, guarding, elapsedSeconds);
-    this.syncEnemies(enemies, world);
+    this.syncEnemies(enemies, world, deltaSeconds);
     this.syncProjectiles(projectiles);
     this.syncLoot(loot, world);
     for (const event of events) {
@@ -142,22 +151,38 @@ export class SceneRenderer {
     this.renderer.render(this.scene, this.camera);
   }
 
-  private syncEnemies(enemies: WorldEnemy[], world: DungeonWorldState): void {
+  private syncEnemies(enemies: WorldEnemy[], world: DungeonWorldState, deltaSeconds: number): void {
     const ids = new Set(enemies.map(enemy => enemy.id));
-    for (const [id, sprite] of this.enemySprites) {
-      if (!ids.has(id)) { this.scene.remove(sprite); sprite.material.dispose(); this.enemySprites.delete(id); }
+    for (const [id, visual] of this.enemyVisuals) {
+      if (!ids.has(id)) { this.disposeEnemyVisual(visual); this.enemyVisuals.delete(id); }
     }
     for (const [id, warning] of this.enemyTelegraphs) {
       if (!ids.has(id)) { this.scene.remove(warning.mesh); warning.mesh.geometry.dispose(); warning.mesh.material.dispose(); this.enemyTelegraphs.delete(id); }
     }
+    const atlas = this.assets.characterRigAtlas();
     for (const enemy of enemies) {
-      let sprite = this.enemySprites.get(enemy.id);
-      if (!sprite) {
-        sprite = createEnemySprite(enemy, world.biome, this.assets);
-        this.enemySprites.set(enemy.id, sprite);
-        this.scene.add(sprite);
+      const definition = getCharacterRigDefinition(enemy.visualId);
+      const shouldUseRig = Boolean(definition && atlas);
+      let visual = this.enemyVisuals.get(enemy.id);
+      if (visual && ((visual.kind === 'rig') !== shouldUseRig)) {
+        this.disposeEnemyVisual(visual);
+        this.enemyVisuals.delete(enemy.id);
+        visual = undefined;
       }
-      animateEnemySprite(sprite, enemy, this.elapsedSeconds);
+      if (!visual) {
+        if (shouldUseRig && definition && atlas) {
+          const animator = new CharacterRigAnimator(enemy, definition, atlas, CHARACTER_RIG_MANIFEST.atlasWidth, CHARACTER_RIG_MANIFEST.atlasHeight, CHARACTER_RIG_MANIFEST.cellSize);
+          visual = { kind: 'rig', animator };
+          this.scene.add(animator.group);
+        } else {
+          const sprite = createEnemySprite(enemy, world.biome, this.assets);
+          visual = { kind: 'legacy', sprite };
+          this.scene.add(sprite);
+        }
+        this.enemyVisuals.set(enemy.id, visual);
+      }
+      if (visual.kind === 'rig') visual.animator.update(enemy, this.camera.position, this.elapsedSeconds, deltaSeconds);
+      else animateEnemySprite(visual.sprite, enemy, this.elapsedSeconds);
       let warningEntry = this.enemyTelegraphs.get(enemy.id);
       let warning = warningEntry?.mesh;
       const attack = enemy.state === 'ATTACK_WINDUP' ? getEnemyAttackDefinition(enemy.attackSetId, enemy.activeAttackId, enemy.phase ?? 1) : undefined;
@@ -245,6 +270,29 @@ export class SceneRenderer {
     }
   }
 
+  private disposeEnemyVisual(visual: EnemyVisualInstance): void {
+    if (visual.kind === 'rig') {
+      visual.animator.dispose();
+      return;
+    }
+    this.scene.remove(visual.sprite);
+    visual.sprite.material.dispose();
+  }
+
+  private clearEnemyVisuals(): void {
+    for (const visual of this.enemyVisuals.values()) this.disposeEnemyVisual(visual);
+    this.enemyVisuals.clear();
+  }
+
+  private clearEnemyTelegraphs(): void {
+    for (const warning of this.enemyTelegraphs.values()) {
+      this.scene.remove(warning.mesh);
+      warning.mesh.geometry.dispose();
+      warning.mesh.material.dispose();
+    }
+    this.enemyTelegraphs.clear();
+  }
+
   dispose(): void {
     this.resizeObserver?.disconnect();
     this.onDisposeResize();
@@ -252,12 +300,10 @@ export class SceneRenderer {
     this.vfx.dispose();
     this.scene.remove(this.geometry.group);
     this.geometry.dispose();
-    for (const sprite of this.enemySprites.values()) sprite.material.dispose();
+    this.clearEnemyVisuals();
     for (const sprite of this.lootSprites.values()) sprite.material.dispose();
-    for (const warning of this.enemyTelegraphs.values()) { this.scene.remove(warning.mesh); warning.mesh.geometry.dispose(); warning.mesh.material.dispose(); }
-    this.enemySprites.clear();
+    this.clearEnemyTelegraphs();
     this.lootSprites.clear();
-    this.enemyTelegraphs.clear();
     for (const mesh of this.projectilePool) this.scene.remove(mesh);
     for (const material of this.projectileMaterials.values()) material.dispose();
     this.projectileMeshes.clear();
