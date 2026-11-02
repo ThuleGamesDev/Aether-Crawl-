@@ -105,7 +105,7 @@ export function getWeaponPresentationPose(input: WeaponPresentationPoseInput): W
         pose.weaponRotationZ = 0.38 * (1 - p);
       }
     } else if (input.weapon === 'spear') {
-      const javelin = input.abilityId?.includes('javelin') ?? false;
+      const javelin = input.abilityId === 'ranger_volley' || (input.abilityId?.includes('javelin') ?? false);
       if (javelin) {
         if (phase === 'WINDUP') {
           pose.weaponX = 0.66; pose.weaponY = -0.33 + p * 0.03; pose.weaponZ = -1.16;
@@ -206,7 +206,9 @@ export class WeaponPresenter {
   }
 
   update(player: PlayerCharacter, action: ActivePlayerAction | null, isMoving: boolean, guarding: boolean, elapsedSeconds: number): void {
-    const weapon = getWeaponVisualTypeForPlayer(player);
+    const equippedWeapon = getWeaponVisualTypeForPlayer(player);
+    const javelinThrow = action?.abilityId === 'ranger_volley';
+    const weapon = javelinThrow ? 'spear' : equippedWeapon;
     const weaponItem = player.equipment.weapon;
     const key = [weapon, player.classId, weaponItem?.instanceId ?? 'unarmed', weaponItem?.uniqueEffectId ?? ''].join(':');
     if (key !== this.currentKey) this.setWeapon(weapon, player.classId, key, Boolean(weaponItem?.uniqueEffectId));

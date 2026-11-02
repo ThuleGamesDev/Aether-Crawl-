@@ -163,6 +163,13 @@ describe('FPS-R3A first-person weapon poses', () => {
     expect(bash.shieldZ).toBeGreaterThan(guard.shieldZ);
   });
 
+  it('uses the R3A spear throw pose for the Ranger javelin fan', () => {
+    const throwPose = pose('spear', 'ranger_volley', 'WINDUP', 0.19);
+    const thrustPose = pose('spear', 'paladin_arming_sword', 'WINDUP', 0.075);
+    expect(throwPose.weaponRotationZ).toBeLessThan(thrustPose.weaponRotationZ);
+    expect(throwPose.weaponY).toBeGreaterThan(thrustPose.weaponY);
+  });
+
   it('uses the currently equipped visual and immediately reflects an equipment change', () => {
     const player = createPlayerCharacter('BARBARIAN');
     const labrys = createItemInstance({ id: 'r3a_labrys', name: 'Labrys', description: 'Test axe', type: 'WEAPON', value: 8, quantity: 1, visualType: 'axe' }, 'r3a_labrys_instance');

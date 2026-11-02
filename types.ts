@@ -426,13 +426,18 @@ export interface LearnedSkill {
   rank: number;
 }
 
-export type ClassPassiveId = 'war_momentum' | 'unbroken_line' | 'omen_weaving' | 'opportunist';
+export type ClassPassiveId = 'war_momentum' | 'unbroken_line' | 'omen_weaving' | 'opportunist'
+  | 'marked_prey' | 'measured_remedy' | 'flow_state' | 'soul_tribute';
 export type MagicSchool = 'FIRE' | 'LIGHTNING' | 'ARCANE';
 export type ClassPassiveState =
   | { passiveId: 'war_momentum'; stacks: number; remainingSeconds: number; cooldownRemaining: 0; charges: 0 }
   | { passiveId: 'unbroken_line'; stacks: 0; remainingSeconds: number; cooldownRemaining: number; charges: 0 | 1 }
   | { passiveId: 'omen_weaving'; stacks: 0; remainingSeconds: 0; cooldownRemaining: 0; charges: 0; lastSchool: MagicSchool | null }
-  | { passiveId: 'opportunist'; stacks: 0; remainingSeconds: number; cooldownRemaining: number; charges: 0 | 1 };
+  | { passiveId: 'opportunist'; stacks: 0; remainingSeconds: number; cooldownRemaining: number; charges: 0 | 1 }
+  | { passiveId: 'marked_prey'; targetId: string | null; stacks: number; remainingSeconds: number; cooldownRemaining: 0; charges: 0 }
+  | { passiveId: 'measured_remedy'; stacks: 0; remainingSeconds: 0; cooldownRemaining: number; charges: 0 }
+  | { passiveId: 'flow_state'; stacks: number; remainingSeconds: number; cooldownRemaining: 0; charges: 0 }
+  | { passiveId: 'soul_tribute'; stacks: number; remainingSeconds: number; cooldownRemaining: number; charges: 0 | 1 };
 
 export interface ActiveStatus {
   id: string;
@@ -443,7 +448,8 @@ export interface ActiveStatus {
   tickRemainingSeconds?: number;
 }
 
-export type RealtimeStatusId = 'BLEED' | 'POISON' | 'BURN' | 'SLOW' | 'STAGGER' | 'WEAKNESS' | 'GUARD' | 'COUNTER' | 'BLOOD_OATH';
+export type RealtimeStatusId = 'BLEED' | 'POISON' | 'BURN' | 'SLOW' | 'STAGGER' | 'WEAKNESS' | 'GUARD' | 'COUNTER' | 'BLOOD_OATH'
+  | 'REGEN' | 'HASTE' | 'PRECISION' | 'CURSE';
 
 export interface StatusApplication {
   statusId: RealtimeStatusId;
@@ -582,6 +588,10 @@ export interface WorldProjectile {
   ownerEnemyId?: string;
   statusEffect?: StatusApplication;
   healOwnerRatio?: number;
+  /** Additional enemy hits after the first contact; capped by the projectile system. */
+  pierceRemaining?: number;
+  /** Targets already hit by this projectile, preventing repeated contact damage. */
+  hitEnemyIds?: string[];
 }
 
 export interface WorldLootDrop {

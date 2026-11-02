@@ -202,6 +202,17 @@ function isClassPassiveState(value: unknown, classId: PlayerCharacter['classId']
   if (classId === 'ROGUE') return value.passiveId === 'opportunist' && value.stacks === 0
     && value.remainingSeconds >= 0 && value.remainingSeconds <= 2.5 && value.cooldownRemaining >= 0 && value.cooldownRemaining <= 2
     && (value.charges === 0 || value.charges === 1) && (value.charges === 0 || value.remainingSeconds > 0);
+  if (classId === 'RANGER') return value.passiveId === 'marked_prey' && (value.targetId === null || typeof value.targetId === 'string' && value.targetId.length <= 120)
+    && value.stacks >= 0 && value.stacks <= 3 && value.remainingSeconds >= 0 && value.remainingSeconds <= 4
+    && value.cooldownRemaining === 0 && value.charges === 0 && (value.stacks === 0 || value.targetId !== null && value.remainingSeconds > 0);
+  if (classId === 'CLERIC') return value.passiveId === 'measured_remedy' && value.stacks === 0 && value.remainingSeconds === 0
+    && value.cooldownRemaining >= 0 && value.cooldownRemaining <= 10 && value.charges === 0;
+  if (classId === 'MONK') return value.passiveId === 'flow_state' && value.stacks >= 0 && value.stacks <= 5
+    && value.remainingSeconds >= 0 && value.remainingSeconds <= 1.6 && value.cooldownRemaining === 0 && value.charges === 0
+    && (value.stacks === 0 || value.remainingSeconds > 0);
+  if (classId === 'NECROMANCER') return value.passiveId === 'soul_tribute' && value.stacks >= 0 && value.stacks <= 3
+    && value.remainingSeconds >= 0 && value.remainingSeconds <= 4 && value.cooldownRemaining >= 0 && value.cooldownRemaining <= 10
+    && (value.charges === 0 || value.charges === 1) && (value.charges === 0 || value.remainingSeconds > 0 && value.stacks === 0);
   return false;
 }
 

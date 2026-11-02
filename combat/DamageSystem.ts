@@ -1,7 +1,7 @@
-import type { PlayerCharacter, WorldEnemy } from '../types';
+import type { PlayerCharacter, RealtimeStatusId, WorldEnemy } from '../types';
 import { getAbilityDamageType, type AbilityDefinition } from './AbilityRegistry';
 import { hasLineOfSight } from '../world/CollisionWorld';
-import { incomingDamageMultiplier, outgoingDamageMultiplier, statusMagnitude } from './StatusSystem';
+import { enemyDamageTakenMultiplier, incomingDamageMultiplier, outgoingDamageMultiplier, statusMagnitude } from './StatusSystem';
 import { calculateDerivedStats } from '../player/DerivedStats';
 
 export function calculatePlayerDamage(player: PlayerCharacter, ability: AbilityDefinition, multiplier = 1, criticalRoll = 1): number {
@@ -18,19 +18,20 @@ export function calculatePlayerDamage(player: PlayerCharacter, ability: AbilityD
   const flatDamage = damageType === 'SPELL' ? derived.spellDamageFlat : derived.physicalDamageFlat;
   const damageMultiplier = damageType === 'SPELL' ? derived.spellDamageMultiplier : derived.physicalDamageMultiplier;
   const projectileMultiplier = ability.kind === 'PROJECTILE' ? derived.projectileDamageMultiplier : 1;
+  const precisionMultiplier = ability.kind === 'PROJECTILE' ? 1 + Math.min(0.35, statusMagnitude(player.statusEffects, 'PRECISION')) : 1;
   const bloodOathMultiplier = damageType === 'PHYSICAL' ? 1 + Math.min(0.5, Math.max(0, statusMagnitude(player.statusEffects, 'BLOOD_OATH'))) : 1;
   const baseDamage = finite(ability.damage) + stat * 0.62 + derived.weaponPower + finite(player.stats.damageBonus) + finite(statusBonus) + flatDamage;
   const critical = Number.isFinite(criticalRoll) && criticalRoll >= 0 && criticalRoll < derived.criticalChance
     ? derived.criticalDamageMultiplier : 1;
   const safeMultiplier = Number.isFinite(multiplier) ? clamp(multiplier, 0.25, 2) : 1;
-  const damage = Math.max(0, baseDamage) * safeMultiplier * damageMultiplier * projectileMultiplier * bloodOathMultiplier
+  const damage = Math.max(0, baseDamage) * safeMultiplier * damageMultiplier * projectileMultiplier * precisionMultiplier * bloodOathMultiplier
     * critical * outgoingDamageMultiplier(player.statusEffects) * counterMultiplier;
   return Math.max(1, Math.round(clamp(damage, 0, 1_000_000)));
 }
 
 export function applyEnemyDamage(enemy: WorldEnemy, amount: number): { enemy: WorldEnemy; defeated: boolean } {
   if (enemy.health <= 0 || enemy.state === 'DEAD') return { enemy, defeated: false };
-  const guarded = Math.round(Math.max(0, amount) * incomingDamageMultiplier(enemy.statusEffects));
+  const guarded = Math.round(Math.max(0, amount) * incomingDamageMultiplier(enemy.statusEffects) * enemyDamageTakenMultiplier(enemy.statusEffects));
   const health = Math.max(0, enemy.health - Math.max(0, Math.floor(guarded)));
   const defeated = health <= 0;
   return {
@@ -133,11 +134,15 @@ export function resolveAreaAttack(
   radius: number,
   enemies: WorldEnemy[],
   damage: number,
+  statusDamageBonus?: { statusId: RealtimeStatusId; multiplier: number },
 ): { enemies: WorldEnemy[]; hitEnemyIds: string[] } {
   const hitEnemyIds = getAreaTargetIds(map, centerX, centerZ, radius, enemies);
   const targetIds = new Set(hitEnemyIds);
   const updated = enemies.map(enemy => {
-    return targetIds.has(enemy.id) ? applyEnemyDamage(enemy, damage).enemy : enemy;
+    if (!targetIds.has(enemy.id)) return enemy;
+    const hasStatus = statusDamageBonus && (enemy.statusEffects ?? []).some(status => status.statusId === statusDamageBonus.statusId && status.durationSeconds > 0);
+    const multiplier = hasStatus ? clamp(statusDamageBonus.multiplier, 1, 2) : 1;
+    return applyEnemyDamage(enemy, Math.round(damage * multiplier)).enemy;
   });
   return { enemies: updated, hitEnemyIds };
 }
