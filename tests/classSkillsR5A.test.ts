@@ -82,16 +82,12 @@ describe('FPS-R5A class skill kits', () => {
     expect(premature.skills).toEqual([{ abilityId: 'barbarian_ground_slam', rank: 1 }]);
   });
 
-  it('grants one bounded point per level and leaves the four other class kits alone', () => {
-    let myrmidon = createPlayerCharacter('BARBARIAN');
-    const result = grantExperience(myrmidon, 100);
-    myrmidon = result.player;
-    expect(result.levelsGained).toBe(2);
-    expect(myrmidon.skillPoints).toBe(2);
-    for (const classId of ['RANGER', 'CLERIC', 'MONK', 'NECROMANCER'] as const) {
-      const untouched = grantExperience(createPlayerCharacter(classId), 100).player;
-      expect(untouched.skillPoints).toBe(0);
-      expect(untouched.skills).toHaveLength(1);
+  it('grants one bounded skill point per level across all eight completed class kits', () => {
+    for (const classId of ['BARBARIAN', 'PALADIN', 'SORCERER', 'ROGUE', 'RANGER', 'CLERIC', 'MONK', 'NECROMANCER'] as const) {
+      const result = grantExperience(createPlayerCharacter(classId), 100);
+      expect(result.levelsGained).toBe(2);
+      expect(result.player.skillPoints).toBe(2);
+      expect(result.player.skills).toHaveLength(1);
     }
   });
 
