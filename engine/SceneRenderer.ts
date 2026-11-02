@@ -153,6 +153,7 @@ export class SceneRenderer {
       this.scene.add(this.geometry.group);
       this.worldRevision = world.worldRevision;
     }
+    this.geometry.updateLighting(elapsedSeconds);
     this.camera.position.set(player.position.x, 1.52 + cameraBob, player.position.z);
     this.camera.rotation.set(player.rotation.pitch, -player.rotation.yaw - Math.PI / 2, 0, 'YXZ');
     this.weapon.update(player, action, isMoving, guarding, elapsedSeconds);

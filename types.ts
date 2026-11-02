@@ -24,6 +24,20 @@ export enum TileType {
   SECRET = 5,
 }
 
+/** Persisted decoration codes. Codes 1–6 retain their existing meanings. Wall markers share a solid wall tile. */
+export const DungeonDecoration = {
+    WALL_TORCH: 1,
+    AMPHORA: 2,
+    BROKEN_AMPHORA: 3,
+    LABYRINTH_TABLET: 4,
+    OFFERING_ALTAR: 5,
+    COLUMN_FRAGMENT: 6,
+    OIL_BOWL: 7,
+    PILLAR: 8,
+    FRESCO_PANEL: 9,
+    BULL_RELIEF: 10,
+} as const;
+
 export interface Stats {
   /** Base initiative; absent only in legacy saves. Equipment load is derived. */
   initiative?: number;
@@ -316,6 +330,22 @@ export interface SaveData {
 
 
 export type DungeonRoomType = 'NORMAL' | 'COMBAT' | 'ELITE' | 'TREASURE' | 'SHRINE' | 'TRAP' | 'SECRET' | 'REST' | 'LOCKED' | 'EVENT' | 'BOSS_ANTECHAMBER' | 'BOSS';
+export type ArchitecturalRoomShape = 'ENTRY_HALL' | 'HALL' | 'GALLERY' | 'CROSSROADS' | 'PILLARED_HALL' | 'ROTUNDA' | 'GUARDIAN_ARENA' | 'WIDE_PASSAGE' | 'NARROW_PASSAGE';
+export type ArchitecturalCombatSuitability = 'NONE' | 'LIMITED' | 'SUITABLE';
+export type ArchitecturalLightingTheme = 'AMBER' | 'NEUTRAL' | 'COOL' | 'CHTHONIC';
+
+/** Spatial presentation metadata; the tile grid remains authoritative for collision, pathing, and line of sight. */
+export interface ArchitecturalRoom {
+  id: string;
+  cells: Position[];
+  roomShape: ArchitecturalRoomShape;
+  combatSuitability: ArchitecturalCombatSuitability;
+  lightingTheme: ArchitecturalLightingTheme;
+  landmarkIds: string[];
+  /** Reserved for later ruleset-specific content such as R6D1; no such content is authored in R6A. */
+  roomArchetype?: string;
+}
+
 export interface DungeonRoom {
   id: string;
   type: DungeonRoomType;
@@ -336,6 +366,8 @@ export interface FloorState {
   level: number;
   biome: BiomeId;
   rooms: DungeonRoom[];
+  /** Optional on legacy R4 saves; new R6A floors persist their deterministic architecture descriptors. */
+  architectureRooms?: ArchitecturalRoom[];
   visitedCells: string[];
   keys: number;
   pendingEncounterId: string | null;

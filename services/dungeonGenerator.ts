@@ -1,6 +1,7 @@
 
 import { floorRandom } from './floorRandom';
 import { buildFloorPlan } from './dungeonPlan';
+import { decorateLabyrinthLayout, generateLabyrinthLayout } from './labyrinthLayout';
 import { MAP_SIZE } from '../constants';
 import { BiomeId, DungeonData, Position, TileType } from '../types';
 
@@ -8,6 +9,8 @@ export interface DungeonGenerationOptions {
   /** Used by the FPS runtime only; legacy callers keep their original 12x12 footprint. */
   mapSize?: number;
   guardianArenaRadius?: number;
+  /** New spatial layout for newly generated FPS floors; legacy maps remain on the recursive backtracker. */
+  topology?: 'LEGACY' | 'ARCHITECTURAL';
 }
 
 export const generateDungeon = (_biome: BiomeId = 'dungeon', seed = Math.floor(Math.random() * 4294967296), level = 1, options: DungeonGenerationOptions = {}): DungeonData => {
@@ -16,6 +19,14 @@ export const generateDungeon = (_biome: BiomeId = 'dungeon', seed = Math.floor(M
   const arenaRadius = Math.max(0, Math.floor(options.guardianArenaRadius ?? 0));
   if (!Number.isInteger(mapSize) || mapSize < 11 || mapSize > 64) throw new Error('Dungeon map size must be an integer from 11 to 64.');
   if (arenaRadius > 0 && (mapSize < arenaRadius * 2 + 7 || mapSize % 2 === 0)) throw new Error('Guardian arenas require an odd map with sufficient interior space.');
+
+  if (options.topology === 'ARCHITECTURAL') {
+    const layout = generateLabyrinthLayout(mapSize, seed, level, arenaRadius);
+    const floor = buildFloorPlan(layout.map, layout.decorations, level, _biome, seed, true, arenaRadius, layout.architectureRooms);
+    decorateLabyrinthLayout(layout.map, layout.decorations, layout.architectureRooms, floor, seed);
+    return { map: layout.map, decorations: layout.decorations, floor };
+  }
+
   const map = Array(mapSize).fill(0).map(() => Array(mapSize).fill(TileType.WALL));
   const decorations = Array(mapSize).fill(0).map(() => Array(mapSize).fill(0));
 

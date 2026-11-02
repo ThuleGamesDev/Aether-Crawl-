@@ -41,8 +41,10 @@ export function calculateDerivedStats(player: PlayerCharacter): DerivedCharacter
       else if (item.statBonus === 'MP') maxManaFlat += value;
     }
 
+    const affixes = item.affixes ?? [];
+    if (!affixes.length) continue;
     const tags = itemTags(item);
-    for (const affix of item.affixes ?? []) {
+    for (const affix of affixes) {
       const definition = getItemAffix(affix.id);
       if (!definition || !Number.isFinite(affix.value) || affix.value < definition.minValue || affix.value > definition.maxValue) continue;
       if (affix.tier !== undefined && affix.tier !== definition.tier) continue;

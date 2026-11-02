@@ -40,9 +40,13 @@ Implements four rankable skills and bounded passives for Hunter, Asclepiad, Pank
 
 Implemented as a focused maintenance wave on the post-R5B `main`. Resolves confirmed review findings across PRs #16–#21, preserves version-4 saves, and adds no gameplay systems. See [review resolutions](COPILOT_REVIEW_RESOLUTION.md) and [implementation notes](R5C_IMPLEMENTATION.md).
 
+## FPS-R6A — Labyrinth architecture, rooms, and lighting
+
+Implemented on `codex/maze-of-the-minotaur-fps-r6a`. New FPS floors use a deterministic 23×23 chamber layout with wide routes, optional narrow passages, pillared combat spaces, a single controlled Guardian entrance, wall mounted art, and bounded local light sources. Legacy generation remains available to old callers, and saved R4 maps load without regeneration or a save version change. See [R6A implementation notes](R6A_IMPLEMENTATION.md).
+
 ## FPS-R6 — Floors 1–5 Action-RPG Vertical Slice & Quality Pass
 
-Next: validate a coherent playable run across movement, enemy telegraphs, loot, class progression, room events, save/load, and the first five floor Guardians. Keep content expansion bounded until the full progression loop is integrated.
+Next: carry out the user's first-person playtest of floors 1–5 across movement, enemy telegraphs, loot, class progression, room events, save/load, and Guardian arenas. Keep content expansion bounded until the full progression loop is integrated.
 
 ## Later
 

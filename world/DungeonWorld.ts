@@ -36,7 +36,7 @@ export interface RoomOffer {
 
 export function createDungeonWorld(level: number, seed = randomSeed()): DungeonWorldState {
   const biome = getBiomeIdForLevel(level);
-  const generated = generateDungeon(biome, seed, level, { mapSize: 23, guardianArenaRadius: 3 });
+  const generated = generateDungeon(biome, seed, level, { mapSize: 23, guardianArenaRadius: 3, topology: 'ARCHITECTURAL' });
   generated.floor!.guardianId = getFloorGuardianDefinition(level).id;
   generated.floor!.guardianState = 'NOT_DISCOVERED';
   const explored = generated.map.map(row => row.map(() => false));

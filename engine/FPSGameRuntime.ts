@@ -1226,7 +1226,12 @@ function cloneWorld(world: DungeonWorldState): DungeonWorldState {
     map: world.map.map(row => [...row]),
     decorations: world.decorations.map(row => [...row]),
     explored: world.explored.map(row => [...row]),
-    floor: { ...world.floor, rooms: world.floor.rooms.map(room => ({ ...room, anchor: { ...room.anchor }, cells: room.cells.map(cell => ({ ...cell })), gate: room.gate ? { ...room.gate } : undefined })), visitedCells: [...world.floor.visitedCells], pendingEffects: [...world.floor.pendingEffects] },
+    floor: {
+      ...world.floor,
+      rooms: world.floor.rooms.map(room => ({ ...room, anchor: { ...room.anchor }, cells: room.cells.map(cell => ({ ...cell })), gate: room.gate ? { ...room.gate } : undefined })),
+      ...(world.floor.architectureRooms ? { architectureRooms: world.floor.architectureRooms.map(room => ({ ...room, cells: room.cells.map(cell => ({ ...cell })), landmarkIds: [...room.landmarkIds] })) } : {}),
+      visitedCells: [...world.floor.visitedCells], pendingEffects: [...world.floor.pendingEffects],
+    },
   };
 }
 
@@ -1267,6 +1272,10 @@ function scaleStatusPower(status: StatusApplication | undefined, derived: Derive
   return power === 1 ? status : { ...status, magnitude: Math.max(0, status.magnitude * power) };
 }
 
+export function formatLootDropToast(dropCount: number): string {
+  return `Loot dropped. Press E to collect ${dropCount === 1 ? 'it' : 'them'}.`;
+}
+
 function boundedProjectileCount(ability: NonNullable<ReturnType<typeof getAbility>>): number {
   const requested = ability.projectileCount ?? 1;
   return Number.isFinite(requested) ? Math.max(1, Math.min(7, Math.floor(requested))) : 1;
@@ -1282,9 +1291,4 @@ function abilityVfxEffect(abilityId: string, statusId?: string): PixelEffectId |
   if (/sorcerer_|oracle|spark|lightning|charged_bolt/i.test(abilityId)) return 'oracle_spark';
   if (/web|snare/i.test(abilityId)) return 'web_snare';
   return undefined;
-}
-
-
-export function formatLootDropToast(dropCount: number): string {
-  return `Loot dropped. Press E to collect ${dropCount === 1 ? 'it' : 'them'}.`;
 }

@@ -178,11 +178,34 @@ def prop(name):
     elif name=='offering_altar':
         d.rectangle((12,19,52,32),fill=cream,outline=dark); d.rectangle((17,32,47,55),fill=bronze,outline=dark); d.rectangle((9,54,55,60),fill=cream,outline=dark)
         d.rectangle((27,22,37,28),fill=clay); d.point((31,18),fill=light)
+    elif name=='chthonic_altar':
+        d.rectangle((10,17,54,31),fill=rgb('#49363a'),outline=dark,width=2)
+        d.rectangle((16,31,48,53),fill=rgb('#30292b'),outline=bronze,width=2)
+        d.rectangle((7,53,57,61),fill=rgb('#75604c'),outline=dark,width=2)
+        d.polygon([(23,22),(28,18),(36,18),(41,22),(36,28),(28,28)],fill=rgb('#7c2e34'),outline=dark)
+        d.rectangle((30,19,34,27),fill=light); d.point((32,16),fill=rgb('#e7794f'))
+        greek_band(d,37,bronze,rgb('#30292b'))
     elif name=='column_fragment':
         d.rectangle((16,8,48,15),fill=cream,outline=dark); d.polygon([(20,15),(44,15),(40,49),(24,49)],fill=cream,outline=dark); d.rectangle((12,49,52,57),fill=bronze,outline=dark)
         for x in [25,31,37]: d.line((x,20,x-2,44),fill=rgb('#a99b7c'),width=2)
     elif name=='oil_bowl':
         d.ellipse((17,36,47,48),fill=bronze,outline=dark); d.polygon([(20,42),(26,54),(38,54),(44,42)],fill=bronze,outline=dark); d.rectangle((28,20,36,40),fill=light); d.polygon([(32,5),(25,22),(31,19),(35,26),(39,16)],fill=rgb('#e57e3e'))
+    elif name=='wall_torch':
+        d.ellipse((20,16,44,43),fill=rgb('#544333'),outline=dark,width=2)
+        d.rectangle((27,35,37,51),fill=bronze,outline=dark)
+        d.rectangle((22,48,42,55),fill=rgb('#725037'),outline=dark)
+        d.rectangle((25,11,39,18),fill=light,outline=dark)
+        d.polygon([(32,1),(25,15),(30,13),(27,23),(32,20),(36,26),(41,16),(36,17)],fill=rgb('#e46f35'),outline=rgb('#702d27'))
+        d.polygon([(32,7),(29,17),(33,15),(34,21),(38,15)],fill=rgb('#f1cb72'))
+        d.point((32,25),fill=rgb('#ffed9a'))
+    elif name=='fresco_panel':
+        d.rectangle((5,5,59,59),fill=rgb('#59483b'),outline=dark,width=3)
+        d.rectangle((9,9,55,55),fill=rgb('#c0a777'),outline=bronze,width=2)
+        d.rectangle((13,13,51,51),fill=rgb('#603c32'))
+        greek_band(d,16,light,rgb('#603c32')); greek_band(d,43,bronze,rgb('#603c32'))
+        d.polygon([(20,34),(23,25),(31,21),(40,24),(46,32),(42,40),(35,43),(24,41)],fill=rgb('#b5834e'),outline=dark)
+        d.polygon([(22,27),(17,20),(27,24),(33,21),(40,24),(48,18),(44,28)],fill=cream,outline=dark)
+        d.rectangle((27,31,30,34),fill=dark); d.rectangle((38,31,41,34),fill=dark)
     elif name=='bull_relief':
         d.rectangle((5,7,59,57),fill=rgb('#54483d'),outline=bronze,width=3)
         d.ellipse((18,21,47,48),fill=bronze,outline=dark); d.polygon([(20,26),(11,13),(27,21)],fill=bronze); d.polygon([(43,26),(54,13),(37,21)],fill=bronze)
@@ -191,7 +214,7 @@ def prop(name):
     elif name=='cistern_mirror':
         d.ellipse((8,4,56,59),fill=bronze,outline=dark,width=3); d.ellipse((14,10,50,53),fill=green,outline=light,width=2); d.line((19,37,44,20),fill=rgb('#bad0bd'),width=3); d.rectangle((27,59,37,63),fill=bronze)
     im.save(ROOT/'props'/f'{name}.png', optimize=True)
-for n in ['amphora','broken_amphora','labyrinth_tablet','offering_altar','column_fragment','oil_bowl','bull_relief','cistern_mirror']: prop(n)
+for n in ['amphora','broken_amphora','labyrinth_tablet','offering_altar','chthonic_altar','column_fragment','oil_bowl','wall_torch','fresco_panel','bull_relief','cistern_mirror']: prop(n)
 
 # First-person pixel hands and weapon silhouettes.
 def hand(name):

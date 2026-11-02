@@ -1,5 +1,8 @@
-import type { FloorState } from '../types';
+import type { ArchitecturalRoom, FloorState, Position } from '../types';
 const roomTypes = new Set(['NORMAL','COMBAT','ELITE','TREASURE','SHRINE','TRAP','SECRET','REST','LOCKED','EVENT','BOSS_ANTECHAMBER','BOSS']);
+const architectureShapes = new Set(['ENTRY_HALL','HALL','GALLERY','CROSSROADS','PILLARED_HALL','ROTUNDA','GUARDIAN_ARENA','WIDE_PASSAGE','NARROW_PASSAGE']);
+const combatSuitabilities = new Set(['NONE','LIMITED','SUITABLE']);
+const lightingThemes = new Set(['AMBER','NEUTRAL','COOL','CHTHONIC']);
 export function isValidFloorState(value: unknown, map: number[][]): value is FloorState {
   if (!value || typeof value !== 'object') return false;
   const f = value as FloorState;
@@ -10,5 +13,25 @@ export function isValidFloorState(value: unknown, map: number[][]): value is Flo
     if ((r.type === 'LOCKED' || r.type === 'SECRET') && !r.gate || r.type === 'SHRINE' && !['blood','aether','fortune'].includes(r.shrine ?? '') || r.type === 'TRAP' && !['trap_corridor','mana_mist','toxic_spores','crumbling_ceiling','arcane_surge','frostbound_draft'].includes(r.hazardId ?? '')) return false;
     if (r.unlocked !== undefined && typeof r.unlocked !== 'boolean' || r.attempted !== undefined && typeof r.attempted !== 'boolean') return false;
     ids.add(r.id); }
+  if (f.architectureRooms !== undefined && !isValidArchitectureRooms(f.architectureRooms, map, pos)) return false;
   return (f.pendingEncounterId === null || ids.has(f.pendingEncounterId)) && f.visitedCells.every(k => typeof k === 'string' && /^\d+,\d+$/.test(k)) && f.pendingEffects.every(e => e && ['WEAKNESS','STRENGTH'].includes(e.type) && Number.isFinite(e.value) && Number.isInteger(e.duration) && e.duration > 0 && e.duration <= 5);
+}
+
+function isValidArchitectureRooms(value: unknown, map: number[][], isPosition: (p: Position) => boolean): value is ArchitecturalRoom[] {
+  const cellLimit = map.reduce((sum, row) => sum + row.length, 0);
+  if (!Array.isArray(value) || value.length > cellLimit) return false;
+  const roomIds = new Set<string>();
+  for (const entry of value) {
+    if (!entry || typeof entry !== 'object') return false;
+    const room = entry as ArchitecturalRoom;
+    if (typeof room.id !== 'string' || room.id.length < 1 || room.id.length > 120 || roomIds.has(room.id)
+      || !architectureShapes.has(room.roomShape) || !combatSuitabilities.has(room.combatSuitability) || !lightingThemes.has(room.lightingTheme)
+      || !Array.isArray(room.cells) || room.cells.length < 1 || room.cells.length > cellLimit
+      || !room.cells.every(isPosition) || new Set(room.cells.map(cell => `${cell.x},${cell.y}`)).size !== room.cells.length
+      || !Array.isArray(room.landmarkIds) || room.landmarkIds.length > 32
+      || !room.landmarkIds.every(id => typeof id === 'string' && /^[a-z][a-z0-9_]{0,63}$/.test(id))
+      || room.roomArchetype !== undefined && (typeof room.roomArchetype !== 'string' || room.roomArchetype.length > 48)) return false;
+    roomIds.add(room.id);
+  }
+  return true;
 }
