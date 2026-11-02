@@ -11,6 +11,7 @@ import { createDungeonWorld, createRoomOffer } from '../world/DungeonWorld';
 import { canOccupyWorldPosition, hasLineOfSight, nextGridStep } from '../world/CollisionWorld';
 import { updateEnemyBrains } from '../enemies/EnemyBrain';
 import { FPS_SAVE_KEY, loadFPSGame, saveFPSGame, type KeyValueStorage } from '../services/fpsSave';
+import { MAZE_SAVE_KEY, loadMazeGame } from '../services/mazeSave';
 import { createPlayerControllerState, MAX_CAMERA_PITCH, updatePlayerController } from '../player/PlayerController';
 import { GameLoop } from '../engine/GameLoop';
 import { getPixelRenderSize } from '../engine/SceneRenderer';
@@ -149,7 +150,7 @@ describe('FPS-R1 solo runtime', () => {
     for (let index = 0; index < 30; index += 1) combat.update(0.05);
     expect(combat.action).toBeNull();
     expect(combat.getCooldown('barbarian_ground_slam')).toBeGreaterThan(0);
-    expect(combat.start(player, 'barbarian_ground_slam').error).toBe('Ground Slam is not ready.');
+    expect(combat.start(player, 'barbarian_ground_slam').error).toBe('Ares’ Quake is not ready.');
   });
 
   it('moves enemies toward the hero through grid navigation and telegraphs attacks', () => {
@@ -257,7 +258,7 @@ describe('FPS-R1 solo runtime', () => {
     expect(runtime.world.map[1][2]).toBe(0);
     expect(runtime.world.floor.rooms[0].unlocked).toBe(true);
     runtime.interact();
-    expect(runtime.roomOffer?.title).toBe('Sealed Vault');
+    expect(runtime.roomOffer?.title).toBe('Sealed Treasury');
     runtime.resolveRoomChoice('gear');
     expect(runtime.loot[0].item.rarity).toBe('RARE');
   });
@@ -327,8 +328,10 @@ describe('FPS-R1 solo runtime', () => {
     const before = runtime.getSnapshot();
     expect(before.action?.phase).toBe('WINDUP');
     expect(runtime.save(storage)).toBe(true);
-    const loaded = loadFPSGame(storage);
+    const loaded = loadMazeGame(storage);
     expect(loaded.invalid).toBe(false);
+    expect(storage.getItem(MAZE_SAVE_KEY)).not.toBeNull();
+    expect(storage.getItem(FPS_SAVE_KEY)).toBeNull();
     const resumed = new FPSGameRuntime('BARBARIAN', loaded.save!);
     expect(resumed.getSnapshot().action).toEqual(before.action);
     expect(resumed.getSnapshot().primaryCooldown).toBeCloseTo(before.primaryCooldown);
@@ -345,7 +348,9 @@ describe('FPS-R1 solo runtime', () => {
       position: { x: bossRoom!.anchor.x + 0.5, y: 0, z: bossRoom!.anchor.y + 0.5 },
       rotation: { yaw: 0, pitch: 0 },
     };
-    runtime.enemies = runtime.enemies.map(enemy => ({ ...enemy, health: 0, state: 'DEAD' }));
+    const guardian = runtime.enemies.find(enemy => enemy.definitionId === runtime.world.floor.guardianId)!;
+    runtime.enemies = runtime.enemies.map(enemy => enemy.id === guardian.id ? { ...enemy, health: 0, state: 'DEAD', stateTimer: 1.1 } : enemy);
+    runtime.update(0.05, emptyInput());
     runtime.interact();
     expect(runtime.world.level).toBe(oldLevel + 1);
     expect(runtime.world.worldRevision).toBeGreaterThan(oldRevision);

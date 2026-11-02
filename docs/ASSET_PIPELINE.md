@@ -1,66 +1,23 @@
-# Static Asset Pipeline
+# Asset Pipeline
 
-> Historical pipeline for the legacy Canvas renderer. FPS-R1 currently creates its pixel textures and pilot sprites procedurally at runtime, caches them in `presentation/AssetManager.ts`, and does not use this static image loader in its active viewport. See [FPS-R1 architecture](FPS_R1_ARCHITECTURE.md).
+R2A's active renderer loads local pixel-art PNGs from `public/assets/maze/` through the existing `AssetManager`. Static art covers six labyrinth depth themes, all registered enemy silhouettes and five unique Guardians, first-person weapon hands and the Aspis, Greek props, and pixel VFX. Canvas-generated textures remain a synchronous fallback while local images load.
 
-## Runtime rule
+## Local art generation
 
-Every gameplay image is a static repository file under `public/assets/`. React and Canvas do not call an image-generation API, create image data URLs, or synthesize replacement textures. Required floor assets are preloaded through `services/assetLoader.ts` and cached as `HTMLImageElement` instances. Rendering reuses those instances.
-
-The title screen preloads the first floor's environment, possible enemies, player hands/weapons, and combat effects. A saved floor or new biome preloads its required environment and possible enemy sprites before it is shown. Already loaded assets are reused from the shared cache, so the full asset registry is not downloaded before the first menu. A failed image load stops at a clear loading error; a missing image does not silently fall back to generic production art.
-
-## Directory layout
-
-```text
-public/assets/
-  environments/
-    dungeon/       wall, floor, ceiling, door, exit
-    moss/          wall, floor, ceiling, door, exit
-    catacombs/     wall, floor, ceiling, door, exit
-    obsidian/      wall, floor, ceiling, door, exit
-    frost/         wall, floor, ceiling, door, exit
-    gilded/        wall, floor, ceiling, door, exit
-    lights/        one wall-light sprite per biome
-  enemies/         one sprite per normal enemy and boss
-  hands/           empty, sword, dagger, axe, mace, staff, bow, shield
-  props/            common props and biome-specific additions
-    biomes/
-  vfx/              melee-hit, critical-hit, fire, poison, heal, magic, shield, stun, frost
+```bash
+python scripts/generate-maze-assets.py
 ```
 
-## File and image rules
+This deterministic Pillow script has no network dependency and uses only local drawing primitives. It produces hard-edged PNGs at 32–96 px source dimensions. Three.js uses nearest-neighbor sampling, disables mipmaps for these sprites, and the WebGL canvas is upscaled with pixelated CSS rendering.
 
-- Use lowercase kebab-case filenames with `.png` or `.webp` extensions. Painted replacements live in `environments/dungeon/painted/` and `hands/painted/`.
-- Environment wall, floor, ceiling, door, and exit files are opaque square tiles. Legacy crops are approximately 404 × 404 pixels; painted environment replacements are 1254 × 1254.
-- Enemy and boss sprites, hands/weapons, lights, props, and VFX use PNG or WebP with real alpha.
-- Keep cutout sprites centered and fully inside their image bounds. Leave visual padding so canvas scaling and movement bob do not clip the silhouette.
-- Do not add Base64 strings, inline raster data, huge inline SVGs, CSS-shaped VFX, or generated fallback textures to the runtime.
-- Generated source sheets are cropped into individual named files before integration; the game reads only the finished files.
+## Registry and ownership
 
-## Registry
+- `data/assetRegistry.ts` maps stable gameplay visual IDs to local files.
+- `AssetManager` caches each `CanvasTexture` per renderer and swaps its image source to the loaded local PNG.
+- Enemy billboards use depth tests so walls occlude them; projectiles, particles, and loot use bounded pools or cached resources.
+- `WorldGeometry` owns and disposes floor-specific geometry and materials. Shared textures remain owned by `AssetManager` until renderer disposal.
+- The registered six biome keys remain save-stable implementation keys; their visible themes are authored as Labyrinth depth zones.
 
-`data/assetRegistry.ts` is the only place where gameplay IDs map to public asset paths.
+## Adding assets
 
-- `biomeVisuals` maps a `BiomeId` to its environment surfaces, light, common props, themed props, and ambient tint.
-- `enemyVisuals` maps stable enemy `visualId` values to sprite files and render scale.
-- `weaponVisuals`, `shieldVisual`, `propVisuals`, and `vfxVisuals` map their gameplay/render keys to static image paths.
-- `getLevelAssetPaths(level)` exposes the static files needed for a level; `collectAssetPaths()` returns the full unique list for completeness tests.
-
-Gameplay definitions refer to stable IDs, not file paths. Enemy stats and boss selection live in `data/enemies.ts`; sprite scale and paths live in `data/assetRegistry.ts`.
-
-## Add and verify assets
-
-1. Add the final PNG or WebP to the matching directory with a stable filename.
-2. Add or update its registry entry in `data/assetRegistry.ts`.
-3. For enemies, add gameplay data in `data/enemies.ts` and refer to the registry key with `visualId`.
-4. For biomes, populate wall, floor, ceiling, door, exit, light, and both themed prop slots.
-5. Run `npm test`, `npm run typecheck`, and `npm run build`.
-
-`tests/assetRegistry.test.ts` checks that every gameplay enemy has a registered image, every active biome has a complete environment and prop set, and every registered path exists in `public/assets/`.
-
-## Saves
-
-Save files contain gameplay data only. They do not contain static asset paths, data URLs, image bytes, or cached visual objects. Weapon visual types are derived at runtime; legacy saves are migrated during load.
-
-## Painted reference pass
-
-Five images were generated at authoring time with the built-in image generator, then encoded to WebP at quality 85 with alpha quality 100. No runtime service is involved. Original image dimensions and transparency were preserved; this was format conversion only. The five registered replacements total about 1.9 MB. Old PNGs remain available as source history but are no longer registered for these slots. See [prompts and scope](INITIATIVE_AND_PAINTED_LOOK.md#art-provenance).
+Keep a 64 px character source sheet unless the sprite is a tiny VFX glyph or first-person weapon sheet. Use transparent backgrounds for billboards and props. Add stable visual IDs to the registry and generator together, then extend `tests/assetRegistry.test.ts` so every local path and registered enemy visual is checked.

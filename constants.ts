@@ -57,11 +57,11 @@ export const MASTER_SKILL_POOL: Skill[] = [
 
 export const CLASSES: Record<string, CharacterTemplate> = {
     BARBARIAN: {
-        name: 'Barbarian',
-        description: 'STR. High HP/Dmg. Tanky.',
+        name: 'Myrmidon',
+        description: 'A relentless bronze-age warrior who wins ground through force.',
         stats: { initiative: CLASS_INITIATIVE.BARBARIAN, hp: 130, maxHp: 130, mp: 20, maxMp: 20, str: 14, dex: 10, int: 6, xp: 0, level: 1 },
         startItems: [
-            { id: 'axe_start', name: 'Battle Axe', type: 'WEAPON', value: 5, description: 'Heavy chopper.', icon: '🪓', visualType: 'axe', quantity: 1 }
+            { id: 'axe_start', name: 'Labrys', type: 'WEAPON', value: 5, description: 'A double-headed Cretan bronze axe built for broad, forceful swings.', icon: '⚒', visualType: 'axe', quantity: 1 }
         ],
         startSkills: [
             MASTER_SKILL_POOL.find(s => s.id === 'heavy_slash')!, 
@@ -69,12 +69,12 @@ export const CLASSES: Record<string, CharacterTemplate> = {
         ]
     },
     PALADIN: {
-        name: 'Paladin',
-        description: 'STR/INT. Holy Knight.',
+        name: 'Hoplite',
+        description: 'A disciplined spear-and-shield defender who holds the line.',
         stats: { initiative: CLASS_INITIATIVE.PALADIN, hp: 110, maxHp: 110, mp: 40, maxMp: 40, str: 12, dex: 8, int: 10, xp: 0, level: 1 },
         startItems: [
-            { id: 'paladin_weapon_start', name: 'Arming Sword', type: 'WEAPON', value: 4, description: 'A balanced knight’s blade.', icon: '⚔', visualType: 'sword', quantity: 1 },
-            { id: 'shield_start', name: 'Kite Shield', type: 'SHIELD', value: 2, description: 'Basic protection.', icon: '🛡️', quantity: 1 }
+            { id: 'paladin_weapon_start', name: 'Dory Spear', type: 'WEAPON', value: 4, description: 'A leaf-headed ash spear with a bronze point.', icon: '↗', visualType: 'spear', quantity: 1 },
+            { id: 'shield_start', name: 'Aspis', type: 'SHIELD', value: 2, description: 'A round bronze-faced shield with a dark-red rim.', icon: '◉', quantity: 1 }
         ],
         startSkills: [
             MASTER_SKILL_POOL.find(s => s.id === 'smite')!, 
@@ -82,12 +82,12 @@ export const CLASSES: Record<string, CharacterTemplate> = {
         ]
     },
     SORCERER: {
-        name: 'Sorcerer',
-        description: 'INT. High Magic Damage.',
+        name: 'Oracle',
+        description: 'A keeper of prophecy who turns omen and flame into force.',
         stats: { initiative: CLASS_INITIATIVE.SORCERER, hp: 80, maxHp: 80, mp: 80, maxMp: 80, str: 6, dex: 12, int: 15, xp: 0, level: 1 },
         startItems: [
-            { id: 'staff_start', name: 'Wooden Staff', type: 'WEAPON', value: 2, description: 'Focus for magic.', icon: '🪄', visualType: 'staff', quantity: 1 },
-            { id: 'potion_mp', name: 'Mana Potion', type: 'POTION', value: 30, description: 'Restores MP', icon: '🧪', quantity: 1 }
+            { id: 'staff_start', name: 'Oracle’s Ritual Staff', type: 'WEAPON', value: 2, description: 'An olive-wood staff capped with a small bronze sun disc.', icon: '☼', visualType: 'staff', quantity: 1 },
+            { id: 'potion_mp', name: 'Nectar Flask', type: 'POTION', value: 30, description: 'A sacred draught that restores magical focus.', icon: '◈', quantity: 1 }
         ],
         startSkills: [
             MASTER_SKILL_POOL.find(s => s.id === 'fireball')!, 
@@ -95,11 +95,11 @@ export const CLASSES: Record<string, CharacterTemplate> = {
         ]
     },
     ROGUE: {
-        name: 'Rogue',
-        description: 'DEX. Stealth & Crits.',
+        name: 'Trickster',
+        description: 'A quick-footed deceiver who strikes from an unexpected angle.',
         stats: { initiative: CLASS_INITIATIVE.ROGUE, hp: 90, maxHp: 90, mp: 40, maxMp: 40, str: 8, dex: 15, int: 8, xp: 0, level: 1 },
         startItems: [
-            { id: 'dagger_start', name: 'Iron Dagger', type: 'WEAPON', value: 4, description: 'Sharp edge.', icon: '🗡️', visualType: 'dagger', quantity: 1 }
+            { id: 'dagger_start', name: 'Kopis', type: 'WEAPON', value: 4, description: 'A forward-curving bronze blade made for close work.', icon: '⌁', visualType: 'dagger', quantity: 1 }
         ],
         startSkills: [
             MASTER_SKILL_POOL.find(s => s.id === 'backstab')!, 
@@ -107,11 +107,11 @@ export const CLASSES: Record<string, CharacterTemplate> = {
         ]
     },
     RANGER: {
-        name: 'Ranger',
-        description: 'DEX. Ranged Attacks.',
+        name: 'Hunter',
+        description: 'A patient bow-user who reads tracks and controls distance.',
         stats: { initiative: CLASS_INITIATIVE.RANGER, hp: 100, maxHp: 100, mp: 50, maxMp: 50, str: 10, dex: 14, int: 10, xp: 0, level: 1 },
         startItems: [
-            { id: 'bow_start', name: 'Short Bow', type: 'WEAPON', value: 4, description: 'Ranged attack.', icon: '🏹', visualType: 'bow', quantity: 1 }
+            { id: 'bow_start', name: 'Hunting Bow', type: 'WEAPON', value: 4, description: 'A compact yew bow strung for narrow passages.', icon: '⌒', visualType: 'bow', quantity: 1 }
         ],
         startSkills: [
             MASTER_SKILL_POOL.find(s => s.id === 'arrow_rain')!, 
@@ -119,11 +119,11 @@ export const CLASSES: Record<string, CharacterTemplate> = {
         ]
     },
     CLERIC: {
-        name: 'Cleric',
-        description: 'INT/STR. Healer & Tank.',
+        name: 'Asclepiad',
+        description: 'A healer trained in sacred rites, remedies, and protection.',
         stats: { initiative: CLASS_INITIATIVE.CLERIC, hp: 100, maxHp: 100, mp: 60, maxMp: 60, str: 11, dex: 9, int: 12, xp: 0, level: 1 },
         startItems: [
-            { id: 'hammer_start', name: 'War Hammer', type: 'WEAPON', value: 5, description: 'Heavy hitter.', icon: '⚒️', visualType: 'mace', quantity: 1 }
+            { id: 'hammer_start', name: 'Bronze Ritual Staff', type: 'WEAPON', value: 5, description: 'A bronze-capped staff carried by a temple healer.', icon: '⚕', visualType: 'mace', quantity: 1 }
         ],
         startSkills: [
             MASTER_SKILL_POOL.find(s => s.id === 'smite')!, 
@@ -131,12 +131,12 @@ export const CLASSES: Record<string, CharacterTemplate> = {
         ]
     },
     MONK: {
-        name: 'Monk',
-        description: 'DEX/STR. Fast Fighter.',
+        name: 'Pankratiast',
+        description: 'An arena-trained unarmed fighter who blends grapples and strikes.',
         stats: { initiative: CLASS_INITIATIVE.MONK, hp: 110, maxHp: 110, mp: 30, maxMp: 30, str: 12, dex: 14, int: 8, xp: 0, level: 1 },
         startItems: [
-            { id: 'gloves_start', name: 'Leather Wraps', type: 'WEAPON', value: 3, description: 'Fast attacks.', icon: '🥊', visualType: 'unarmed', quantity: 1 },
-            { id: 'potion_hp', name: 'Health Potion', type: 'POTION', value: 30, description: 'Restores HP', icon: '🍷', quantity: 1 }
+            { id: 'gloves_start', name: 'Pankration Handwraps', type: 'WEAPON', value: 3, description: 'Worn linen wraps stiffened with bronze rings.', icon: '◌', visualType: 'unarmed', quantity: 1 },
+            { id: 'potion_hp', name: 'Healing Draught', type: 'POTION', value: 30, description: 'A bitter herbal drink that restores health.', icon: '◉', quantity: 1 }
         ],
         startSkills: [
             MASTER_SKILL_POOL.find(s => s.id === 'flurry')!, 
@@ -144,12 +144,12 @@ export const CLASSES: Record<string, CharacterTemplate> = {
         ]
     },
     NECROMANCER: {
-        name: 'Necromancer',
-        description: 'INT. Life drain & Dark magic.',
+        name: 'Shadebinder',
+        description: 'A chthonic adept who binds restless spirits and curses.',
         stats: { initiative: CLASS_INITIATIVE.NECROMANCER, hp: 90, maxHp: 90, mp: 60, maxMp: 60, str: 6, dex: 10, int: 14, xp: 0, level: 1 },
         startItems: [
-            { id: 'wand_bone', name: 'Bone Wand', type: 'WEAPON', value: 3, description: 'Channel dark energy.', icon: '🦴', visualType: 'staff', quantity: 1 },
-            { id: 'potion_mp', name: 'Mana Potion', type: 'POTION', value: 30, description: 'Restores MP', icon: '🧪', quantity: 1 }
+            { id: 'wand_bone', name: 'Chthonic Staff', type: 'WEAPON', value: 3, description: 'A ritual staff marked with a seal for the world below.', icon: '☾', visualType: 'staff', quantity: 1 },
+            { id: 'potion_mp', name: 'Ambrosial Tonic', type: 'POTION', value: 30, description: 'A rare tonic that restores magical focus.', icon: '◈', quantity: 1 }
         ],
         startSkills: [
             MASTER_SKILL_POOL.find(s => s.id === 'life_drain')!,

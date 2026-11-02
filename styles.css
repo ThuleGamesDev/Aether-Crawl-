@@ -191,6 +191,7 @@ canvas {
 .fps-target-health i { display: block; height: 100%; background: #be4d41; }
 .fps-interact-prompt { position: absolute; left: 50%; bottom: 27%; transform: translateX(-50%); padding: 9px 14px; border: 1px solid rgba(219, 188, 137, .42); background: rgba(12, 10, 9, .85); color: #f2e2c2; font: bold 11px ui-monospace, monospace; text-align: center; white-space: nowrap; box-shadow: 0 4px 18px rgba(0,0,0,.35); }
 .fps-toast { position: absolute; left: 50%; top: 22%; transform: translateX(-50%); color: #f0d49d; font: bold 12px ui-monospace, monospace; text-shadow: 0 2px 6px #000; text-align: center; }
+.fps-migration-notice { position: absolute; top: 74px; left: 50%; transform: translateX(-50%); max-width: min(520px, 88vw); padding: 7px 11px; border: 1px solid rgba(194,151,93,.42); background: rgba(18,15,13,.9); color: #dbc391; font: 10px ui-monospace, monospace; text-align: center; text-shadow: 0 1px 3px #000; }
 .fps-combat-log { position: absolute; bottom: 132px; left: 13px; max-width: min(360px, 42vw); color: rgba(225,218,202,.72); font: 9px ui-monospace, monospace; line-height: 1.5; text-shadow: 0 1px 4px #000; pointer-events: none; }
 .fps-combat-log div { margin-top: 3px; }
 .fps-bottom-hud { position: absolute; inset: auto 0 max(8px, env(safe-area-inset-bottom)); display: grid; justify-items: center; gap: 7px; pointer-events: none; }

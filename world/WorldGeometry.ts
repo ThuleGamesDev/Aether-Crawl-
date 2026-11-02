@@ -101,38 +101,38 @@ export class WorldGeometry {
     const right = new THREE.Mesh(pillarGeometry, stoneMaterial);
     const lintel = new THREE.Mesh(lintelGeometry, stoneMaterial);
     const portal = new THREE.Mesh(portalGeometry, glowMaterial);
+    const bullMaterial = new THREE.SpriteMaterial({ map: assets.propTexture('bullRelief'), transparent: true, alphaTest: 0.08, depthWrite: false });
+    const bull = new THREE.Sprite(bullMaterial);
+    bull.center.set(0.5, 0.5);
+    bull.scale.set(0.82, 0.6, 1);
+    bull.position.set(x, 1.96, z + 0.2);
+    bull.name = 'KnossianBullRelief';
     left.position.set(x - 0.48, 1.12, z);
     right.position.set(x + 0.48, 1.12, z);
     lintel.position.set(x, 2.22, z);
     portal.position.set(x, 1.08, z - 0.04);
-    for (const mesh of [left, right, lintel, portal]) this.group.add(mesh);
+    for (const mesh of [left, right, lintel, portal, bull]) this.group.add(mesh);
     this.ownedGeometries.push(pillarGeometry, lintelGeometry, portalGeometry);
-    this.ownedMaterials.push(stoneMaterial, glowMaterial);
+    this.ownedMaterials.push(stoneMaterial, glowMaterial, bullMaterial);
   }
 
   private addProps(world: DungeonWorldState, assets: AssetManager): void {
-    const crateMaterial = new THREE.MeshStandardMaterial({ color: 0x765334, map: assets.texture('door', world.biome), roughness: 1, flatShading: true });
-    const boneMaterial = new THREE.MeshStandardMaterial({ color: 0xbeb7a5, roughness: 1, flatShading: true });
-    const torchMaterial = new THREE.MeshBasicMaterial({ color: 0xffb452 });
-    const crateGeometry = new THREE.BoxGeometry(0.52, 0.62, 0.52);
-    const boneGeometry = new THREE.BoxGeometry(0.4, 0.08, 0.17);
-    const torchGeometry = new THREE.BoxGeometry(0.1, 0.28, 0.1);
-    this.ownedMaterials.push(crateMaterial, boneMaterial, torchMaterial);
-    this.ownedGeometries.push(crateGeometry, boneGeometry, torchGeometry);
+    const ids = ['amphora', 'brokenAmphora', 'labyrinthTablet', 'offeringAltar', 'columnFragment', 'oilBowl'] as const;
+    const materials = new Map<(typeof ids)[number], THREE.SpriteMaterial>();
+    for (const id of ids) {
+      const material = new THREE.SpriteMaterial({ map: assets.propTexture(id), transparent: true, alphaTest: 0.08, depthTest: true, depthWrite: false });
+      materials.set(id, material);
+      this.ownedMaterials.push(material);
+    }
     world.decorations.forEach((row, z) => row.forEach((decoration, x) => {
       if (decoration <= 0) return;
-      if (decoration === 1) {
-        const torch = new THREE.Mesh(torchGeometry, torchMaterial);
-        torch.position.set(x + 0.5, 1.15, z + 0.42);
-        this.group.add(torch);
-        return;
-      }
-      let geometry = crateGeometry, material: THREE.Material = crateMaterial, height = 0.31;
-      if (decoration === 4) { geometry = boneGeometry; material = boneMaterial; height = 0.08; }
-      if (decoration === 5 || decoration === 6) { geometry = torchGeometry; material = torchMaterial; height = 0.16; }
-      const prop = new THREE.Mesh(geometry, material);
-      prop.position.set(x + 0.5, height, z + 0.5);
-      prop.rotation.y = ((x * 3 + z) % 4) * Math.PI / 8;
+      const id = decoration === 1 ? 'oilBowl' : decoration === 2 ? 'amphora' : decoration === 3 ? 'brokenAmphora' : decoration === 4 ? 'labyrinthTablet' : decoration === 5 ? 'offeringAltar' : 'columnFragment';
+      const prop = new THREE.Sprite(materials.get(id)!);
+      prop.center.set(0.5, 0);
+      const scale = id === 'offeringAltar' || id === 'columnFragment' ? 0.76 : id === 'oilBowl' ? 0.48 : 0.62;
+      prop.scale.set(scale, scale * (id === 'columnFragment' ? 1.35 : 1), 1);
+      prop.position.set(x + 0.5, decoration === 1 ? 1.1 : 0.02, decoration === 1 ? z + 0.4 : z + 0.5);
+      prop.name = 'KnossianProp_' + id + '_' + x + '_' + z;
       this.group.add(prop);
     }));
   }

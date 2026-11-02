@@ -52,7 +52,7 @@ export interface Item {
   visualType?: WeaponVisualType;
 }
 
-export type WeaponVisualType = 'unarmed' | 'sword' | 'dagger' | 'axe' | 'mace' | 'staff' | 'bow';
+export type WeaponVisualType = 'unarmed' | 'sword' | 'dagger' | 'axe' | 'mace' | 'staff' | 'bow' | 'spear';
 
 export type BiomeId = 'dungeon' | 'moss' | 'catacombs' | 'obsidian' | 'frost' | 'gilded';
 
@@ -337,6 +337,9 @@ export interface FloorState {
   keys: number;
   pendingEncounterId: string | null;
   pendingEffects: Array<{ type: StatusType; value: number; duration: number }>;
+  /** R2A required descent guardian; optional only while reading a legacy R1 floor for migration. */
+  guardianId?: string | null;
+  guardianState?: 'NOT_DISCOVERED' | 'ALIVE' | 'DEFEATED' | 'DESCENT_UNLOCKED';
 }
 
 /** Player-owned state for the active solo action-RPG runtime. */
@@ -421,6 +424,10 @@ export interface WorldEnemy {
   attackCooldown: number;
   attackRange: number;
   attackTelegraphSeconds: number;
+  attackSetId?: string;
+  attackIndex?: number;
+  activeAttackId?: string;
+  facingYaw?: number;
   rewardGranted: boolean;
   roomId?: string;
   isBoss: boolean;
@@ -435,6 +442,8 @@ export interface WorldProjectile {
   remainingSeconds: number;
   sourceAbilityId: string;
   color: string;
+  faction?: 'PLAYER' | 'ENEMY';
+  ownerEnemyId?: string;
 }
 
 export interface WorldLootDrop {

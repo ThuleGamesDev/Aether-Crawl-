@@ -6,12 +6,15 @@ import { updateEnemyBrains } from '../enemies/EnemyBrain';
 import { updateProjectiles, type ProjectileImpact } from '../combat/ProjectileSystem';
 import { calculateIncomingDamage, calculatePlayerDamage, projectileDirection, resolveAreaAttack, resolveMeleeAttack } from '../combat/DamageSystem';
 import { CLASS_ABILITY_LOADOUT, getAbility } from '../combat/AbilityRegistry';
+import { getEnemyAttackDefinition } from '../data/enemyAttacks';
+import { getFloorGuardianDefinition } from '../data/mazeContent';
 import { createPlayerControllerState, updatePlayerController, type PlayerControllerState } from '../player/PlayerController';
 import { PlayerCombat, type ActivePlayerAction } from '../player/PlayerCombat';
 import { consumePotion, createItemInstance, createPlayerCharacter, equipItem, grantExperience, makeEnemyDrop, unequipItem } from '../player/PlayerProgression';
 import { floorRandom } from '../services/floorRandom';
 import { spawnFacingAngle } from '../services/firstPerson';
-import { loadFPSGame, saveFPSGame, type FPSRunSave, type KeyValueStorage } from '../services/fpsSave';
+import { saveMazeGame, type MazeRunSave } from '../services/mazeSave';
+import type { KeyValueStorage } from '../services/fpsSave';
 import type { DungeonWorldState } from '../world/DungeonWorld';
 import type { VisualEvent } from './SceneRenderer';
 
@@ -77,7 +80,7 @@ export class FPSGameRuntime {
   private visualEvents: VisualEvent[] = [];
   private lastSaveSucceeded: boolean | null = null;
 
-  constructor(classId: ClassType, save?: FPSRunSave) {
+  constructor(classId: ClassType, save?: Pick<MazeRunSave, 'player' | 'world' | 'enemies' | 'loot' | 'combat'>) {
     if (save) {
       this.player = clonePlayer(save.player);
       this.world = cloneWorld(save.world);
@@ -90,10 +93,11 @@ export class FPSGameRuntime {
       this.player = createPlayerCharacter(classId, { x: 1.5, y: 0, z: 1.5 });
       this.player.rotation.yaw = yaw;
       this.enemies = createFloorEnemies(this.world);
-      this.addLog('Find the way through the dungeon. The guardian bars the exit.');
+      this.addLog('Enter the Labyrinth beneath Knossos. A guardian seals every descent.');
     }
     this.random = floorRandom(this.world.seed ^ 0xA37E2);
     this.world = markExplored(this.world, this.player.position.x, this.player.position.z);
+    this.updateGuardianDiscovery();
     this.gameOver = this.player.stats.hp <= 0;
   }
 
@@ -119,6 +123,7 @@ export class FPSGameRuntime {
       this.visualEvents.push({ kind: 'dodge', position: { x: this.player.position.x, y: 0.15, z: this.player.position.z }, color: '#97ddff', scale: 0.7 });
     }
     this.world = markExplored(this.world, this.player.position.x, this.player.position.z);
+    this.updateGuardianDiscovery();
 
     this.processInput(input);
     const actionUpdate = this.combat.update(dt);
@@ -128,7 +133,7 @@ export class FPSGameRuntime {
     this.enemies = enemyUpdate.enemies;
     for (const enemyId of enemyUpdate.attacks) this.resolveEnemyAttack(enemyId);
 
-    const projectileUpdate = updateProjectiles(this.projectiles, this.enemies, this.world.map, dt);
+    const projectileUpdate = updateProjectiles(this.projectiles, this.enemies, this.world.map, dt, this.player.position);
     this.projectiles = projectileUpdate.projectiles;
     this.enemies = projectileUpdate.enemies;
     this.processProjectileImpacts(projectileUpdate.impacts);
@@ -235,6 +240,15 @@ export class FPSGameRuntime {
   private processProjectileImpacts(impacts: ProjectileImpact[]): void {
     for (const impact of impacts) {
       this.visualEvents.push({ kind: 'impact', position: impact.position, color: impact.color, scale: impact.enemyId ? 0.95 : 0.6 });
+      if (impact.playerHit) {
+        if (this.controllerState.invulnerabilitySeconds > 0) { this.addToast('Attack dodged.'); continue; }
+        const owner = this.enemies.find(enemy => enemy.id === impact.ownerEnemyId);
+        if (!owner) continue;
+        const damage = calculateIncomingDamage(owner, this.player);
+        this.player = { ...this.player, stats: { ...this.player.stats, hp: Math.max(0, this.player.stats.hp - damage) } };
+        if (impact.abilityId === 'lamia_drain') this.enemies = this.enemies.map(enemy => enemy.id === owner.id ? { ...enemy, health: Math.min(enemy.maxHealth, enemy.health + Math.ceil(damage * 0.45)) } : enemy);
+        this.addToast(owner.name + ' struck you for ' + damage + '.');
+      }
       if (impact.enemyId) {
         this.addToast('Hit.');
         if (impact.abilityId === 'necromancer_soul_drain') {
@@ -247,17 +261,40 @@ export class FPSGameRuntime {
   private resolveEnemyAttack(enemyId: string): void {
     const enemy = this.enemies.find(candidate => candidate.id === enemyId && candidate.health > 0);
     if (!enemy) return;
+    const attack = getEnemyAttackDefinition(enemy.attackSetId, enemy.activeAttackId);
+    if (!attack) return;
     const distance = Math.hypot(enemy.position.x - this.player.position.x, enemy.position.z - this.player.position.z);
-    if (distance > enemy.attackRange + 0.28 || !hasLineOfSight(this.world.map, enemy.position.x, enemy.position.z, this.player.position.x, this.player.position.z, 0.15)) {
-      this.addToast(enemy.name + ' missed.');
+    const hasSight = hasLineOfSight(this.world.map, enemy.position.x, enemy.position.z, this.player.position.x, this.player.position.z, 0.15);
+    const yaw = enemy.facingYaw ?? Math.atan2(this.player.position.z - enemy.position.z, this.player.position.x - enemy.position.x);
+    const toPlayer = Math.atan2(this.player.position.z - enemy.position.z, this.player.position.x - enemy.position.x);
+    const angleDelta = Math.atan2(Math.sin(toPlayer - yaw), Math.cos(toPlayer - yaw));
+    const inRange = distance <= attack.range + 0.28;
+    const inShape = attack.shape === 'MELEE' ? inRange
+      : attack.shape === 'CONE' ? inRange && Math.abs(angleDelta) <= (attack.arcRadians ?? 1.1) / 2
+      : attack.shape === 'SLAM' || attack.shape === 'RITUAL' ? distance <= (attack.radius ?? attack.range)
+      : false;
+    if (attack.shape === 'PROJECTILE' || attack.shape === 'DRAIN') {
+      if (!hasSight || distance > attack.range || this.projectiles.length >= 64) return;
+      const dx = this.player.position.x - enemy.position.x, dz = this.player.position.z - enemy.position.z;
+      const horizontal = Math.max(0.001, Math.hypot(dx, dz));
+      const speed = attack.projectileSpeed ?? 6;
+      this.projectiles.push({
+        id: this.nextProjectileId++,
+        position: { x: enemy.position.x, y: 1.1, z: enemy.position.z },
+        velocity: { x: dx / horizontal * speed, y: (0.95 - 1.1) / horizontal * speed, z: dz / horizontal * speed },
+        radius: 0.17, damage: Math.max(1, Math.round(enemy.damage * attack.damageMultiplier)),
+        remainingSeconds: attack.range / speed, sourceAbilityId: attack.id,
+        color: attack.projectileColor ?? attack.telegraphColor, faction: 'ENEMY', ownerEnemyId: enemy.id,
+      });
       return;
     }
+    if (!hasSight || !inShape) return;
     if (this.controllerState.invulnerabilitySeconds > 0) {
       this.visualEvents.push({ kind: 'dodge', position: { x: this.player.position.x, y: 0.35, z: this.player.position.z }, color: '#a2e8ff', scale: 1 });
       this.addToast('Attack dodged.');
       return;
     }
-    const damage = calculateIncomingDamage(enemy, this.player);
+    const damage = Math.max(1, Math.round(calculateIncomingDamage(enemy, this.player) * attack.damageMultiplier));
     this.player = { ...this.player, stats: { ...this.player.stats, hp: Math.max(0, this.player.stats.hp - damage) } };
     this.visualEvents.push({ kind: 'enemyHit', position: { x: this.player.position.x, y: 0.8, z: this.player.position.z }, color: '#f46d63', scale: 1 });
     this.addToast(enemy.name + ' hit for ' + damage + '.');
@@ -265,8 +302,17 @@ export class FPSGameRuntime {
 
   private processEnemyRewards(): void {
     let changed = false;
+    let guardianDefeated = false;
     this.enemies = this.enemies.map(enemy => {
-      if (enemy.health > 0 || enemy.rewardGranted) return enemy;
+      if (enemy.health > 0) return enemy;
+      if (enemy.definitionId === this.world.floor.guardianId && enemy.rewardGranted) {
+        if (this.world.floor.guardianState !== 'DESCENT_UNLOCKED') {
+          guardianDefeated = true;
+          this.world = { ...this.world, floor: { ...this.world.floor, guardianState: 'DESCENT_UNLOCKED' } };
+        }
+        return enemy.state === 'DEAD' ? enemy : { ...enemy, state: 'DEAD' };
+      }
+      if (enemy.rewardGranted) return enemy;
       changed = true;
       const rewarded = { ...enemy, rewardGranted: true, state: 'DEAD' as const };
       const experience = grantExperience(this.player, enemy.xpReward);
@@ -276,13 +322,17 @@ export class FPSGameRuntime {
       this.loot = [...this.loot, { id: item.instanceId, position: { x: enemy.position.x, y: 0, z: enemy.position.z }, item }];
       this.visualEvents.push({ kind: 'enemyDeath', position: { x: enemy.position.x, y: 0.4, z: enemy.position.z }, color: '#f4bc72', scale: 1.1 });
       this.addLog(enemy.name + ' defeated. +' + enemy.xpReward + ' XP.');
-      if (enemy.isBoss) this.addToast('The guardian is defeated. The exit is clear.');
+      if (enemy.definitionId === this.world.floor.guardianId) {
+        guardianDefeated = true;
+        this.world = { ...this.world, floor: { ...this.world.floor, guardianState: 'DESCENT_UNLOCKED' } };
+      }
       if (enemy.roomId && !this.enemies.some(other => other.id !== enemy.id && other.roomId === enemy.roomId && other.health > 0)) {
         this.world = { ...this.world, floor: { ...this.world.floor, rooms: this.world.floor.rooms.map(room => room.id === enemy.roomId ? { ...room, resolved: true, visited: true, discovered: true } : room) } };
       }
       return rewarded;
     });
-    if (changed) this.addToast('Loot dropped. Press E to collect.');
+    if (guardianDefeated) this.addToast('The Guardian falls. Descent unlocked; the rest of the floor remains open.');
+    else if (changed) this.addToast('Loot dropped. Press E to collect.');
   }
 
   private updatePlayerStatuses(deltaSeconds: number): void {
@@ -313,7 +363,7 @@ export class FPSGameRuntime {
     if (target.kind === 'LOCKED') { this.attemptGate(target.x, target.z, target.room, false); return; }
     if (target.kind === 'SECRET') { this.attemptGate(target.x, target.z, target.room, true); return; }
     if (target.kind === 'EXIT') {
-      if (this.enemies.some(enemy => enemy.isBoss && enemy.health > 0)) { this.addToast('The guardian still bars the exit.'); return; }
+      if (this.world.floor.guardianState !== 'DESCENT_UNLOCKED') { this.addToast('The floor guardian still seals the descent.'); return; }
       this.advanceFloor();
       return;
     }
@@ -331,7 +381,7 @@ export class FPSGameRuntime {
   private attemptGate(x: number, z: number, room: DungeonRoom | undefined, isSecret: boolean): void {
     const useKey = !isSecret && this.world.floor.keys > 0;
     if (!useKey && !isSecret && room?.attempted) {
-      this.addToast('The lock has already resisted. Find an Iron Key.');
+      this.addToast('The lock has already resisted. Find Ariadne’s Token.');
       return;
     }
     const stat = isSecret ? this.player.stats.dex : this.player.stats.str;
@@ -350,8 +400,8 @@ export class FPSGameRuntime {
       worldRevision: this.world.worldRevision + 1,
       floor: { ...this.world.floor, keys: useKey ? this.world.floor.keys - 1 : this.world.floor.keys, rooms: this.world.floor.rooms.map(candidate => candidate.id === room?.id ? { ...candidate, discovered: true, unlocked: true, visited: true } : candidate) },
     };
-    this.addToast(isSecret ? 'Secret passage found.' : useKey ? 'Iron Key used. Vault opened.' : 'Lock forced open.');
-    this.addLog(isSecret ? 'A hidden passage opens in the wall.' : useKey ? 'The Iron Key opens a sealed vault.' : 'The locked gate gives way.');
+    this.addToast(isSecret ? 'Forgotten passage found.' : useKey ? 'Ariadne’s Token used. Treasury opened.' : 'The bronze lock gives way.');
+    this.addLog(isSecret ? 'A hidden limestone passage opens.' : useKey ? 'Ariadne’s Token opens a sealed treasury.' : 'The locked gate gives way.');
   }
 
   resolveRoomChoice(choiceId: string): void {
@@ -367,23 +417,23 @@ export class FPSGameRuntime {
       this.addToast('A damage blessing lasts for 35 seconds.');
     } else if (choiceId === 'blood') {
       if (hp <= Math.ceil(maxHp * 0.2)) { this.addToast('You do not have enough health to offer blood.'); return; }
-      this.player = { ...this.player, stats: { ...this.player.stats, hp: Math.max(1, hp - Math.ceil(maxHp * 0.2)) }, inventory: [...this.player.inventory, createItemInstance({ id: 'shrine_charm_' + room.id, name: 'Bloodbound Charm', description: 'A rare charm taken from the ancient shrine.', type: 'ACCESSORY', value: 4 + this.world.level, statBonus: 'STR', icon: '◇', quantity: 1 }, 'shrine_' + room.id, this.world.level, 'RARE')] };
+      this.player = { ...this.player, stats: { ...this.player.stats, hp: Math.max(1, hp - Math.ceil(maxHp * 0.2)) }, inventory: [...this.player.inventory, createItemInstance({ id: 'shrine_charm_' + room.id, name: 'Ares’ Bronze Votive', description: 'A rare bronze charm taken from the Altar of Ares.', type: 'ACCESSORY', value: 4 + this.world.level, statBonus: 'STR', icon: '◇', quantity: 1 }, 'shrine_' + room.id, this.world.level, 'RARE')] };
     } else if (choiceId === 'aether') this.player = { ...this.player, stats: { ...this.player.stats, mp: Math.min(maxMp, mp + Math.ceil(maxMp * 0.4)) } };
     else if (choiceId === 'key') {
-      if (this.world.floor.keys >= 3) this.addToast('You cannot carry more than three Iron Keys.');
+      if (this.world.floor.keys >= 3) this.addToast('You cannot carry more than three Ariadne’s Tokens.');
       else {
         this.world = { ...this.world, floor: { ...this.world.floor, keys: this.world.floor.keys + 1 } };
-        this.addToast('You found an Iron Key.');
+        this.addToast('You found Ariadne’s Token.');
       }
     }
     else if (choiceId === 'gear' || choiceId === 'fortune' || choiceId === 'investigate') {
       const rarity = room.type === 'LOCKED' || choiceId === 'fortune' ? 'RARE' : 'COMMON';
-      const reward = createItemInstance({ id: 'vault_blade_' + room.id, name: 'Vault Raider’s Blade', description: 'A balanced weapon recovered from the dungeon.', type: 'WEAPON', value: 5 + this.world.level * 2, visualType: 'sword', icon: '†', quantity: 1 }, 'room_reward_' + room.id, this.world.level, rarity);
+      const reward = createItemInstance({ id: 'vault_blade_' + room.id, name: 'Bronze Kopis of the Fallen', description: 'A balanced bronze weapon recovered from a sealed chamber.', type: 'WEAPON', value: 5 + this.world.level * 2, visualType: 'dagger', icon: '⌁', quantity: 1 }, 'room_reward_' + room.id, this.world.level, rarity);
       this.loot = [...this.loot, { id: reward.instanceId, position: { x: room.anchor.x + 0.72, y: 0, z: room.anchor.y + 0.5 }, item: reward }];
       this.addToast('A reward appeared in the room. Press E to collect it.');
     } else if (choiceId === 'supplies') {
-      const health = createItemInstance({ id: 'room_health_' + room.id, name: 'Health Potion', description: 'Restores health when used from Inventory.', type: 'POTION', value: 35, icon: '▣', quantity: 1 }, 'room_health_' + room.id, this.world.level);
-      const mana = createItemInstance({ id: 'room_mana_' + room.id, name: 'Mana Potion', description: 'Restores mana when used from Inventory.', type: 'POTION', value: 25, icon: '▣', quantity: 1 }, 'room_mana_' + room.id, this.world.level);
+      const health = createItemInstance({ id: 'room_health_' + room.id, name: 'Healing Draught', description: 'Restores health when used from your inventory.', type: 'POTION', value: 35, icon: '▣', quantity: 1 }, 'room_health_' + room.id, this.world.level);
+      const mana = createItemInstance({ id: 'room_mana_' + room.id, name: 'Nectar Flask', description: 'Restores mana when used from your inventory.', type: 'POTION', value: 25, icon: '▣', quantity: 1 }, 'room_mana_' + room.id, this.world.level);
       this.player = { ...this.player, inventory: [...this.player.inventory, health, mana] };
     } else if (choiceId === 'disarm') {
       if (this.rollCheck(this.player.stats.dex, 13 + Math.floor(this.world.level / 3))) this.addToast('Trap safely disarmed.');
@@ -414,8 +464,8 @@ export class FPSGameRuntime {
     this.roomOffer = null;
     this.combat.reset();
     this.controllerState = createPlayerControllerState();
-    this.addLog('You descend to Floor ' + this.world.level + '.');
-    this.addToast('Floor ' + this.world.level);
+    this.addLog('You descend to Labyrinth Floor ' + this.world.level + '.');
+    this.addToast('The next depth awaits.');
     this.save();
   }
 
@@ -459,9 +509,9 @@ export class FPSGameRuntime {
     const target = findLookTarget(this.world, this.player);
     if (!target) return null;
     if (target.kind === 'DOOR') return 'E  Open door';
-    if (target.kind === 'LOCKED') return this.world.floor.keys > 0 ? 'E  Unlock with an Iron Key' : 'E  Force locked gate';
+    if (target.kind === 'LOCKED') return this.world.floor.keys > 0 ? 'E  Use Ariadne’s Token' : 'E  Force locked gate';
     if (target.kind === 'SECRET') return 'E  Search for a secret';
-    if (target.kind === 'EXIT') return this.enemies.some(enemy => enemy.isBoss && enemy.health > 0) ? 'Defeat the guardian to descend' : 'E  Descend to Floor ' + (this.world.level + 1);
+    if (target.kind === 'EXIT') return this.world.floor.guardianState === 'DESCENT_UNLOCKED' ? 'E  Descend to Floor ' + (this.world.level + 1) : 'Defeat the floor guardian to unlock descent';
     if (target.kind === 'ROOM') {
       if (target.room.type === 'LOCKED' && target.room.unlocked) return 'E  Claim vault reward';
       if (target.room.type === 'COMBAT' || target.room.type === 'ELITE') return this.enemies.some(enemy => enemy.roomId === target.room.id && enemy.health > 0) ? 'Clear the chamber' : 'Chamber cleared';
@@ -487,13 +537,25 @@ export class FPSGameRuntime {
 
   save(storage?: KeyValueStorage): boolean {
     const save = { player: this.player, world: this.world, enemies: this.enemies, loot: this.loot, combat: this.combat.snapshot() };
-    const success = saveFPSGame(save, storage);
+    const success = saveMazeGame(save, storage);
     this.lastSaveSucceeded = success;
     this.addToast(success ? 'Run saved.' : 'Save failed. Storage is unavailable.');
     return success;
   }
 
   get saveSucceeded(): boolean | null { return this.lastSaveSucceeded; }
+
+  private updateGuardianDiscovery(): void {
+    const floor = this.world.floor;
+    if (!floor.guardianId || floor.guardianState !== 'NOT_DISCOVERED') return;
+    const guardian = this.enemies.find(enemy => enemy.definitionId === floor.guardianId && enemy.health > 0);
+    if (!guardian) return;
+    const distance = Math.hypot(guardian.position.x - this.player.position.x, guardian.position.z - this.player.position.z);
+    if (distance > 8 || !hasLineOfSight(this.world.map, this.player.position.x, this.player.position.z, guardian.position.x, guardian.position.z, 0.2)) return;
+    this.world = { ...this.world, floor: { ...floor, guardianState: 'ALIVE' } };
+    this.addLog(getFloorGuardianDefinition(this.world.level).entranceLine);
+    this.addToast(getFloorGuardianDefinition(this.world.level).entranceLine);
+  }
 
   getRenderState(): FPSRenderState {
     return { world: this.world, player: this.player, enemies: this.enemies, projectiles: this.projectiles, loot: this.loot, action: this.combat.action, isMoving: this.isMoving, cameraBob: this.cameraBob, events: this.visualEvents.splice(0) };

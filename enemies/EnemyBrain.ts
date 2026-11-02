@@ -1,5 +1,6 @@
 import type { PlayerCharacter, WorldEnemy } from '../types';
 import { hasLineOfSight, moveWithWallSlide, nextGridStep } from '../world/CollisionWorld';
+import { getEnemyAttackDefinition, getEnemyAttackSet } from '../data/enemyAttacks';
 
 export interface EnemyAIUpdate {
   enemies: WorldEnemy[];
@@ -32,18 +33,26 @@ export function updateEnemyBrains(enemies: WorldEnemy[], map: number[][], player
       return next;
     }
     if (next.state === 'ATTACK_WINDUP') {
-      if (distance > next.attackRange + 0.4 || !hasLineOfSight(map, next.position.x, next.position.z, player.position.x, player.position.z, 0.2)) {
+      const attack = getEnemyAttackDefinition(next.attackSetId, next.activeAttackId);
+      if (!attack || distance > attack.range + 0.4 || !hasLineOfSight(map, next.position.x, next.position.z, player.position.x, player.position.z, 0.2)) {
         next.state = 'APPROACH';
         next.stateTimer = 0;
       } else if (next.stateTimer <= 0) {
         next.state = 'ATTACK';
-        next.stateTimer = 0.12;
+        next.stateTimer = attack.activeSeconds;
         attacks.push(next.id);
       }
       return next;
     }
     if (next.state === 'ATTACK') {
-      if (next.stateTimer <= 0) { next.state = 'RECOVER'; next.stateTimer = 0.62; next.attackCooldown = next.name === 'Bone Sentinel' ? 1.55 : 1.25; }
+      if (next.stateTimer <= 0) {
+        const attack = getEnemyAttackDefinition(next.attackSetId, next.activeAttackId);
+        next.state = 'RECOVER';
+        next.stateTimer = attack?.recoverySeconds ?? 0.62;
+        next.attackCooldown = attack?.cooldownSeconds ?? 1.25;
+        const set = getEnemyAttackSet(next.attackSetId);
+        next.attackIndex = ((next.attackIndex ?? 0) + 1) % set.length;
+      }
       return next;
     }
     if (next.state === 'RECOVER') {
@@ -51,10 +60,19 @@ export function updateEnemyBrains(enemies: WorldEnemy[], map: number[][], player
       return next;
     }
 
-    if (seesPlayer && distance <= next.attackRange && next.attackCooldown <= 0) {
-      next.state = 'ATTACK_WINDUP';
-      next.stateTimer = next.attackTelegraphSeconds;
-      return next;
+    if (seesPlayer && next.attackCooldown <= 0) {
+      const set = getEnemyAttackSet(next.attackSetId);
+      const startIndex = (next.attackIndex ?? 0) % set.length;
+      const selected = Array.from({ length: set.length }, (_, offset) => set[(startIndex + offset) % set.length]).find(attack => distance <= attack.range);
+      if (selected) {
+        next.activeAttackId = selected.id;
+        next.attackRange = selected.range;
+        next.attackTelegraphSeconds = selected.windupSeconds;
+        next.facingYaw = Math.atan2(dz, dx);
+        next.state = 'ATTACK_WINDUP';
+        next.stateTimer = selected.windupSeconds;
+        return next;
+      }
     }
     if (!seesPlayer) {
       if (distance > 10) next.state = 'IDLE';

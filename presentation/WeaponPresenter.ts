@@ -7,9 +7,17 @@ const weaponFor = (player: PlayerCharacter): WeaponVisualType => player.equipmen
 
 export class WeaponPresenter {
   private sprite: THREE.Sprite | null = null;
+  private shield: THREE.Sprite;
   private currentKey = '';
 
-  constructor(private readonly camera: THREE.PerspectiveCamera, private readonly assets: AssetManager) {}
+  constructor(private readonly camera: THREE.PerspectiveCamera, private readonly assets: AssetManager) {
+    this.shield = new THREE.Sprite(new THREE.SpriteMaterial({ map: assets.shieldTexture(), transparent: true, alphaTest: 0.08, depthTest: false, depthWrite: false, sizeAttenuation: false }));
+    this.shield.name = 'FirstPersonAspis';
+    this.shield.center.set(0.5, 0.45);
+    this.shield.scale.set(0.38, 0.38, 1);
+    this.shield.visible = false;
+    camera.add(this.shield);
+  }
 
   update(player: PlayerCharacter, action: ActivePlayerAction | null, isMoving: boolean, elapsedSeconds: number): void {
     const weapon = weaponFor(player);
@@ -22,6 +30,9 @@ export class WeaponPresenter {
     this.sprite.position.set(0.68 + gait * 0.04, -0.48 + gait * 0.055 + swing * 0.18, -1.05);
     this.sprite.rotation.z = swing + (isMoving ? Math.sin(elapsedSeconds * 10) * 0.025 : 0);
     this.sprite.rotation.x = phase === 'WINDUP' ? 0.2 : 0;
+    this.shield.visible = Boolean(player.equipment.offhand);
+    this.shield.position.set(-0.66 + gait * 0.025, -0.43 + gait * 0.035 + swing * 0.08, -1.12);
+    this.shield.rotation.z = -swing * 0.42;
   }
 
   private setWeapon(weapon: WeaponVisualType, classId: string, key: string): void {
@@ -44,5 +55,7 @@ export class WeaponPresenter {
       this.sprite.material.dispose();
       this.sprite = null;
     }
+    this.camera.remove(this.shield);
+    this.shield.material.dispose();
   }
 }

@@ -1,65 +1,21 @@
-# Aether Crawl Art Direction
+# Maze of the Minotaur Art Direction
 
-> Archived painted-art guidance for the legacy Canvas build. FPS-R1 uses a separate **Dark Fantasy Retro FPS Pixel Art** direction with nearest-neighbor textures and a low-resolution WebGL viewport; see [FPS-R1 architecture](FPS_R1_ARCHITECTURE.md).
+## Mythic Greek Dark Fantasy Pixel Art
 
-## Visual identity
+The Labyrinth is an ancient Cretan structure interpreted through a deliberate fantasy blend of Minoan palace ruins, Greek myth, later chthonic cult traditions, and heroic-age equipment. These references are intentionally not presented as a historically exact reconstruction.
 
-Aether Crawl is moving toward a detailed, dark fantasy painted first-person look: worn stone, deep green-black shadows, warm torchlight, leather gloves and large readable weapons. Floors 1–5 walls/floor/gate and the sword/shield foreground have been converted. Smooth sampling and perspective ground projection preserve detail on desktop and narrow screens. Existing monsters, other weapons, props and later biomes still use the earlier pixel-painted library; their conversion is open.
+### Visual rules
 
-The current renderer is a grid-based 2.5D raycaster. Painted arch textures suggest masonry depth, but do not create curved geometry or outdoor castles. Supplied screenshot editor symbols and browser chrome are not game UI. See [the implementation notes](INITIATIVE_AND_PAINTED_LOOK.md).
+- Use crisp nearest-neighbor pixel edges at a configurable low internal render resolution.
+- Keep silhouettes readable at first-person encounter distance, especially for the rat, bronze dead, serpent guardians, cyclopean brutes, and the later Minotaur.
+- Build palettes from weathered limestone, charcoal shadow, bronze, verdigris, oxblood, and limited oil-flame gold.
+- Use meander borders, bull reliefs, fresco fragments, columns, amphorae, votive altars, oil bowls, and cistern reflections as repeated cultural markers.
+- Use contrast to keep pathways, telegraphs, threats, and loot legible in dim spaces.
+- Keep interface text and icons sharp and high-resolution independently of the pixelated 3D render.
+- Favor local static pixel-art assets; procedural pixel textures are a fallback and a supporting material layer, not the full art direction.
 
-The references are genre touchstones only. Do not reproduce a recognizable character, level, interface, or asset from another game.
+### Avoid
 
-## Shared rules
+Generic medieval castles, Nordic runes, Roman legionary imagery, standard fantasy orcs, softened texture filtering, and mixed high-resolution painted portraits beside coarse pixel sprites as a permanent style.
 
-- Use a consistent front or slight 3/4-front view for creatures, handheld objects, and props.
-- Keep the light source above and left of the subject.
-- Separate materials clearly: rough stone, damp soil, bone, timber, iron, ice, gold, and volcanic glass should not share the same surface treatment.
-- Favor strong silhouettes and high-value contrast. Important forms must remain readable when reduced on mobile screens.
-- Use restrained ambient darkness; magic and fire provide the strongest local color.
-- Avoid text, UI, health bars, logos, watermarks, and painted-in backgrounds on cutout sprites.
-- Keep environmental surfaces opaque and tile-sized. Keep characters, weapons, lights, props, and effects on transparent backgrounds.
-
-## Biome palettes
-
-| Biome | Materials and palette | Light accent |
-| --- | --- | --- |
-| Stone Dungeon | Charcoal, cold slate, worn oak, aged iron | Amber |
-| Moss | Wet stone, roots, dark soil, moss greens | Green |
-| Catacombs | Brown-black limestone, bone, faded crimson cloth | Candle red |
-| Obsidian | Black basalt, sharp glass, volcanic cracks | Violet and ember |
-| Frost | Ice-blue stone, snow, dark navy shadow | Cyan |
-| Gilded | Ivory marble, tarnished gold, burgundy details | Warm gold |
-
-Each biome needs its own surface structure and material cues. A palette swap on the same wall is not sufficient.
-
-## Environment guidelines
-
-- Wall tiles should have large forms and visible seams that survive raycast scaling.
-- Floor tiles should read from above and avoid a strong horizon or perspective scene.
-- Ceiling tiles should have deeper values than the wall and floor to preserve the first-person light falloff.
-- Doors and exits should face the player and remain visually distinct from ordinary walls.
-- Lights should have a compact silhouette and a flame color tied to the biome.
-- Props should sit clearly against the rendered world and retain transparent edges.
-
-## Enemy guidelines
-
-- Give each enemy a distinct outline and one memorable shape or material cue.
-- Use a consistent front or slight 3/4-front pose and ground line.
-- Keep full silhouettes inside the sprite frame. Small enemies may use less of the frame; bosses should occupy more of it and carry stronger shape language.
-- Do not distinguish enemy types with color alone.
-- Do not include text, floor planes, interface elements, or built-in HP bars.
-
-## Weapon and hand guidelines
-
-- First-person weapons use a shared lower-screen camera angle, glove, and forearm treatment.
-- Keep the weapon pointing upward into the play area with enough transparent margin for movement bob.
-- Preserve a common hand position across empty hand, sword, dagger, axe, mace, staff, bow, and shield sprites.
-- Keep the offhand shield and dominant-hand weapon readable as separate forms.
-
-## VFX guidelines
-
-- VFX are short, high-contrast accents that do not obscure the target or combat UI.
-- Use transparent backgrounds and a compact center of mass.
-- Keep each effect distinct by shape as well as color: slashes, starbursts, flames, clouds, sigils, wards, stun stars, and ice shards should read differently.
-- Effects should fade through canvas opacity while the underlying art remains a static PNG or WebP.
+The source sprite and texture sheets are generated locally by `scripts/generate-maze-assets.py`; the running game only loads static files and does not generate art or call an image service.

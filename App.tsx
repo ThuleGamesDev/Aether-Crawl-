@@ -3,7 +3,8 @@ import { CLASSES } from './constants';
 import { CLASS_ABILITY_LOADOUT, getAbility } from './combat/AbilityRegistry';
 import FPSViewport from './components/FPSViewport';
 import { FPSGameRuntime, type FPSGameSnapshot } from './engine/FPSGameRuntime';
-import { loadFPSGame } from './services/fpsSave';
+import { loadMazeGame } from './services/mazeSave';
+import { LABYRINTH_THEMES } from './data/mazeContent';
 import type { ClassType, EquipmentSlot, ItemInstance } from './types';
 import type { InputSystem } from './engine/InputSystem';
 
@@ -17,13 +18,15 @@ const App: React.FC = () => {
   const [snapshot, setSnapshot] = useState<FPSGameSnapshot | null>(null);
   const [hasSave, setHasSave] = useState(false);
   const [saveWarning, setSaveWarning] = useState('');
+  const [migrationNotice, setMigrationNotice] = useState('');
   const [webglError, setWebglError] = useState('');
   const [mouseSensitivity, setMouseSensitivity] = useState(0.0025);
 
   useEffect(() => {
-    const result = loadFPSGame();
+    const result = loadMazeGame();
     setHasSave(Boolean(result.save));
-    if (result.invalid) setSaveWarning('The R1 save could not be read. Your older party save remains untouched.');
+    if (result.invalid) setSaveWarning('A saved expedition is invalid or unavailable. Existing save data has not been overwritten.');
+    else if (result.migratedFromR1) setSaveWarning('An FPS-R1 expedition is ready to migrate when you continue. Its original save will be preserved.');
     try {
       const savedSensitivity = Number(window.localStorage.getItem('aether_fps_mouse_sensitivity'));
       if (Number.isFinite(savedSensitivity) && savedSensitivity >= 0.001 && savedSensitivity <= 0.006) setMouseSensitivity(savedSensitivity);
@@ -32,6 +35,7 @@ const App: React.FC = () => {
 
   const beginRun = (classId: ClassType) => {
     const runtime = new FPSGameRuntime(classId);
+    setMigrationNotice('');
     runtimeRef.current = runtime;
     setSnapshot(runtime.getSnapshot());
     setWebglError('');
@@ -39,13 +43,18 @@ const App: React.FC = () => {
   };
 
   const continueRun = () => {
-    const result = loadFPSGame();
+    const result = loadMazeGame();
     if (!result.save) {
-      setSaveWarning(result.invalid ? 'The R1 save is invalid or unavailable. It has not been overwritten.' : 'No R1 save is available.');
+      setSaveWarning(result.invalid ? 'The save is invalid or unavailable. It has not been overwritten.' : 'No saved expedition is available.');
       setHasSave(false);
       return;
     }
+    setSaveWarning('');
     const runtime = new FPSGameRuntime(result.save.player.classId, result.save);
+    if (result.migratedFromR1) {
+      runtime.save();
+      setMigrationNotice('FPS-R1 progress migrated into the Labyrinth. The original save remains preserved.');
+    } else setMigrationNotice('');
     runtimeRef.current = runtime;
     setSnapshot(runtime.getSnapshot());
     setWebglError('');
@@ -90,16 +99,16 @@ const App: React.FC = () => {
   if (mode === 'MENU') return (
     <main className="fps-menu-screen">
       <div className="fps-menu-frame">
-        <div className="fps-kicker">AETHER CRAWL · FPS R1</div>
-        <h1>AETHER<br /><span>CRAWL</span></h1>
-        <p className="fps-menu-subtitle">A solo dark-fantasy dungeon run.</p>
+        <div className="fps-kicker">KNOSSOS · THE LABYRINTH</div>
+        <h1>MAZE OF<br /><span>THE MINOTAUR</span></h1>
+        <p className="fps-menu-subtitle">A descent into the dark heart beneath Knossos.</p>
         <div className="fps-menu-actions">
           {hasSave && <button className="fps-button fps-button-primary" onClick={continueRun}>Continue Run</button>}
           <button className="fps-button fps-button-primary" onClick={() => setMode('CLASS_SELECT')}>New Run</button>
           <button className="fps-button" onClick={() => setMode('CONTROLS')}>Controls & Options</button>
         </div>
         {saveWarning && <p className="fps-menu-warning" role="status">{saveWarning}</p>}
-        <p className="fps-menu-note">Find the way through the dungeon. Claim what the dead leave behind.</p>
+        <p className="fps-menu-note">Choose one hero. Find the guardian. Descend deeper.</p>
       </div>
     </main>
   );
@@ -109,8 +118,8 @@ const App: React.FC = () => {
       <section className="fps-class-select">
         <button className="fps-back-button" onClick={() => setMode('MENU')}>← Main Menu</button>
         <div className="fps-kicker">CHOOSE YOUR CLASS</div>
-        <h2>One hero enters the dungeon.</h2>
-        <p className="fps-muted">Barbarian and Sorcerer have the deepest starting kits. Every class has a working primary, secondary, and skill.</p>
+        <h2>One hero enters the Labyrinth.</h2>
+        <p className="fps-muted">Choose a champion of the old world. Each class begins with three working actions.</p>
         <div className="fps-class-grid">
           {CLASS_IDS.map(classId => {
             const definition = CLASSES[classId];
@@ -193,6 +202,7 @@ const App: React.FC = () => {
       </div>}
       {snapshot.prompt && <div className="fps-interact-prompt">{snapshot.prompt}</div>}
       {snapshot.toast && <div className="fps-toast" role="status">{snapshot.toast}</div>}
+      {migrationNotice && <div className="fps-migration-notice" role="status">{migrationNotice}</div>}
       <div className="fps-combat-log" aria-live="polite">{snapshot.log.slice(-3).map((line, index) => <div key={line + index}>{line}</div>)}</div>
 
       <footer className="fps-bottom-hud">
@@ -215,7 +225,7 @@ const App: React.FC = () => {
       </div>
 
       {snapshot.paused && !snapshot.gameOver && <Overlay title="Paused" onClose={closeOverlay}>
-        <p className="fps-overlay-copy">The simulation is paused. Your dungeon position and cooldowns are held until you resume.</p>
+        <p className="fps-overlay-copy">The simulation is paused. Your Labyrinth position and cooldowns are held until you resume.</p>
         <div className="fps-overlay-actions"><button className="fps-button fps-button-primary" onClick={closeOverlay}>Resume</button><button className="fps-button" onClick={saveRun}>Save Run</button><button className="fps-button" onClick={returnToMenu}>Save & Main Menu</button></div>
       </Overlay>}
 
@@ -229,7 +239,7 @@ const App: React.FC = () => {
         </div>
       </Overlay>}
 
-      {snapshot.mapOpen && <Overlay title={'Dungeon Map · Floor ' + snapshot.world.level} onClose={closeOverlay}>
+      {snapshot.mapOpen && <Overlay title={'Labyrinth Map · Floor ' + snapshot.world.level} onClose={closeOverlay}>
         <DungeonMap snapshot={snapshot} />
       </Overlay>}
 
@@ -238,17 +248,17 @@ const App: React.FC = () => {
         <div className="fps-room-choices">{snapshot.roomOffer.choices.map(choice => <button key={choice.id} className="fps-room-choice" onClick={() => { runtime.resolveRoomChoice(choice.id); refreshSnapshot(); }}><strong>{choice.label}</strong><span>{choice.detail}</span></button>)}</div>
       </Overlay>}
 
-      {snapshot.gameOver && <Overlay title="You Have Fallen" onClose={returnToMenu}>
+      {snapshot.gameOver && <Overlay title="Lost to the Labyrinth" onClose={returnToMenu}>
         <p className="fps-overlay-copy">Floor {snapshot.world.level} · Level {player.stats.level}. Your run can be saved before leaving.</p>
         <div className="fps-overlay-actions"><button className="fps-button fps-button-primary" onClick={saveRun}>Save Run</button><button className="fps-button" onClick={returnToMenu}>Main Menu</button></div>
       </Overlay>}
     </>}
-    {webglError && <div className="fps-renderer-error"><div><div className="fps-kicker">WEBGL INITIALIZATION FAILED</div><h2>The dungeon could not be rendered.</h2><p>{webglError}</p><p>Try a browser with WebGL 2 enabled or updated graphics drivers.</p><button className="fps-button fps-button-primary" onClick={returnToMenu}>Return to Main Menu</button></div></div>}
+    {webglError && <div className="fps-renderer-error"><div><div className="fps-kicker">WEBGL INITIALIZATION FAILED</div><h2>The Labyrinth could not be rendered.</h2><p>{webglError}</p><p>Try a browser with WebGL 2 enabled or updated graphics drivers.</p><button className="fps-button fps-button-primary" onClick={returnToMenu}>Return to Main Menu</button></div></div>}
   </main>;
 };
 
 const Overlay: React.FC<{ title: string; onClose: () => void; children: React.ReactNode }> = ({ title, onClose, children }) => <div className="fps-overlay-backdrop" role="dialog" aria-modal="true" aria-label={title}>
-  <section className="fps-overlay-panel"><header><div className="fps-kicker">AETHER CRAWL</div><h2>{title}</h2><button aria-label="Close" onClick={onClose}>×</button></header><div className="fps-overlay-content">{children}</div></section>
+  <section className="fps-overlay-panel"><header><div className="fps-kicker">MAZE OF THE MINOTAUR</div><h2>{title}</h2><button aria-label="Close" onClick={onClose}>×</button></header><div className="fps-overlay-content">{children}</div></section>
 </div>;
 
 const InventoryItem: React.FC<{ item: ItemInstance; onEquip: () => void; onUse: () => void }> = ({ item, onEquip, onUse }) => <article className="fps-item-card">
@@ -280,19 +290,18 @@ const CompactMinimap: React.FC<{ snapshot: FPSGameSnapshot; onOpen: () => void }
 function itemEffect(item: ItemInstance): string {
   if (item.type === 'WEAPON') return 'Weapon Power +' + item.value;
   if (item.type === 'ARMOR' || item.type === 'SHIELD') return 'Defense +' + item.value;
-  if (item.type === 'POTION') return /mana|mp/i.test(item.name) ? 'Restores ' + item.value + ' mana' : 'Restores ' + item.value + ' health';
+  if (item.type === 'POTION') return /mana|mp|nectar|ambrosial/i.test(item.name) || /mana|_mp/i.test(item.id) ? 'Restores ' + item.value + ' mana' : 'Restores ' + item.value + ' health';
   if (item.type === 'ACCESSORY') return (item.statBonus ?? 'Stat') + ' +' + item.value;
   return item.description;
 }
 
 function classMark(classId: ClassType): string {
-  const marks: Record<ClassType, string> = { BARBARIAN: 'ᚱ', PALADIN: '✦', SORCERER: '⌁', ROGUE: '⌖', RANGER: '➶', CLERIC: '✚', MONK: '◉', NECROMANCER: '☠' };
+  const marks: Record<ClassType, string> = { BARBARIAN: 'Λ', PALADIN: '◉', SORCERER: '☼', ROGUE: '⌁', RANGER: '➶', CLERIC: '⚕', MONK: '⊙', NECROMANCER: '☾' };
   return marks[classId];
 }
 
 function biomeName(biome: string): string {
-  const names: Record<string, string> = { dungeon: 'STONE DUNGEON', moss: 'MOSS DEPTHS', catacombs: 'CATACOMBS', frost: 'FROST HALLS', gilded: 'GILDED VAULT', obsidian: 'OBSIDIAN DEPTHS' };
-  return names[biome] ?? biome.toUpperCase();
+  return LABYRINTH_THEMES[biome as keyof typeof LABYRINTH_THEMES]?.name.toUpperCase() ?? biome.toUpperCase();
 }
 
 export default App;

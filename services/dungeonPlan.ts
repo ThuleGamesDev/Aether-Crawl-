@@ -26,16 +26,27 @@ function pathToExit(map: number[][]): Position[] {
 }
 const hazardFor: Record<BiomeId, string> = { dungeon: 'trap_corridor', moss: 'toxic_spores', catacombs: 'mana_mist', frost: 'frostbound_draft', gilded: 'trap_corridor', obsidian: 'arcane_surge' };
 /** Adds bounded gameplay anchors to the existing maze. Gates only replace previously solid side pockets. */
-export function buildFloorPlan(map: number[][], decorations: number[][], level: number, biome: BiomeId, seed: number, carve = true): FloorState {
+export function buildFloorPlan(map: number[][], decorations: number[][], level: number, biome: BiomeId, seed: number, carve = true, guardianArenaRadius = 0): FloorState {
   const random = floorRandom(seed ^ 0xAEC20), rooms: DungeonRoom[] = [];
   const main = pathToExit(map), reachable = reachableCells(map), mainKeys = new Set(main.map(cellKey)), used = new Set<string>(['1,1']);
   const add = (type: DungeonRoomType, anchor: Position, cells: Position[] = [anchor], gate?: Position) => {
     const room: DungeonRoom = { id: `floor_${level}_${seed >>> 0}_${rooms.length}`, type, anchor: { ...anchor }, cells, ...(gate ? { gate } : {}), discovered: false, visited: false, resolved: false };
-    rooms.push(room); used.add(cellKey(anchor)); if (gate) used.add(cellKey(gate)); decorations[anchor.y][anchor.x] = 0;
+    rooms.push(room);
+    if (type === 'BOSS' && guardianArenaRadius > 0) for (const cell of cells) used.add(cellKey(cell));
+    used.add(cellKey(anchor)); if (gate) used.add(cellKey(gate)); decorations[anchor.y][anchor.x] = 0;
     return room;
   };
   if (!main.length) return { version: 1, seed: seed >>> 0, level, biome, rooms, visitedCells: [], keys: 0, pendingEncounterId: null, pendingEffects: [] };
-  const boss = main[main.length - 1]; add('BOSS', boss);
+  const boss = main[main.length - 1];
+  const bossCells: Position[] = [];
+  if (guardianArenaRadius > 0) {
+    for (let y = boss.y - guardianArenaRadius; y <= boss.y + guardianArenaRadius; y += 1) {
+      for (let x = boss.x - guardianArenaRadius; x <= boss.x + guardianArenaRadius; x += 1) {
+        if (map[y]?.[x] !== undefined && !isClosedTile(map[y][x])) bossCells.push({ x, y });
+      }
+    }
+  }
+  add('BOSS', boss, bossCells.length ? bossCells : [boss]);
   const ante = main[Math.max(1, main.length - 2)]; if (!used.has(cellKey(ante))) add('BOSS_ANTECHAMBER', ante, main.slice(-4, -1));
   const rest = main[Math.max(1, main.length - 4)]; if (!used.has(cellKey(rest))) { add('REST', rest); decorations[rest.y][rest.x] = 2; }
   const candidates = reachable.filter(p => !used.has(cellKey(p)) && p.x + p.y > 3).map(p => ({ p, score: (mainKeys.has(cellKey(p)) ? 0 : 100) + Math.min(...main.map(m => Math.abs(m.x - p.x) + Math.abs(m.y - p.y))) * 5 + random() }));

@@ -101,20 +101,30 @@ export function unequipItem(player: PlayerCharacter, slot: EquipmentSlot): Playe
 }
 
 export function makeEnemyDrop(enemy: WorldEnemy, floorLevel: number): ItemInstance {
+  const guardianLoot: Record<string, { name: string; description: string }> = {
+    guardian_bronze_gatekeeper: { name: 'Gatekeeper’s Bronze Seal', description: 'A hammered seal taken from the guardian at the first descent.' },
+    guardian_serpent_priestess: { name: 'Serpent Priestess’ Votive Fang', description: 'A venom-dark votive fang from the serpent galleries.' },
+    guardian_cyclopean_mason: { name: 'Mason’s Bronze Plumb', description: 'A bronze weight used to set the stones of the Cyclopean Halls.' },
+    guardian_lamia_cistern: { name: 'Lamia’s Cistern Laurel', description: 'A tarnished laurel clasp recovered from the still water.' },
+    guardian_threadbound_warden: { name: 'Warden’s Labyrinth Thread', description: 'A red thread that once marked the guardian’s ritual boundary.' },
+  };
+  const trophy = guardianLoot[enemy.definitionId];
+  if (trophy) return createItemInstance({ id: 'guardian_trophy_' + enemy.definitionId, name: trophy.name, description: trophy.description, type: 'ACCESSORY', value: 3 + floorLevel, statBonus: 'INT', icon: '⌘', quantity: 1 }, 'drop_' + enemy.id, floorLevel, 'RARE');
   if (enemy.definitionId === 'giant_rat') {
-    return createItemInstance({ id: 'rat_hide_' + enemy.id, name: 'Tough Rat Hide', description: 'A crude piece of armor with a surprising amount of bite.', type: 'ARMOR', value: 2 + Math.floor(floorLevel / 2), armorWeight: 'LIGHT', icon: '▧', quantity: 1 }, 'drop_' + enemy.id, floorLevel);
+    return createItemInstance({ id: 'rat_hide_' + enemy.id, name: 'Cretan Rat Pelt', description: 'A tough pelt from a cave scavenger of the old palace.', type: 'ARMOR', value: 2 + Math.floor(floorLevel / 2), armorWeight: 'LIGHT', icon: '▧', quantity: 1 }, 'drop_' + enemy.id, floorLevel);
   }
   if (enemy.definitionId === 'skeleton_warrior') {
-    return createItemInstance({ id: 'bone_charm_' + enemy.id, name: 'Bone Charm', description: 'A cold charm that sharpens the wearer’s attacks.', type: 'ACCESSORY', value: 2 + Math.floor(floorLevel / 2), statBonus: 'STR', icon: '◇', quantity: 1 }, 'drop_' + enemy.id, floorLevel, enemy.isBoss ? 'RARE' : 'COMMON');
+    return createItemInstance({ id: 'bone_charm_' + enemy.id, name: 'Chthonic Seal', description: 'A cold seal that sharpens the bearer’s resolve.', type: 'ACCESSORY', value: 2 + Math.floor(floorLevel / 2), statBonus: 'STR', icon: '◇', quantity: 1 }, 'drop_' + enemy.id, floorLevel, enemy.isBoss ? 'RARE' : 'COMMON');
   }
-  return createItemInstance({ id: 'dungeon_cache_' + enemy.id, name: 'Dungeon Cache', description: 'Recovered gear from a defeated foe.', type: 'WEAPON', value: 3 + floorLevel, visualType: 'sword', icon: '†', quantity: 1 }, 'drop_' + enemy.id, floorLevel);
+  const reward = enemy.isBoss ? 'Bronze Xiphos of the Fallen' : 'Labyrinth Bronze Xiphos';
+  return createItemInstance({ id: 'dungeon_cache_' + enemy.id, name: reward, description: 'A bronze blade recovered from the buried halls.', type: 'WEAPON', value: 3 + floorLevel, visualType: 'sword', icon: '†', quantity: 1 }, 'drop_' + enemy.id, floorLevel);
 }
 
 export function consumePotion(player: PlayerCharacter, instanceId: string): PlayerCharacter | null {
   const index = player.inventory.findIndex(item => item.instanceId === instanceId && item.type === 'POTION');
   if (index < 0) return null;
   const item = player.inventory[index];
-  const isMana = /mana|mp/i.test(item.name);
+  const isMana = /mana|mp|nectar|ambrosial/i.test(item.name) || /mana|_mp/i.test(item.id);
   const stats = { ...player.stats };
   if (isMana) {
     if (stats.mp >= stats.maxMp) return null;

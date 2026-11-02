@@ -1,5 +1,5 @@
 {
-  "name": "aether-crawl",
+  "name": "maze-of-the-minotaur",
   "private": true,
   "version": "1.4.0",
   "type": "module",
@@ -9,7 +9,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "preview": "vite preview",
-    "test:run": "node scripts/fps-r1-smoke.cjs"
+    "test:run": "node scripts/maze-r2a-smoke.cjs"
   },
   "dependencies": {
     "react": "^18.2.0",

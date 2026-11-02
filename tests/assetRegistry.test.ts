@@ -12,10 +12,10 @@ describe('static asset registry', () => {
   it('maps every gameplay enemy to a present, distinct production sprite', () => {
     expect(enemyDefinitions).toHaveLength(28);
     expect(new Set(enemyDefinitions.map(enemy => enemy.id)).size).toBe(enemyDefinitions.length);
-    const spritePaths = enemyDefinitions.map(enemy => enemyVisuals[enemy.visualId]?.sprite);
+    const spritePaths = enemyDefinitions.map(enemy => enemyVisuals[enemy.fpsVisualId]?.sprite);
     expect(new Set(spritePaths).size).toBe(enemyDefinitions.length);
     for (const enemy of enemyDefinitions) {
-      const visual = enemyVisuals[enemy.visualId];
+      const visual = enemyVisuals[enemy.fpsVisualId];
       expect(visual, `${enemy.id} has a visual definition`).toBeDefined();
       expect(localAssetExists(visual.sprite), `${enemy.id} sprite exists at ${visual.sprite}`).toBe(true);
     }
@@ -49,17 +49,17 @@ describe('static asset registry', () => {
 
   it('preloads the active floor set without downloading other biome surfaces up front', () => {
     const firstFloor = getLevelAssetPaths(1);
-    expect(firstFloor).toContain('/assets/environments/dungeon/painted/wall.webp');
-    expect(firstFloor).toContain('/assets/enemies/giant-rat.png');
-    expect(firstFloor).toContain('/assets/enemies/dungeon-warden.png');
-    expect(firstFloor).toContain('/assets/hands/painted/sword.webp');
-    expect(firstFloor).toContain('/assets/vfx/melee-hit.png');
-    expect(firstFloor).not.toContain('/assets/environments/moss/wall.png');
+    expect(firstFloor).toContain('/assets/maze/tiles/palace_foundations_wall.png');
+    expect(firstFloor).toContain('/assets/maze/enemies/cretan_cave_rat.png');
+    expect(firstFloor).toContain('/assets/maze/enemies/guardian_bronze_gatekeeper.png');
+    expect(firstFloor).toContain('/assets/maze/hands/xiphos.png');
+    expect(firstFloor).toContain('/assets/maze/vfx/bronze_impact.png');
+    expect(firstFloor).not.toContain('/assets/maze/tiles/serpent_galleries_wall.png');
     const startupBytes = firstFloor.reduce((total, path) => total + localAssetBytes(path), 0);
     const registryBytes = collectAssetPaths().reduce((total, path) => total + localAssetBytes(path), 0);
     expect(startupBytes).toBeLessThan(registryBytes * 0.75);
 
-    expect(getLevelAssetPaths(5)).toContain('/assets/enemies/the-necromancer.png');
-    expect(getLevelAssetPaths(6)).toContain('/assets/environments/moss/wall.png');
+    expect(getLevelAssetPaths(5)).toContain('/assets/maze/enemies/guardian_threadbound_warden.png');
+    expect(getLevelAssetPaths(6)).toContain('/assets/maze/tiles/serpent_galleries_wall.png');
   });
 });

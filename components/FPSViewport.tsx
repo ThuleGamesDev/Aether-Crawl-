@@ -64,7 +64,7 @@ const FPSViewport: React.FC<FPSViewportProps> = ({ runtime, mouseSensitivity, on
     };
   }, [runtime]);
 
-  return <canvas ref={canvasRef} className="fps-world-canvas" aria-label="First-person fantasy dungeon" data-aether-fps-viewport />;
+  return <canvas ref={canvasRef} className="fps-world-canvas" aria-label="Maze of the Minotaur first-person labyrinth" data-maze-fps-viewport />;
 };
 
 export default FPSViewport;

@@ -2,41 +2,41 @@ import { getBiomeIdForLevel } from './assetRegistry';
 
 const ambientNarratives: Record<string, string[]> = {
   dungeon: [
-    'Cold dust drifts through the torchlight, disturbed by something deeper in the stone.',
-    'A distant chain scrapes once across the darkness, then falls still.',
-    'The old stones hold the chill of a place long abandoned.',
+    'A red thread is knotted around a cracked limestone block.',
+    'Somewhere beneath the palace, bronze scrapes slowly over stone.',
+    'A painted bull watches from a flaking fragment of fresco.',
   ],
   moss: [
-    'Water ticks from the ceiling while roots tighten around the ancient masonry.',
-    'A sour green glow pulses beneath the moss and fades into the earth.',
-    'The air is wet and close, heavy with soil and crushed leaves.',
+    'Serpent patterns vanish beneath slick green growth.',
+    'A coppery vapor curls from a drain cut into the offering floor.',
+    'The damp stone smells of crushed leaves and old incense.',
   ],
   catacombs: [
-    'The hollow silence gives every footstep the weight of a funeral bell.',
-    'A cold draft slips between the skull niches and stirs a strip of faded cloth.',
-    'The bones in the wall seem older than the kingdom that buried them.',
-  ],
-  obsidian: [
-    'Violet light crawls along the black stone like a crack in the night.',
-    'Heat gathers beneath the floor, but the air tastes of ash and iron.',
-    'The sharp walls catch your torchlight and return it in broken colors.',
+    'The blocks here are larger than the rooms that contain them.',
+    'A mason’s plumb line sways though no wind reaches this depth.',
+    'An unfinished column bears a single watching eye.',
   ],
   frost: [
-    'Ice groans somewhere beyond the wall, deep and slow as a waking giant.',
-    'Your breath clouds in the blue light, then vanishes against the frozen stone.',
-    'A thin layer of frost trembles beneath your steps.',
+    'The cistern water reflects a torch that is not behind you.',
+    'A submerged stair disappears beneath glass-dark water.',
+    'Droplets fall at different times from the ceiling and its reflection.',
   ],
   gilded: [
-    'Gold leaf flakes from the imperial carvings like old autumn leaves.',
-    'A distant bell rings once through the marble halls, though no hand is near it.',
-    'The bright ornamentation cannot hide the silence beneath it.',
+    'Red votive wax has run down a black stone altar.',
+    'A funerary seal has been split from the inside.',
+    'The air grows warm as the chthonic carvings deepen.',
+  ],
+  obsidian: [
+    'A bull relief has been struck hard enough to break the surrounding wall.',
+    'A pair of bronze horns lies beneath a veil of dust.',
+    'The stones tremble once, far below, then fall silent.',
   ],
 };
 
 const featureNarratives = {
-  door: 'Beyond the sealed door, a slow scrape answers from the other side.',
-  light: 'The flame bends toward the passage ahead, though the air is still.',
-  quiet: 'For a moment, the dungeon is silent enough to hear your own heartbeat.',
+  door: 'Bronze hinges complain beyond the sealed passage.',
+  light: 'The oil-flame leans toward a painted maze on the wall.',
+  quiet: 'The Labyrinth falls still. Your own breathing fills the passage.',
 };
 
 export const getExplorationNarrative = (level: number, nearDoor: boolean, nearLight: boolean, step: number): string => {

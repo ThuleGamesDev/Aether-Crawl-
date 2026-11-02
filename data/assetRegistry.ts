@@ -1,145 +1,85 @@
 import type { BiomeId, BiomeVisualDefinition, EnemyVisualDefinition, VFXType, WeaponVisualType } from '../types';
-import { biomeBossDefinitions, miniBossDefinitions, normalEnemyDefinitions } from './enemies';
+import { FLOOR_ENEMY_ROSTERS, FLOOR_GUARDIANS, getFloorGuardianDefinition, LABYRINTH_THEMES } from './mazeContent';
+import { biomeBossDefinitions, enemyDefinitions, miniBossDefinitions, normalEnemyDefinitions } from './enemies';
 
 const asset = (path: string) => `/assets/${path}`;
-
-const commonProps = {
-  barrel: asset('props/barrel.png'),
-  crate: asset('props/crate.png'),
-  bones: asset('props/bones.png'),
+const themeSlug: Record<BiomeId, string> = {
+  dungeon: 'palace_foundations',
+  moss: 'serpent_galleries',
+  catacombs: 'cyclopean_halls',
+  frost: 'forgotten_cisterns',
+  gilded: 'chthonic_depths',
+  obsidian: 'heart_of_the_maze',
 };
 
-export const biomeVisuals: Record<BiomeId, BiomeVisualDefinition> = {
-  dungeon: {
-    wall: asset('environments/dungeon/painted/wall.webp'),
-    floor: asset('environments/dungeon/painted/floor.webp'),
-    ceiling: asset('environments/dungeon/ceiling.png'),
-    door: asset('environments/dungeon/painted/gate.webp'),
-    exit: asset('environments/dungeon/painted/gate.webp'),
-    torch: asset('environments/lights/dungeon.png'),
-    props: { ...commonProps, extra: [asset('props/broken-pillar.png'), asset('props/chains.png')] },
-    ambientColor: '#ae743c',
-  },
-  moss: {
-    wall: asset('environments/moss/wall.png'),
-    floor: asset('environments/moss/floor.png'),
-    ceiling: asset('environments/moss/ceiling.png'),
-    door: asset('environments/moss/door.png'),
-    exit: asset('environments/moss/exit.png'),
-    torch: asset('environments/lights/moss.png'),
-    props: { ...commonProps, extra: [asset('props/biomes/moss-roots.png'), asset('props/biomes/moss-mushrooms.png')] },
-    ambientColor: '#7bce65',
-  },
-  catacombs: {
-    wall: asset('environments/catacombs/wall.png'),
-    floor: asset('environments/catacombs/floor.png'),
-    ceiling: asset('environments/catacombs/ceiling.png'),
-    door: asset('environments/catacombs/door.png'),
-    exit: asset('environments/catacombs/exit.png'),
-    torch: asset('environments/lights/catacombs.png'),
-    props: { ...commonProps, extra: [asset('props/biomes/crypt-bone-shrine.png'), asset('props/biomes/crypt-banner.png')] },
-    ambientColor: '#c36a63',
-  },
-  obsidian: {
-    wall: asset('environments/obsidian/wall.png'),
-    floor: asset('environments/obsidian/floor.png'),
-    ceiling: asset('environments/obsidian/ceiling.png'),
-    door: asset('environments/obsidian/door.png'),
-    exit: asset('environments/obsidian/exit.png'),
-    torch: asset('environments/lights/obsidian.png'),
-    props: { ...commonProps, extra: [asset('props/biomes/obsidian-crystals.png'), asset('props/biomes/basalt-head.png')] },
-    ambientColor: '#c04cdb',
-  },
-  frost: {
-    wall: asset('environments/frost/wall.png'),
-    floor: asset('environments/frost/floor.png'),
-    ceiling: asset('environments/frost/ceiling.png'),
-    door: asset('environments/frost/door.png'),
-    exit: asset('environments/frost/exit.png'),
-    torch: asset('environments/lights/frost.png'),
-    props: { ...commonProps, extra: [asset('props/biomes/ice-spire.png'), asset('props/biomes/frost-chains.png')] },
-    ambientColor: '#66c8ef',
-  },
-  gilded: {
-    wall: asset('environments/gilded/wall.png'),
-    floor: asset('environments/gilded/floor.png'),
-    ceiling: asset('environments/gilded/ceiling.png'),
-    door: asset('environments/gilded/door.png'),
-    exit: asset('environments/gilded/exit.png'),
-    torch: asset('environments/lights/gilded.png'),
-    props: { ...commonProps, extra: [asset('props/biomes/gilded-urn.png'), asset('props/biomes/imperial-banner.png')] },
-    ambientColor: '#f1c653',
-  },
+const themed = (biomeId: BiomeId, kind: 'wall' | 'floor' | 'ceiling' | 'door' | 'exit') => asset(`maze/tiles/${themeSlug[biomeId]}_${kind}.png`);
+const props = {
+  barrel: asset('maze/props/amphora.png'),
+  crate: asset('maze/props/broken_amphora.png'),
+  bones: asset('maze/props/labyrinth_tablet.png'),
 };
 
-export const enemyVisuals: Record<string, EnemyVisualDefinition> = {
-  giant_rat: { sprite: asset('enemies/giant-rat.png'), scale: 0.72 },
-  acid_spider: { sprite: asset('enemies/acid-spider.png'), scale: 0.8 },
-  goblin_scavenger: { sprite: asset('enemies/goblin-scavenger.png'), scale: 0.8 },
-  skeleton_warrior: { sprite: asset('enemies/skeleton-warrior.png'), scale: 0.82 },
-  bandit_rogue: { sprite: asset('enemies/bandit-rogue.png'), scale: 0.8 },
-  orc_brute: { sprite: asset('enemies/orc-brute.png'), scale: 0.9 },
-  dark_cultist: { sprite: asset('enemies/dark-cultist.png'), scale: 0.84 },
-  green_slime: { sprite: asset('enemies/green-slime.png'), scale: 0.84 },
-  cave_troll: { sprite: asset('enemies/cave-troll.png'), scale: 0.98 },
-  fire_elemental: { sprite: asset('enemies/fire-elemental.png'), scale: 0.9 },
-  specter: { sprite: asset('enemies/specter.png'), scale: 0.9 },
-  stone_golem: { sprite: asset('enemies/stone-golem.png'), scale: 0.98 },
-  vampire_spawn: { sprite: asset('enemies/vampire-spawn.png'), scale: 0.86 },
-  beholder: { sprite: asset('enemies/beholder.png'), scale: 0.86 },
-  ice_elemental: { sprite: asset('enemies/ice-elemental.png'), scale: 0.95 },
-  void_dragon: { sprite: asset('enemies/void-dragon.png'), scale: 1.04 },
-  chaos_knight: { sprite: asset('enemies/chaos-knight.png'), scale: 1.08 },
-  dungeon_warden: { sprite: asset('enemies/dungeon-warden.png'), scale: 1.02 },
-  giant_slime: { sprite: asset('enemies/giant-slime.png'), scale: 1.05 },
-  cursed_knight: { sprite: asset('enemies/cursed-knight.png'), scale: 1.04 },
-  bandit_king: { sprite: asset('enemies/bandit-king.png'), scale: 1.02 },
-  mimic_queen: { sprite: asset('enemies/mimic-queen.png'), scale: 1.12 },
-  the_necromancer: { sprite: asset('enemies/the-necromancer.png'), scale: 1.12 },
-  moss_golem: { sprite: asset('enemies/moss-golem.png'), scale: 1.18 },
-  lich_lord: { sprite: asset('enemies/lich-lord.png'), scale: 1.12 },
-  frost_giant: { sprite: asset('enemies/frost-giant.png'), scale: 1.18 },
-  golden_emperor: { sprite: asset('enemies/golden-emperor.png'), scale: 1.2 },
-  obsidian_lord: { sprite: asset('enemies/obsidian-lord.png'), scale: 1.22 },
-};
+export const biomeVisuals: Record<BiomeId, BiomeVisualDefinition> = Object.fromEntries(
+  (Object.keys(themeSlug) as BiomeId[]).map(biomeId => [biomeId, {
+    wall: themed(biomeId, 'wall'),
+    floor: themed(biomeId, 'floor'),
+    ceiling: themed(biomeId, 'ceiling'),
+    door: themed(biomeId, 'door'),
+    exit: themed(biomeId, 'exit'),
+    torch: asset('maze/props/oil_bowl.png'),
+    props: { ...props, extra: [asset('maze/props/offering_altar.png'), asset('maze/props/column_fragment.png')] as [string, string] },
+    ambientColor: LABYRINTH_THEMES[biomeId].accent,
+  }])
+) as Record<BiomeId, BiomeVisualDefinition>;
+
+const visualDefinitions = [
+  ...enemyDefinitions.map(enemy => ({ visualId: enemy.fpsVisualId, scale: enemy.category === 'normal' ? 0.92 : 1.12, path: asset(`maze/enemies/${enemy.fpsVisualId}.png`) })),
+  ...enemyDefinitions.map(enemy => ({ visualId: enemy.visualId, scale: enemy.category === 'normal' ? 0.92 : 1.12, path: asset(`enemies/${enemy.visualId.replace(/_/g, '-')}.png`) })),
+  ...FLOOR_GUARDIANS.map(guardian => ({ visualId: guardian.visualId, scale: 1.32, path: asset(`maze/enemies/${guardian.visualId}.png`) })),
+];
+
+export const enemyVisuals: Record<string, EnemyVisualDefinition> = Object.fromEntries(
+  visualDefinitions.map(visual => [visual.visualId, { sprite: visual.path ?? asset(`maze/enemies/${visual.visualId}.png`), scale: visual.scale }])
+);
 
 export const weaponVisuals: Record<WeaponVisualType, string> = {
-  unarmed: asset('hands/empty.png'),
-  sword: asset('hands/painted/sword.webp'),
-  dagger: asset('hands/dagger.png'),
-  axe: asset('hands/axe.png'),
-  mace: asset('hands/mace.png'),
-  staff: asset('hands/staff.png'),
-  bow: asset('hands/bow.png'),
+  unarmed: asset('maze/hands/empty.png'),
+  sword: asset('maze/hands/xiphos.png'),
+  dagger: asset('maze/hands/kopis.png'),
+  axe: asset('maze/hands/labrys.png'),
+  mace: asset('maze/hands/ritual_staff.png'),
+  staff: asset('maze/hands/ritual_staff.png'),
+  bow: asset('maze/hands/hunting_bow.png'),
+  spear: asset('maze/hands/dory.png'),
 };
 
-export const shieldVisual = asset('hands/painted/shield.webp');
+export const shieldVisual = asset('maze/hands/aspis.png');
 
 export const vfxVisuals: Record<VFXType, string> = {
-  DAMAGE: asset('vfx/melee-hit.png'),
-  HEAL: asset('vfx/heal.png'),
-  ATTACK: asset('vfx/melee-hit.png'),
-  FIREBALL: asset('vfx/fire.png'),
-  ENEMY_DEATH: asset('vfx/critical-hit.png'),
-  ICE: asset('vfx/frost.png'),
-  LIGHTNING: asset('vfx/magic.png'),
-  BUFF: asset('vfx/shield.png'),
-  POISON: asset('vfx/poison.png'),
-  HOLY: asset('vfx/critical-hit.png'),
-  DARK: asset('vfx/magic.png'),
-  DEBUFF: asset('vfx/stun.png'),
-  CRITICAL: asset('vfx/critical-hit.png'),
+  DAMAGE: asset('maze/vfx/bronze_impact.png'),
+  HEAL: asset('maze/vfx/laurel_light.png'),
+  ATTACK: asset('maze/vfx/bronze_impact.png'),
+  FIREBALL: asset('maze/vfx/promethean_flame.png'),
+  ENEMY_DEATH: asset('maze/vfx/soul_ash.png'),
+  ICE: asset('maze/vfx/cistern_splash.png'),
+  LIGHTNING: asset('maze/vfx/oracle_spark.png'),
+  BUFF: asset('maze/vfx/laurel_light.png'),
+  POISON: asset('maze/vfx/serpent_venom.png'),
+  HOLY: asset('maze/vfx/laurel_light.png'),
+  DARK: asset('maze/vfx/soul_ash.png'),
+  DEBUFF: asset('maze/vfx/serpent_venom.png'),
+  CRITICAL: asset('maze/vfx/bronze_impact.png'),
 };
 
 export const propVisuals = {
-  barrel: asset('props/barrel.png'),
-  crate: asset('props/crate.png'),
-  bones: asset('props/bones.png'),
-  brokenPillar: asset('props/broken-pillar.png'),
-  chains: asset('props/chains.png'),
-  rubble: asset('props/rubble.png'),
-  skullPile: asset('props/skull-pile.png'),
-  brazier: asset('props/brazier.png'),
+  amphora: props.barrel,
+  brokenAmphora: props.crate,
+  labyrinthTablet: props.bones,
+  offeringAltar: asset('maze/props/offering_altar.png'),
+  columnFragment: asset('maze/props/column_fragment.png'),
+  oilBowl: asset('maze/props/oil_bowl.png'),
+  bullRelief: asset('maze/props/bull_relief.png'),
+  cisternMirror: asset('maze/props/cistern_mirror.png'),
 };
 
 export const getBiomeIdForLevel = (level: number): BiomeId => {
@@ -164,22 +104,23 @@ export const getDecorationAsset = (biomeId: BiomeId, decorationType: number): st
 
 export const getBiomeAssetPaths = (biomeId: BiomeId): string[] => {
   const biome = biomeVisuals[biomeId];
-  return [
-    biome.wall, biome.floor, biome.ceiling, biome.door, biome.exit, biome.torch,
-    biome.props.barrel, biome.props.crate, biome.props.bones, ...biome.props.extra,
-  ];
+  return [biome.wall, biome.floor, biome.ceiling, biome.door, biome.exit, biome.torch, biome.props.barrel, biome.props.crate, biome.props.bones, ...biome.props.extra];
 };
 
-export const getLevelAssetPaths = (level: number): string[] => {
-  const availableEnemies = normalEnemyDefinitions.filter(enemy => (enemy.minLevel ?? 1) <= level);
-  const bossCandidates = level % 5 === 0
-    ? [biomeBossDefinitions[Math.max(0, Math.min(Math.floor(level / 5) - 1, biomeBossDefinitions.length - 1))]]
-    : miniBossDefinitions;
-  const enemies = [...availableEnemies, ...bossCandidates];
+export function getEnemyVisualPath(visualId: string): string | undefined {
+  return enemyVisuals[visualId]?.sprite;
+}
 
+export const getLevelAssetPaths = (level: number): string[] => {
+  const explicitRoster = FLOOR_ENEMY_ROSTERS[level];
+  const activeEnemies = explicitRoster
+    ? explicitRoster.map(id => enemyDefinitions.find(enemy => enemy.id === id)).filter((enemy): enemy is (typeof enemyDefinitions)[number] => Boolean(enemy))
+    : normalEnemyDefinitions.filter(enemy => (enemy.minLevel ?? 1) <= level);
+  const boss = getFloorGuardianDefinition(level);
   return [...new Set([
     ...getBiomeAssetPaths(getBiomeIdForLevel(level)),
-    ...enemies.map(enemy => enemyVisuals[enemy.visualId]?.sprite).filter((path): path is string => Boolean(path)),
+    ...activeEnemies.map(enemy => enemyVisuals[enemy.fpsVisualId]?.sprite).filter((path): path is string => Boolean(path)),
+    enemyVisuals[boss.visualId].sprite,
     ...Object.values(weaponVisuals), shieldVisual,
     ...Object.values(vfxVisuals),
   ])];
@@ -192,3 +133,7 @@ export const collectAssetPaths = (): string[] => [...new Set([
   ...Object.values(vfxVisuals),
   ...Object.values(propVisuals),
 ])];
+
+export const mythicEnemyDefinitions = enemyDefinitions;
+export const mythicMiniBossDefinitions = miniBossDefinitions;
+export const mythicBiomeBossDefinitions = biomeBossDefinitions;
