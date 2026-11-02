@@ -207,8 +207,9 @@ export class WeaponPresenter {
 
   update(player: PlayerCharacter, action: ActivePlayerAction | null, isMoving: boolean, guarding: boolean, elapsedSeconds: number): void {
     const weapon = getWeaponVisualTypeForPlayer(player);
-    const key = weapon + ':' + player.classId;
-    if (key !== this.currentKey) this.setWeapon(weapon, player.classId, key);
+    const weaponItem = player.equipment.weapon;
+    const key = [weapon, player.classId, weaponItem?.instanceId ?? 'unarmed', weaponItem?.uniqueEffectId ?? ''].join(':');
+    if (key !== this.currentKey) this.setWeapon(weapon, player.classId, key, Boolean(weaponItem?.uniqueEffectId));
     if (!this.sprite) return;
     const pose = getWeaponPresentationPose({
       weapon,
@@ -224,22 +225,25 @@ export class WeaponPresenter {
     this.sprite.rotation.set(pose.weaponRotationX, pose.weaponRotationY, pose.weaponRotationZ);
     this.sprite.scale.set(pose.weaponScaleX, pose.weaponScaleY, 1);
     this.shield.visible = pose.shieldVisible;
+    this.shield.material.color.set(player.equipment.offhand?.uniqueEffectId ? '#ffe2a0' : '#ffffff');
     this.shield.position.set(pose.shieldX, pose.shieldY, pose.shieldZ);
     this.shield.scale.set(pose.shieldScale, pose.shieldScale, 1);
     this.shield.rotation.z = pose.shieldRotationZ;
   }
 
-  private setWeapon(weapon: WeaponVisualType, classId: string, key: string): void {
-    if (this.sprite) {
-      this.camera.remove(this.sprite);
-      this.sprite.material.dispose();
+  private setWeapon(weapon: WeaponVisualType, classId: string, key: string, unique: boolean): void {
+    if (!this.sprite) {
+      const material = new THREE.SpriteMaterial({ map: this.assets.weaponTexture(weapon, classId), transparent: true, alphaTest: 0.08, depthTest: false, depthWrite: false, sizeAttenuation: false });
+      this.sprite = new THREE.Sprite(material);
+      this.sprite.name = 'FirstPersonWeapon';
+      this.sprite.center.set(0.5, 0.45);
+      this.sprite.scale.set(0.72, 0.72, 1);
+      this.camera.add(this.sprite);
+    } else {
+      this.sprite.material.map = this.assets.weaponTexture(weapon, classId);
+      this.sprite.material.needsUpdate = true;
     }
-    const material = new THREE.SpriteMaterial({ map: this.assets.weaponTexture(weapon, classId), transparent: true, alphaTest: 0.08, depthTest: false, depthWrite: false, sizeAttenuation: false });
-    this.sprite = new THREE.Sprite(material);
-    this.sprite.name = 'FirstPersonWeapon';
-    this.sprite.center.set(0.5, 0.45);
-    this.sprite.scale.set(0.72, 0.72, 1);
-    this.camera.add(this.sprite);
+    this.sprite.material.color.set(unique ? '#ffe2a0' : '#ffffff');
     this.currentKey = key;
   }
 

@@ -5,17 +5,12 @@ import FPSViewport from './components/FPSViewport';
 import { FPSGameRuntime, type FPSGameSnapshot } from './engine/FPSGameRuntime';
 import { loadMazeGame } from './services/mazeSave';
 import { LABYRINTH_THEMES } from './data/mazeContent';
-import type { ClassType, EquipmentSlot, ItemInstance } from './types';
+import type { ClassType } from './types';
 import type { InputSystem } from './engine/InputSystem';
 import type { VFXMode } from './presentation/vfxDefinitions';
-import { compareDerivedStats } from './player/DerivedStats';
-import { equipItem } from './player/PlayerProgression';
-import { describeAffix, describeItem, consumableEffect } from './services/itemization';
-import { getItemBase } from './data/itemBases';
+import InventoryPanel from './components/InventoryPanel';
 
 const CLASS_IDS = Object.keys(CLASSES) as ClassType[];
-const EQUIPMENT_SLOTS: EquipmentSlot[] = ['weapon', 'armor', 'offhand', 'accessory'];
-
 const App: React.FC = () => {
   const runtimeRef = useRef<FPSGameRuntime | null>(null);
   const inputRef = useRef<InputSystem | null>(null);
@@ -32,7 +27,7 @@ const App: React.FC = () => {
     const result = loadMazeGame();
     setHasSave(Boolean(result.save));
     if (result.invalid) setSaveWarning('A saved expedition is invalid or unavailable. Existing save data has not been overwritten.');
-    else if (result.migrationRequired) setSaveWarning((result.migratedFromR1 ? 'An FPS-R1' : 'An FPS-R2A') + ' expedition is ready to migrate when you continue. Its original save is preserved until the new save is written.');
+    else if (result.migrationRequired) setSaveWarning((result.migratedFromR1 ? 'An FPS-R1' : result.migratedFromR4A ? 'An FPS-R4A' : 'An FPS-R2A') + ' expedition is ready to migrate when you continue. Its original save is preserved until the new save is written.');
     try {
       const savedSensitivity = Number(window.localStorage.getItem('aether_fps_mouse_sensitivity'));
       if (Number.isFinite(savedSensitivity) && savedSensitivity >= 0.001 && savedSensitivity <= 0.006) setMouseSensitivity(savedSensitivity);
@@ -40,6 +35,12 @@ const App: React.FC = () => {
       if (savedVfxMode === 'full' || savedVfxMode === 'reduced' || savedVfxMode === 'off') setVfxMode(savedVfxMode);
     } catch { /* Sensitivity storage is optional. */ }
   }, []);
+
+  useEffect(() => {
+    if (!snapshot || !(snapshot.inventoryOpen || snapshot.mapOpen || snapshot.paused || snapshot.roomOffer)) return;
+    if (document.pointerLockElement) document.exitPointerLock?.();
+    inputRef.current?.clearActiveInputs();
+  }, [snapshot?.inventoryOpen, snapshot?.mapOpen, snapshot?.paused, snapshot?.roomOffer]);
 
   const beginRun = (classId: ClassType) => {
     const runtime = new FPSGameRuntime(classId);
@@ -65,7 +66,9 @@ const App: React.FC = () => {
         setHasSave(true);
         setMigrationNotice(result.migratedFromR1
           ? 'FPS-R1 progress migrated into the Labyrinth. The original save remains preserved.'
-          : 'FPS-R2A item data migrated successfully. Your items and Guardian rewards were preserved.');
+          : result.migratedFromR4A
+            ? 'FPS-R4A item data moved to the expanded inventory safely. Your saved items were preserved.'
+            : 'FPS-R2A item data migrated successfully. Your items and Guardian rewards were preserved.');
       } else setMigrationNotice('Migration is ready, but the updated save could not be written. The original save is still intact.');
     } else setMigrationNotice('');
     runtimeRef.current = runtime;
@@ -212,12 +215,12 @@ const App: React.FC = () => {
           <div className="fps-resource-row fps-xp-row"><span>XP</span><div className="fps-bar"><i className="fps-xp-bar" style={{ width: xpPercent + '%' }} /></div><b>{player.stats.xp}/{xpNeeded}</b></div>
         </div>
         <div className="fps-floor-label">FLOOR {snapshot.world.level}<span>{biomeName(snapshot.world.biome)}</span></div>
-        <CompactMinimap snapshot={snapshot} onOpen={() => { runtime.mapOpen = true; runtime.inventoryOpen = false; refreshSnapshot(); }} />
+        <CompactMinimap snapshot={snapshot} onOpen={() => { runtime.mapOpen = true; runtime.inventoryOpen = false; runtime.cancelHeldActions(); refreshSnapshot(); }} />
         <div className="fps-top-actions">
-          <button onClick={() => { runtime.mapOpen = true; runtime.inventoryOpen = false; refreshSnapshot(); }}>Map <kbd>Tab</kbd></button>
-          <button onClick={() => { runtime.inventoryOpen = true; runtime.mapOpen = false; refreshSnapshot(); }}>Inventory <kbd>I</kbd></button>
+          <button onClick={() => { runtime.mapOpen = true; runtime.inventoryOpen = false; runtime.cancelHeldActions(); refreshSnapshot(); }}>Map <kbd>Tab</kbd></button>
+          <button onClick={() => { runtime.inventoryOpen = true; runtime.mapOpen = false; runtime.cancelHeldActions(); refreshSnapshot(); }}>Inventory <kbd>I</kbd></button>
           <button onClick={saveRun}>Save</button>
-          <button onClick={() => { runtime.paused = true; refreshSnapshot(); }}>Menu <kbd>Esc</kbd></button>
+          <button onClick={() => { runtime.paused = true; runtime.cancelHeldActions(); refreshSnapshot(); }}>Menu <kbd>Esc</kbd></button>
         </div>
       </header>
 
@@ -245,6 +248,7 @@ const App: React.FC = () => {
 
       <div className="fps-mobile-hints" aria-hidden="true"><span>MOVE</span><span>LOOK</span></div>
       <div className="fps-mobile-actions">
+        <button aria-label="Open inventory" onPointerDown={event => { event.preventDefault(); inputRef.current?.triggerInventory(); }}>BAG</button>
         <button aria-label="Interact" onPointerDown={event => { event.preventDefault(); inputRef.current?.triggerInteract(); }}>E</button>
         <button aria-label="Dodge" onPointerDown={event => { event.preventDefault(); inputRef.current?.triggerDodge(); }}>DODGE</button>
         <button className="fps-mobile-primary" aria-label="Primary Attack" onPointerDown={event => { event.preventDefault(); inputRef.current?.triggerPrimary(); }}>ATTACK</button>
@@ -257,14 +261,16 @@ const App: React.FC = () => {
         <div className="fps-overlay-actions"><button className="fps-button fps-button-primary" onClick={closeOverlay}>Resume</button><button className="fps-button" onClick={saveRun}>Save Run</button><button className="fps-button" onClick={returnToMenu}>Save & Main Menu</button></div>
       </Overlay>}
 
-      {snapshot.inventoryOpen && <Overlay title="Inventory & Equipment" onClose={closeOverlay}>
-        <div className="fps-inventory-layout">
-          <section><h3>Equipped</h3><div className="fps-equipment-list">{EQUIPMENT_SLOTS.map(slot => {
-            const item = player.equipment[slot];
-            return <div className="fps-equipment-slot" key={slot}><div><small>{slot.toUpperCase()}</small><strong>{item ? describeItem(item) : 'Empty'}</strong>{item && <span>Item Level {item.itemLevel} · {item.rarity} · {itemEffect(item)}</span>}{item && <small>Requires level {getItemBase(item.baseId)?.requiredLevel ?? 1}</small>}{item?.affixes.length ? <small>{item.affixes.map(affix => describeAffix(affix.id, affix.value)).join(' · ')}</small> : null}</div>{item && <button onClick={() => { runtime.unequip(slot); refreshSnapshot(); }}>Unequip</button>}</div>;
-          })}</div></section>
-          <section><h3>Bag</h3><div className="fps-inventory-items">{player.inventory.length === 0 && <p className="fps-muted">Your bag is empty.</p>}{player.inventory.map(item => <InventoryItem key={item.instanceId} player={player} item={item} onEquip={() => { runtime.equip(item.instanceId); refreshSnapshot(); }} onUse={() => { runtime.useItem(item.instanceId); refreshSnapshot(); }} />)}</div></section>
-        </div>
+      {snapshot.inventoryOpen && <Overlay title="Inventory & Equipment" onClose={closeOverlay} className="fps-overlay-panel-wide">
+        <InventoryPanel
+          player={player}
+          onEquip={instanceId => { runtime.equip(instanceId); refreshSnapshot(); }}
+          onUnequip={slot => { runtime.unequip(slot); refreshSnapshot(); }}
+          onUse={instanceId => { runtime.useItem(instanceId); refreshSnapshot(); }}
+          onMove={(instanceId, x, y) => { const moved = runtime.moveItem(instanceId, x, y); if (moved) refreshSnapshot(); return moved; }}
+          onSplit={instanceId => { const split = runtime.splitItem(instanceId); if (split) refreshSnapshot(); return split; }}
+          onDrop={instanceId => { const dropped = runtime.dropItem(instanceId); if (dropped) refreshSnapshot(); return dropped; }}
+        />
       </Overlay>}
 
       {snapshot.mapOpen && <Overlay title={'Labyrinth Map · Floor ' + snapshot.world.level} onClose={closeOverlay}>
@@ -285,33 +291,9 @@ const App: React.FC = () => {
   </main>;
 };
 
-const Overlay: React.FC<{ title: string; onClose: () => void; children: React.ReactNode }> = ({ title, onClose, children }) => <div className="fps-overlay-backdrop" role="dialog" aria-modal="true" aria-label={title}>
-  <section className="fps-overlay-panel"><header><div className="fps-kicker">MAZE OF THE MINOTAUR</div><h2>{title}</h2><button aria-label="Close" onClick={onClose}>×</button></header><div className="fps-overlay-content">{children}</div></section>
+const Overlay: React.FC<{ title: string; onClose: () => void; children: React.ReactNode; className?: string }> = ({ title, onClose, children, className = '' }) => <div className="fps-overlay-backdrop" role="dialog" aria-modal="true" aria-label={title}>
+  <section className={'fps-overlay-panel ' + className}><header><div className="fps-kicker">MAZE OF THE MINOTAUR</div><h2>{title}</h2><button aria-label="Close" onClick={onClose}>×</button></header><div className="fps-overlay-content">{children}</div></section>
 </div>;
-
-const InventoryItem: React.FC<{ item: ItemInstance; player: FPSGameSnapshot['player']; onEquip: () => void; onUse: () => void }> = ({ item, player, onEquip, onUse }) => {
-  const equipmentType = item.type === 'WEAPON' || item.type === 'ARMOR' || item.type === 'SHIELD' || item.type === 'ACCESSORY';
-  const projected = equipmentType ? equipItem(player, item.instanceId) : player;
-  const canEquip = equipmentType && projected !== player;
-  const changes = canEquip ? compareDerivedStats(player, projected).filter(change => Math.abs(change.delta) >= 0.01) : [];
-  const requiredLevel = getItemBase(item.baseId)?.requiredLevel ?? 1;
-  return <article className={'fps-item-card fps-rarity-' + item.rarity.toLowerCase()}>
-    <div className="fps-item-icon">{item.icon ?? '◇'}</div>
-    <div className="fps-item-info">
-      <strong>{describeItem(item)}</strong>
-      <span>{item.type} · {item.rarity} · Item Level {item.itemLevel}</span>
-      <small>Requires level {requiredLevel}</small>
-      <p>{item.description}</p>
-      <small>{itemEffect(item)}</small>
-      {item.affixes.length > 0 && <ul className="fps-item-affixes">{item.affixes.map((affix, index) => <li key={affix.id + ':' + index}>{describeAffix(affix.id, affix.value)}</li>)}</ul>}
-      {equipmentType && changes.length > 0 && <div className="fps-item-comparison" aria-label="Stat changes after equipping">
-        <b>After equip</b>{changes.map(change => <span key={change.id} className={change.delta > 0 ? 'positive' : 'negative'}>{change.label} {formatComparisonDelta(change.id, change.delta)}</span>)}
-      </div>}
-      {equipmentType && requiredLevel > player.stats.level && <small className="fps-item-requirement">Level {requiredLevel} required</small>}
-    </div>
-    <div className="fps-item-actions">{item.type === 'POTION' ? <button onClick={onUse} disabled={!consumableEffect(item)}>Use</button> : equipmentType ? <button onClick={onEquip} disabled={!canEquip}>{canEquip ? 'Equip' : requiredLevel > player.stats.level ? 'Locked' : 'Unavailable'}</button> : null}</div>
-  </article>;
-};
 
 const DungeonMap: React.FC<{ snapshot: FPSGameSnapshot }> = ({ snapshot }) => <div className="fps-map-wrap"><div className="fps-map-grid" style={{ gridTemplateColumns: 'repeat(' + (snapshot.world.map[0]?.length ?? 12) + ', minmax(0,1fr))' }}>
   {snapshot.world.map.map((row, z) => row.map((tile, x) => {
@@ -333,24 +315,6 @@ const CompactMinimap: React.FC<{ snapshot: FPSGameSnapshot; onOpen: () => void }
     }))}
   </i>
 </button>;
-
-function itemEffect(item: ItemInstance): string {
-  if (item.type === 'WEAPON') return 'Weapon Power +' + item.value;
-  if (item.type === 'ARMOR' || item.type === 'SHIELD') return 'Armor +' + item.value;
-  if (item.type === 'POTION') {
-    const effect = consumableEffect(item);
-    return effect ? 'Restores ' + item.value + (effect === 'MANA' ? ' mana' : ' health') : 'No consumable effect';
-  }
-  if (item.type === 'ACCESSORY') return (item.statBonus ?? 'Stat') + ' +' + item.value;
-  return item.description;
-}
-
-function formatComparisonDelta(id: string, delta: number): string {
-  const formatted = Math.abs(delta) < 0.1 ? Math.abs(delta).toFixed(1) : Math.abs(delta).toFixed(0);
-  const normalizedId = id.toLowerCase();
-  const percent = normalizedId.includes('multiplier') || normalizedId.includes('chance') || id === 'cooldownRecovery' || id === 'manaCostReduction';
-  return (delta > 0 ? '+' : '−') + formatted + (percent ? '%' : '');
-}
 
 function classMark(classId: ClassType): string {
   const marks: Record<ClassType, string> = { BARBARIAN: 'Λ', PALADIN: '◉', SORCERER: '☼', ROGUE: '⌁', RANGER: '➶', CLERIC: '⚕', MONK: '⊙', NECROMANCER: '☾' };

@@ -22,11 +22,11 @@ Implemented on `codex/maze-of-the-minotaur-fps-r3b`; awaiting review. Adds autho
 
 ## FPS-R4A — ARPG itemization core and affix engine
 
-Implemented and validated on `codex/maze-of-the-minotaur-fps-r4a`; pull request is ready for review. Adds stable item-base and affix registries, seeded rarity rolls, normal/elite/Guardian reward tiers, one derived-stat pipeline, equipment comparisons, and version-3 save migration. The four existing equipment slots remain compatible, with enforced two-handed/offhand rules. See [itemization formulas, audit, and migration](ARPG_ITEMIZATION.md).
+Merged into `main` via PR #18. Adds stable item-base and affix registries, seeded rarity rolls, normal/elite/Guardian reward tiers, one derived-stat pipeline, equipment comparisons, and version-3 save migration. The four existing equipment slots remain compatible, with enforced two-handed/offhand rules. See [itemization formulas, audit, and migration](ARPG_ITEMIZATION.md).
 
 ## FPS-R4B — Inventory, uniques, and character stats
 
-Planned. Build the grid inventory and unique-item layer on the R4A item contracts, with the requested character-stats view and mouse controls. Preserve the solo real-time loop and stable content IDs.
+Implemented and validated on `codex/maze-of-the-minotaur-fps-r4b`. Adds the 10×5 bag with safe overflow, stack management, mouse/touch actions, a character-stats screen, eight capped mythic uniques, item-specific rarity-marked loot, and version-4 save migration from R4A. Guardian reward identities and the R4A derived-stat pipeline are preserved. Browser/WebGL smoke remains unverified because this environment has no Chromium binary. See [inventory, uniques, and controls](INVENTORY_AND_UNIQUES.md).
 
 ## Later
 

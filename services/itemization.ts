@@ -2,6 +2,8 @@ import { ITEM_BASES, ITEM_BASE_BY_ID, LEGACY_ITEM_BASE_IDS, getItemBase } from '
 import { getItemAffix } from '../data/itemAffixes';
 import { ITEM_AFFIXES } from '../data/itemAffixes';
 import { itemTags } from '../player/DerivedStats';
+import { createUniqueInstance } from './uniqueItems';
+import { getUniqueItem, isUniqueEffectId, UNIQUE_ITEMS } from '../data/uniqueItems';
 import type { Item, ItemBaseDefinition, ItemInstance, ItemRarity, WorldEnemy } from '../types';
 
 export type RandomSource = () => number;
@@ -113,6 +115,13 @@ export function createEnemyDrop(enemy: WorldEnemy, floorLevel: number, random: R
 
   const dropChance = tier === 'ELITE' ? 0.72 : 0.27;
   if (safeRandom(random) >= dropChance) return null;
+  if (tier === 'ELITE' && level >= 2) {
+    const uniqueChance = Math.min(0.04, 0.01 + (level - 2) * 0.01);
+    if (safeRandom(random) < uniqueChance) {
+      const unique = UNIQUE_ITEMS[randomIndex(random, UNIQUE_ITEMS.length)];
+      return createUniqueInstance(unique.effectId, 'drop_' + enemy.id, level);
+    }
+  }
   const rarityRoll = safeRandom(random);
   const floorQuality = Math.min(0.16, Math.max(0, level - 1) * 0.025);
   const rarity: ItemRarity = tier === 'ELITE'
@@ -189,7 +198,13 @@ export function validateItemInstance(value: unknown, requireBaseId = true): Item
       warnings.push('Out-of-range affix ' + affix.id + ' is preserved but inactive.');
     }
   }
-  if (value.uniqueEffectId !== undefined && typeof value.uniqueEffectId !== 'string') errors.push('Invalid unique effect ID.');
+  if (value.uniqueEffectId !== undefined) {
+    if (typeof value.uniqueEffectId !== 'string' || !isUniqueEffectId(value.uniqueEffectId)) errors.push('Unknown unique effect ID.');
+    else {
+      const unique = getUniqueItem(value.uniqueEffectId);
+      if (value.rarity !== 'UNIQUE' || value.baseId !== unique?.baseId) errors.push('Unique effect does not match its unique base and rarity.');
+    }
+  } else if (value.rarity === 'UNIQUE') errors.push('Unique items require a registered effect ID.');
   if (value.consumableEffect !== undefined && value.consumableEffect !== 'HEALTH' && value.consumableEffect !== 'MANA') errors.push('Unknown consumable effect.');
   return { valid: errors.length === 0, errors, warnings: [...new Set(warnings)] };
 }

@@ -9,18 +9,20 @@ import { CLASSES } from '../constants';
 import { normalizeLegacyItem } from './itemization';
 import { refreshPlayerDerivedCaps } from '../player/PlayerProgression';
 import { getItemBase } from '../data/itemBases';
+import { consumableStackKey, normalizeInventoryGrid, normalizeInventoryStacks, syncInventoryGrid, validateInventoryGrid, MAX_CONSUMABLE_STACK } from './inventoryGrid';
+import { isUniqueEffectId } from '../data/uniqueItems';
 
 export const MAZE_SAVE_KEY = 'maze_of_the_minotaur_fps_r2a_save_v2';
-export const MAZE_SAVE_VERSION = 3;
+export const MAZE_SAVE_VERSION = 4;
 export interface MazeRunSave {
-  version: 3;
+  version: 4;
   savedAt: number;
   player: PlayerCharacter;
   world: DungeonWorldState;
   enemies: WorldEnemy[];
   loot: WorldLootDrop[];
   combat?: FPSRunSave['combat'];
-  migratedFrom?: 'FPS_R1' | 'FPS_R2A';
+  migratedFrom?: 'FPS_R1' | 'FPS_R2A' | 'FPS_R4A';
 }
 export type MazeRunState = Pick<MazeRunSave, 'player' | 'world' | 'enemies' | 'loot' | 'combat'>;
 
@@ -28,39 +30,52 @@ export function saveMazeGame(save: MazeRunState, storage?: KeyValueStorage): boo
   try {
     const target = storage ?? defaultStorage();
     if (!target) return false;
-    const envelope: MazeRunSave = { ...save, version: MAZE_SAVE_VERSION, savedAt: Date.now() };
+    const inventory = normalizeInventoryStacks(save.player.inventory);
+    const player: PlayerCharacter = {
+      ...save.player,
+      inventory,
+      inventoryGrid: normalizeInventoryGrid(inventory, save.player.inventoryGrid).placements,
+      uniqueEffectStates: save.player.uniqueEffectStates ?? [],
+    };
+    const envelope: MazeRunSave = { ...save, player, version: MAZE_SAVE_VERSION, savedAt: Date.now() };
     if (!isMazeRunSave(envelope)) return false;
     target.setItem(MAZE_SAVE_KEY, JSON.stringify(envelope));
     return true;
   } catch { return false; }
 }
 
-export function loadMazeGame(storage?: KeyValueStorage): { save: MazeRunSave | null; invalid: boolean; migratedFromR1: boolean; migratedFromR2A: boolean; migrationRequired: boolean } {
+export function loadMazeGame(storage?: KeyValueStorage): { save: MazeRunSave | null; invalid: boolean; migratedFromR1: boolean; migratedFromR2A: boolean; migratedFromR4A: boolean; migrationRequired: boolean } {
   const target = storage ?? defaultStorage();
-  if (!target) return { save: null, invalid: true, migratedFromR1: false, migratedFromR2A: false, migrationRequired: false };
+  if (!target) return { save: null, invalid: true, migratedFromR1: false, migratedFromR2A: false, migratedFromR4A: false, migrationRequired: false };
   try {
     const raw = target.getItem(MAZE_SAVE_KEY);
     if (raw) {
       const value: unknown = JSON.parse(raw);
-      if (isMazeRunSave(value)) return { save: value, invalid: false, migratedFromR1: false, migratedFromR2A: false, migrationRequired: false };
+      if (isMazeRunSave(value)) return { save: value, invalid: false, migratedFromR1: false, migratedFromR2A: false, migratedFromR4A: false, migrationRequired: false };
+      if (isLegacyMazeRunSaveV3(value)) {
+        const migrated = migrateR4ASave(value);
+        return isMazeRunSave(migrated)
+          ? { save: migrated, invalid: false, migratedFromR1: false, migratedFromR2A: false, migratedFromR4A: true, migrationRequired: true }
+          : { save: null, invalid: true, migratedFromR1: false, migratedFromR2A: false, migratedFromR4A: false, migrationRequired: false };
+      }
       if (isLegacyMazeRunSaveV2(value)) {
         const migrated = migrateR2ASave(value);
         return isMazeRunSave(migrated)
-          ? { save: migrated, invalid: false, migratedFromR1: false, migratedFromR2A: true, migrationRequired: true }
-          : { save: null, invalid: true, migratedFromR1: false, migratedFromR2A: false, migrationRequired: false };
+          ? { save: migrated, invalid: false, migratedFromR1: false, migratedFromR2A: true, migratedFromR4A: false, migrationRequired: true }
+          : { save: null, invalid: true, migratedFromR1: false, migratedFromR2A: false, migratedFromR4A: false, migrationRequired: false };
       }
-      return { save: null, invalid: true, migratedFromR1: false, migratedFromR2A: false, migrationRequired: false };
+      return { save: null, invalid: true, migratedFromR1: false, migratedFromR2A: false, migratedFromR4A: false, migrationRequired: false };
     }
-  } catch { return { save: null, invalid: true, migratedFromR1: false, migratedFromR2A: false, migrationRequired: false }; }
+  } catch { return { save: null, invalid: true, migratedFromR1: false, migratedFromR2A: false, migratedFromR4A: false, migrationRequired: false }; }
   const legacy = loadFPSGame(target);
-  if (legacy.invalid) return { save: null, invalid: true, migratedFromR1: false, migratedFromR2A: false, migrationRequired: false };
-  if (!legacy.save) return { save: null, invalid: false, migratedFromR1: false, migratedFromR2A: false, migrationRequired: false };
+  if (legacy.invalid) return { save: null, invalid: true, migratedFromR1: false, migratedFromR2A: false, migratedFromR4A: false, migrationRequired: false };
+  if (!legacy.save) return { save: null, invalid: false, migratedFromR1: false, migratedFromR2A: false, migratedFromR4A: false, migrationRequired: false };
   try {
     const migrated = migrateR1Save(legacy.save);
     return isMazeRunSave(migrated)
-      ? { save: migrated, invalid: false, migratedFromR1: true, migratedFromR2A: false, migrationRequired: true }
-      : { save: null, invalid: true, migratedFromR1: false, migratedFromR2A: false, migrationRequired: false };
-  } catch { return { save: null, invalid: true, migratedFromR1: false, migratedFromR2A: false, migrationRequired: false }; }
+      ? { save: migrated, invalid: false, migratedFromR1: true, migratedFromR2A: false, migratedFromR4A: false, migrationRequired: true }
+      : { save: null, invalid: true, migratedFromR1: false, migratedFromR2A: false, migratedFromR4A: false, migrationRequired: false };
+  } catch { return { save: null, invalid: true, migratedFromR1: false, migratedFromR2A: false, migratedFromR4A: false, migrationRequired: false }; }
 }
 
 export function isMazeRunSave(value: unknown): value is MazeRunSave {
@@ -79,7 +94,19 @@ export function isMazeRunSave(value: unknown): value is MazeRunSave {
   }
   const allItems = [...value.player.inventory, ...Object.values(value.player.equipment).filter(Boolean), ...value.loot.map((drop: WorldLootDrop) => drop.item)] as ItemInstance[];
   if (new Set(allItems.map(item => item.instanceId)).size !== allItems.length) return false;
+  if (!hasValidStackQuantities(value.player.inventory, Object.values(value.player.equipment).filter(Boolean) as ItemInstance[])) return false;
+  if (!validateInventoryGrid(value.player.inventory, value.player.inventoryGrid)) return false;
+  if (!isUniqueEffectStateList(value.player.uniqueEffectStates)) return false;
   return true;
+}
+
+interface LegacyMazeRunSaveV3 extends Omit<MazeRunSave, 'version' | 'migratedFrom'> {
+  version: 3;
+  migratedFrom?: 'FPS_R1' | 'FPS_R2A';
+}
+
+function isLegacyMazeRunSaveV3(value: unknown): value is LegacyMazeRunSaveV3 {
+  return isLegacyMazeSaveCore(value, 3, true);
 }
 
 interface LegacyMazeRunSaveV2 extends Omit<MazeRunSave, 'version' | 'migratedFrom'> {
@@ -88,8 +115,12 @@ interface LegacyMazeRunSaveV2 extends Omit<MazeRunSave, 'version' | 'migratedFro
 }
 
 function isLegacyMazeRunSaveV2(value: unknown): value is LegacyMazeRunSaveV2 {
-  if (!isRecord(value) || value.version !== 2 || !Number.isFinite(value.savedAt)) return false;
-  if (!isFPSRunSave({ ...value, version: 1 })) return false;
+  return isLegacyMazeSaveCore(value, 2, false);
+}
+
+function isLegacyMazeSaveCore(value: unknown, version: 2 | 3, isR4A: boolean): value is LegacyMazeRunSaveV2 | LegacyMazeRunSaveV3 {
+  if (!isRecord(value) || value.version !== version || !Number.isFinite(value.savedAt)) return false;
+  if (!isFPSRunSave({ ...value, version: 1 }, isR4A, isR4A)) return false;
   const floor = value.world.floor as FloorState;
   const guardian = getFloorGuardianDefinition(value.world.level);
   const guardians = value.enemies.filter((enemy: WorldEnemy) => enemy.definitionId === guardian.id);
@@ -99,7 +130,13 @@ function isLegacyMazeRunSaveV2(value: unknown): value is LegacyMazeRunSaveV2 {
   return true;
 }
 
-/** In-memory conversion only. The v2 source key is replaced only after a valid v3 write. */
+/** R4A migration preserves every stored instance and deterministically packs its old list. */
+export function migrateR4ASave(save: LegacyMazeRunSaveV3): MazeRunSave {
+  const player = normalizePlayerItems(save.player);
+  return { ...save, version: 4, savedAt: Date.now(), migratedFrom: 'FPS_R4A', player };
+}
+
+/** In-memory conversion only. The v2 source key is replaced only after a valid v4 write. */
 export function migrateR2ASave(save: LegacyMazeRunSaveV2): MazeRunSave {
   const normalizedPlayer = normalizePlayerItems(save.player);
   const player = refreshPlayerDerivedCaps(normalizedPlayer);
@@ -108,7 +145,7 @@ export function migrateR2ASave(save: LegacyMazeRunSaveV2): MazeRunSave {
     lootTier: enemy.lootTier ?? (enemy.isBoss ? 'GUARDIAN' : save.world.floor.rooms.find(room => room.id === enemy.roomId)?.type === 'ELITE' ? 'ELITE' : 'NORMAL'),
   }));
   return {
-    version: 3,
+    version: 4,
     savedAt: Date.now(),
     migratedFrom: 'FPS_R2A',
     player,
@@ -238,7 +275,7 @@ export function migrateR1Save(save: FPSRunSave): MazeRunSave {
   if (floor.guardianState === 'DESCENT_UNLOCKED') bossRoom.resolved = true;
 
   const migrated: MazeRunSave = {
-    version: 3, savedAt: Date.now(), migratedFrom: 'FPS_R1',
+    version: 4, savedAt: Date.now(), migratedFrom: 'FPS_R1',
     player, world, enemies,
     loot: save.loot.map(drop => ({ ...drop, position: { ...drop.position, x: drop.position.x + offsetX, z: drop.position.z + offsetZ }, item: migrateItem(drop.item) })),
     combat: save.combat,
@@ -262,7 +299,8 @@ function mapEquipment(equipment: PlayerCharacter['equipment']): PlayerCharacter[
 }
 function normalizePlayerItems(source: PlayerCharacter): PlayerCharacter {
   const equipment = { ...mapEquipment(source.equipment) };
-  const inventory = source.inventory.map(item => normalizeLegacyItem(item));
+  const equippedIds = Object.values(equipment).filter((item): item is ItemInstance => Boolean(item)).map(item => item.instanceId);
+  const inventory = normalizeInventoryStacks(source.inventory.map(item => normalizeLegacyItem(item)), equippedIds);
   const usedIds = new Set([
     ...inventory.map(item => item.instanceId),
     ...Object.values(equipment).filter((item): item is ItemInstance => Boolean(item)).map(item => item.instanceId),
@@ -276,7 +314,9 @@ function normalizePlayerItems(source: PlayerCharacter): PlayerCharacter {
       let suffix = 2;
       while (usedIds.has(splitId)) splitId = item.instanceId + '_split_' + (item.quantity - 1) + '_' + suffix++;
       usedIds.add(splitId);
-      inventory.push({ ...item, instanceId: splitId, quantity: item.quantity - 1 });
+      const extraItems = normalizeInventoryStacks([{ ...item, instanceId: splitId, quantity: item.quantity - 1 }], [...usedIds]);
+      inventory.push(...extraItems);
+      for (const extra of extraItems) usedIds.add(extra.instanceId);
     }
   }
   if (isTwoHanded(equipment.weapon) && equipment.offhand) {
@@ -288,7 +328,22 @@ function normalizePlayerItems(source: PlayerCharacter): PlayerCharacter {
   const baseMaxMp = source.stats.baseMaxMp ?? source.stats.maxMp;
   const baseArmor = source.stats.baseArmor ?? Math.max(0, source.stats.armor - legacyEquippedArmor);
   const normalized = { ...source, equipment, inventory, stats: { ...source.stats, baseMaxHp, baseMaxMp, baseArmor } };
-  return refreshPlayerDerivedCaps(normalized);
+  return refreshPlayerDerivedCaps({ ...normalized, inventoryGrid: syncInventoryGrid(inventory), uniqueEffectStates: source.uniqueEffectStates ?? [] });
+}
+
+function isUniqueEffectStateList(value: unknown): boolean {
+  return Array.isArray(value) && value.length <= 8 && value.every(state => isRecord(state)
+    && typeof state.effectId === 'string' && isUniqueEffectId(state.effectId)
+    && Number.isFinite(state.cooldownRemaining) && state.cooldownRemaining >= 0 && state.cooldownRemaining <= 12
+    && Number.isFinite(state.durationRemaining) && state.durationRemaining >= 0 && state.durationRemaining <= 8
+    && Number.isInteger(state.charges) && state.charges >= 0 && state.charges <= 1
+    && (state.charges === 0 || state.durationRemaining > 0))
+    && new Set(value.map(state => (state as Record<string, unknown>).effectId)).size === value.length;
+}
+function hasValidStackQuantities(inventory: ItemInstance[], equipment: ItemInstance[]): boolean {
+  return inventory.every(item => Number.isInteger(item.quantity) && item.quantity >= 1
+      && (consumableStackKey(item) ? item.quantity <= MAX_CONSUMABLE_STACK : item.quantity === 1))
+    && equipment.every(item => item.quantity === 1);
 }
 function isTwoHanded(item: ItemInstance | null): boolean {
   return Boolean(item && (getItemBase(item.baseId)?.twoHanded || item.visualType === 'bow' || item.visualType === 'axe' || item.visualType === 'staff'));
