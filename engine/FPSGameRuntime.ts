@@ -3,10 +3,11 @@ import type { InputFrame } from './InputSystem';
 import { createDungeonWorld, createFloorEnemies, createRoomOffer, findLookTarget, markExplored, randomSeed, type RoomOffer } from '../world/DungeonWorld';
 import { raycastGrid, hasLineOfSight, moveWithWallSlide } from '../world/CollisionWorld';
 import { updateEnemyBrains } from '../enemies/EnemyBrain';
-import { updateProjectiles, type ProjectileImpact } from '../combat/ProjectileSystem';
+import { isVisibleProjectileImpact, updateProjectiles, type ProjectileImpact } from '../combat/ProjectileSystem';
 import { calculateIncomingDamage, calculatePlayerDamage, projectileDirection, resolveAreaAttack, resolveMeleeAttack } from '../combat/DamageSystem';
 import { CLASS_ABILITY_LOADOUT, getAbility, getSkillAbilityId } from '../combat/AbilityRegistry';
 import { getEnemyAttackDefinition } from '../data/enemyAttacks';
+import { getEnemyAttackTelegraphDescriptor, getGuardianTelegraphEffect } from '../data/enemyAttackTelegraph';
 import { getFloorGuardianDefinition } from '../data/mazeContent';
 import { createPlayerControllerState, updatePlayerController, type PlayerControllerState } from '../player/PlayerController';
 import { PlayerCombat, type ActivePlayerAction } from '../player/PlayerCombat';
@@ -18,6 +19,7 @@ import type { KeyValueStorage } from '../services/fpsSave';
 import type { DungeonWorldState } from '../world/DungeonWorld';
 import type { VisualEvent } from './SceneRenderer';
 import { applyRealtimeStatus, hasRealtimeStatus, tickRealtimeStatuses } from '../combat/StatusSystem';
+import { getEnemyVfxSurface, resolveSurfaceEffect, type PixelEffectId } from '../presentation/vfxDefinitions';
 
 export interface FPSGameSnapshot {
   player: PlayerCharacter;
@@ -56,6 +58,7 @@ export interface FPSRenderState {
   action: ActivePlayerAction | null;
   isMoving: boolean;
   guarding: boolean;
+  paused: boolean;
   cameraBob: number;
   events: VisualEvent[];
 }
@@ -138,7 +141,21 @@ export class FPSGameRuntime {
     this.enemies = enemyUpdate.enemies;
     for (const enemyId of enemyUpdate.telegraphs) {
       const enemy = this.enemies.find(candidate => candidate.id === enemyId);
-      if (enemy?.isBoss) this.visualEvents.push({ kind: 'telegraph', position: { ...enemy.position, y: 0.08 }, color: '#e87559', scale: 0.65, sound: 'bossTelegraph' });
+      if (!enemy?.isBoss) continue;
+      const attack = getEnemyAttackDefinition(enemy.attackSetId, enemy.activeAttackId, enemy.phase ?? 1);
+      if (!attack) continue;
+      const descriptor = getEnemyAttackTelegraphDescriptor(attack);
+      const center = descriptor.center === 'target' ? enemy.telegraphPosition ?? enemy.position : enemy.position;
+      const effectId = getGuardianTelegraphEffect(enemy.attackSetId, attack);
+      const markerScale = effectId === 'warden_delayed_sigil' ? descriptor.radius : effectId === 'guardian_sigil' ? 0.48 : 0.4;
+      const facingYaw = enemy.facingYaw ?? 0;
+      this.visualEvents.push({
+        kind: 'telegraph', effectId,
+        position: { x: center.x, y: 0.045, z: center.z },
+        direction: { x: Math.cos(facingYaw), z: Math.sin(facingYaw) },
+        color: attack.telegraphColor, scale: markerScale,
+        priority: 'guardian_telegraph', sourceId: attack.id, ownerId: enemy.id, sound: 'bossTelegraph',
+      });
     }
     for (const enemyId of enemyUpdate.attacks) this.resolveEnemyAttack(enemyId);
 
@@ -219,12 +236,18 @@ export class FPSGameRuntime {
       const result = resolveMeleeAttack(this.world.map, this.player, this.enemies, ability, damage);
       this.enemies = result.enemies;
       this.applyPlayerOnHitEffects(result.hitEnemyIds, ability);
-      const effectId = ability.meleeStyle === 'THRUST' ? 'spear_thrust' : ability.meleeStyle === 'BASH' ? 'shield_impact' : 'bronze_slash';
+      const effectId = ability.meleeStyle === 'THRUST' ? 'spear_thrust' : ability.meleeStyle === 'BASH' ? 'aspis_impact' : 'bronze_slash';
       const reach = Math.min(1, ability.range * 0.45);
-      this.visualEvents.push({ kind: 'melee', effectId, position: { x: this.player.position.x + Math.cos(this.player.rotation.yaw) * reach, y: 0.9, z: this.player.position.z + Math.sin(this.player.rotation.yaw) * reach }, direction: { x: Math.cos(this.player.rotation.yaw), z: Math.sin(this.player.rotation.yaw) }, color: ability.projectileColor ?? '#ffd17b', scale: ability.meleeStyle === 'THRUST' ? 0.85 : 1.2 });
+      this.visualEvents.push({ kind: 'melee', effectId, position: { x: this.player.position.x + Math.cos(this.player.rotation.yaw) * reach, y: 0.9, z: this.player.position.z + Math.sin(this.player.rotation.yaw) * reach }, direction: { x: Math.cos(this.player.rotation.yaw), z: Math.sin(this.player.rotation.yaw) }, color: ability.projectileColor ?? '#ffd17b', scale: ability.meleeStyle === 'THRUST' ? 0.85 : 1.2, sourceId: ability.id });
       for (const id of result.hitEnemyIds) {
         const hit = this.enemies.find(enemy => enemy.id === id);
-        if (hit) this.visualEvents.push({ kind: 'enemyHit', effectId: 'blood_hit', position: { x: hit.position.x, y: 0.65, z: hit.position.z }, color: '#e8b36b', scale: 0.7, sound: 'enemyHit' });
+        if (!hit) continue;
+        const surface = getEnemyVfxSurface(hit.visualId);
+        const statusEffect = statusVfxEffect(ability.onHitStatus?.statusId);
+        const effect = ability.meleeStyle === 'THRUST' && surface === 'metal' ? 'dory_thrust'
+          : statusEffect ?? (surface === 'organic' ? 'blood_hit' : resolveSurfaceEffect(surface));
+        const sound = statusEffect === 'arachne_venom' ? 'poison' : surface === 'metal' ? 'bronzeImpact' : surface === 'stone' ? 'stoneImpact' : 'enemyHit';
+        this.visualEvents.push({ kind: 'enemyHit', effectId: effect, position: { x: hit.position.x, y: 0.65, z: hit.position.z }, scale: 0.7, sound, surface, sourceId: ability.id, ownerId: hit.id, priority: hit.isBoss ? 'critical_hit' : 'ordinary_hit' });
       }
       if (result.hitEnemyIds.length) this.addToast(ability.name + ' hit ' + result.hitEnemyIds.length + (result.hitEnemyIds.length === 1 ? ' foe.' : ' foes.'));
       if (this.player.classId === 'BARBARIAN' && hasRealtimeStatus(this.player.statusEffects, 'COUNTER')) {
@@ -254,7 +277,7 @@ export class FPSGameRuntime {
         faction: 'PLAYER',
         statusEffect: ability.onHitStatus,
       });
-      this.visualEvents.push({ kind: 'impact', effectId: ability.manaCost > 0 ? 'chthonic_bolt' : 'oracle_spark', position: { x: originX, y: 1.25, z: originZ }, direction: { x: direction.x, z: direction.z }, color: ability.projectileColor, scale: 0.55 });
+      this.visualEvents.push({ kind: 'cast', effectId: abilityVfxEffect(ability.id, ability.onHitStatus?.statusId) ?? (ability.manaCost > 0 ? 'chthonic_bolt' : 'oracle_spark'), position: { x: originX, y: 1.25, z: originZ }, direction: { x: direction.x, z: direction.z }, color: ability.projectileColor, scale: 0.55, sourceId: ability.id });
       return;
     }
     const selfCentered = ability.targeting === 'SELF';
@@ -270,8 +293,8 @@ export class FPSGameRuntime {
     const result = resolveAreaAttack(this.world.map, centerX, centerZ, radius, this.enemies, damage);
     this.enemies = result.enemies;
     this.applyPlayerOnHitEffects(result.hitEnemyIds, ability);
-    const effectId = ability.onHitStatus?.statusId === 'BURN' ? 'fire_burst' : ability.targeting === 'SELF' ? 'stone_shockwave' : 'bronze_impact';
-    this.visualEvents.push({ kind: 'area', effectId, position: { x: centerX, y: 0.12, z: centerZ }, color: ability.projectileColor ?? '#ffb65b', scale: radius, sound: ability.onHitStatus?.statusId === 'BURN' ? 'cast' : undefined });
+    const effectId = statusVfxEffect(ability.onHitStatus?.statusId) ?? (ability.targeting === 'SELF' ? 'stone_shockwave' : 'bronze_impact');
+    this.visualEvents.push({ kind: 'area', effectId, position: { x: centerX, y: 0.12, z: centerZ }, color: ability.projectileColor ?? '#ffb65b', scale: radius, sound: ability.onHitStatus?.statusId === 'BURN' ? 'cast' : undefined, sourceId: ability.id });
     this.addToast(ability.name + (result.hitEnemyIds.length ? ' hit ' + result.hitEnemyIds.length + '.' : '.'));
   }
 
@@ -290,32 +313,42 @@ export class FPSGameRuntime {
 
   private processProjectileImpacts(impacts: ProjectileImpact[]): void {
     for (const impact of impacts) {
-      const effectId = impact.statusEffect?.statusId === 'POISON' ? 'poison_splash'
-        : impact.statusEffect?.statusId === 'BURN' ? 'fire_burst'
-        : impact.statusEffect?.statusId === 'SLOW' ? 'web_impact'
-        : impact.statusEffect?.statusId === 'WEAKNESS' ? 'chthonic_bolt'
-        : impact.enemyId ? 'blood_hit' : 'bronze_impact';
+      if (!isVisibleProjectileImpact(impact)) continue;
       const owner = impact.playerHit ? this.enemies.find(enemy => enemy.id === impact.ownerEnemyId) : undefined;
       const dodged = Boolean(impact.playerHit && this.controllerState.invulnerabilitySeconds > 0);
       const blocked = Boolean(impact.playerHit && owner && this.controllerState.guarding && this.isFacingAttacker(owner));
-      const sound = impact.playerHit
-        ? !owner || dodged || blocked ? undefined : impact.statusEffect?.statusId === 'POISON' ? 'poison' : 'playerHit'
-        : impact.enemyId ? impact.statusEffect?.statusId === 'POISON' ? 'poison' : 'enemyHit' : undefined;
-      this.visualEvents.push({ kind: 'impact', effectId, position: impact.position, color: impact.color, scale: impact.enemyId || impact.playerHit ? 0.95 : 0.6, sound });
       if (impact.playerHit) {
-        if (this.controllerState.invulnerabilitySeconds > 0) { this.addToast('Attack dodged.'); this.primeMyrmidonCounter(); continue; }
+        if (dodged) { this.addToast('Attack dodged.'); this.primeMyrmidonCounter(); continue; }
+        if (blocked) {
+          this.visualEvents.push({ kind: 'impact', effectId: 'shield_impact', position: { x: this.player.position.x, y: 0.82, z: this.player.position.z }, color: '#e2c074', scale: 0.9, sound: 'shield', surface: 'metal', sourceId: impact.abilityId, ownerId: owner?.id, priority: 'critical_hit' });
+        } else {
+          const effect = abilityVfxEffect(impact.abilityId, impact.statusEffect?.statusId) ?? 'blood_hit';
+          const sound = impact.statusEffect?.statusId === 'POISON' ? 'poison' : 'playerHit';
+          this.visualEvents.push({ kind: 'enemyHit', effectId: effect, position: impact.position, color: impact.color, scale: 0.85, sound, surface: 'organic', sourceId: impact.abilityId, ownerId: this.player.id, priority: 'critical_hit' });
+        }
         if (!owner) continue;
         const damage = calculateIncomingDamage(owner, this.player, blocked);
         this.player = { ...this.player, stats: { ...this.player.stats, hp: Math.max(0, this.player.stats.hp - damage) } };
         if (impact.statusEffect && !blocked) this.player = { ...this.player, statusEffects: applyRealtimeStatus(this.player.statusEffects, impact.statusEffect, impact.abilityId) };
         if (impact.healOwnerRatio) this.enemies = this.enemies.map(enemy => enemy.id === owner.id ? { ...enemy, health: Math.min(enemy.maxHealth, enemy.health + Math.ceil(damage * impact.healOwnerRatio!)) } : enemy);
-        if (blocked) this.visualEvents.push({ kind: 'impact', effectId: 'shield_impact', position: { x: this.player.position.x, y: 0.9, z: this.player.position.z }, color: '#e2c074', scale: 0.8, sound: 'shield' });
         this.addToast(blocked ? 'Aspis blocked ' + owner.name + ' for ' + damage + '.' : owner.name + ' struck you for ' + damage + '.');
       }
       if (impact.enemyId) {
+        const hit = this.enemies.find(enemy => enemy.id === impact.enemyId);
+        const surface = impact.surface ?? getEnemyVfxSurface(hit?.visualId ?? '');
+        const effect = abilityVfxEffect(impact.abilityId, impact.statusEffect?.statusId) ?? (surface === 'organic' ? 'blood_hit' : resolveSurfaceEffect(surface));
+        const sound = impact.statusEffect?.statusId === 'POISON' ? 'poison' : surface === 'metal' ? 'bronzeImpact' : surface === 'stone' ? 'stoneImpact' : 'enemyHit';
+        this.visualEvents.push({ kind: 'enemyHit', effectId: effect, position: impact.position, color: impact.color, scale: 0.8, sound, surface, sourceId: impact.abilityId, ownerId: impact.enemyId, priority: hit?.isBoss ? 'critical_hit' : 'ordinary_hit' });
         const ability = getAbility(impact.abilityId);
         if (ability?.healOnHit) this.player = { ...this.player, stats: { ...this.player.stats, hp: Math.min(this.player.stats.maxHp, this.player.stats.hp + ability.healOnHit) } };
         this.addToast(ability?.healOnHit ? 'Hades’ Grasp restores ' + ability.healOnHit + ' health.' : 'Hit.');
+        continue;
+      }
+      if (impact.kind === 'world') {
+        const surface = impact.surface ?? 'stone';
+        const effect = resolveSurfaceEffect(surface);
+        const sound = surface === 'metal' ? 'bronzeImpact' : surface === 'stone' ? 'stoneImpact' : undefined;
+        this.visualEvents.push({ kind: 'impact', effectId: effect, position: impact.position, color: impact.color, scale: 0.72, sound, surface, sourceId: impact.abilityId, ownerId: impact.ownerEnemyId });
       }
     }
   }
@@ -347,7 +380,7 @@ export class FPSGameRuntime {
       if (attack.statusEffect) this.enemies = this.enemies.map(candidate => candidate.id === enemy!.id
         ? { ...candidate, statusEffects: applyRealtimeStatus(candidate.statusEffects, attack.statusEffect!, attack.id) }
         : candidate);
-      this.visualEvents.push({ kind: 'impact', effectId: 'laurel_light', position: { x: enemy.position.x, y: 0.75, z: enemy.position.z }, color: attack.telegraphColor, scale: 1, sound: 'cast' });
+      this.visualEvents.push({ kind: 'cast', effectId: enemy.isBoss ? 'guardian_sigil' : 'laurel_light', position: { x: enemy.position.x, y: 0.08, z: enemy.position.z }, color: attack.telegraphColor, scale: 0.85, sound: 'cast', sourceId: attack.id, ownerId: enemy.id, priority: enemy.isBoss ? 'critical_hit' : 'ordinary_hit' });
       return;
     }
 
@@ -367,23 +400,25 @@ export class FPSGameRuntime {
         color: attack.projectileColor ?? attack.telegraphColor, faction: 'ENEMY', ownerEnemyId: enemy.id,
         statusEffect: attack.statusEffect, healOwnerRatio: attack.healOwnerRatio,
       });
-      this.visualEvents.push({ kind: 'impact', effectId: attack.statusEffect?.statusId === 'POISON' ? 'poison_splash' : 'chthonic_bolt', position: { x: enemy.position.x, y: 1.05, z: enemy.position.z }, color: attack.projectileColor ?? attack.telegraphColor, scale: 0.42 });
+      const castEffect = /boulder/i.test(attack.id) ? 'stone_chips' : /javelin/i.test(attack.id) ? 'spear_thrust' : abilityVfxEffect(attack.id, attack.statusEffect?.statusId) ?? 'chthonic_bolt';
+      this.visualEvents.push({ kind: 'cast', effectId: castEffect, position: { x: enemy.position.x, y: 1.05, z: enemy.position.z }, color: attack.projectileColor ?? attack.telegraphColor, scale: 0.42, direction: { x: dx / horizontal, z: dz / horizontal }, sourceId: attack.id, ownerId: enemy.id });
       return;
     }
 
     const target = attack.shape === 'SIGIL' && enemy.telegraphPosition ? enemy.telegraphPosition : this.player.position;
+    const telegraph = getEnemyAttackTelegraphDescriptor(attack);
     const dx = target.x - enemy.position.x, dz = target.z - enemy.position.z;
     const distance = Math.hypot(dx, dz);
     const hasSight = hasLineOfSight(this.world.map, attack.shape === 'SIGIL' ? target.x : enemy.position.x, attack.shape === 'SIGIL' ? target.z : enemy.position.z, this.player.position.x, this.player.position.z, 0.15);
     const yaw = enemy.facingYaw ?? Math.atan2(dz, dx);
     const toPlayer = Math.atan2(this.player.position.z - enemy.position.z, this.player.position.x - enemy.position.x);
     const deltaAngle = Math.atan2(Math.sin(toPlayer - yaw), Math.cos(toPlayer - yaw));
-    const inRange = distance <= attack.range + 0.28;
+    const inRange = distance <= telegraph.radius;
     const inShape = attack.shape === 'MELEE' || attack.shape === 'CHARGE' || attack.shape === 'CONE'
-      ? inRange && (attack.shape !== 'CONE' && attack.shape !== 'CHARGE' || Math.abs(deltaAngle) <= (attack.arcRadians ?? 1.35) / 2)
-      : attack.shape === 'SLAM' || attack.shape === 'RITUAL' ? Math.hypot(this.player.position.x - enemy.position.x, this.player.position.z - enemy.position.z) <= (attack.radius ?? attack.range)
-      : attack.shape === 'SIGIL' ? Math.hypot(this.player.position.x - target.x, this.player.position.z - target.z) <= (attack.radius ?? 1.6)
-      : attack.shape === 'CURSE' ? distance <= (attack.radius ?? attack.range)
+      ? inRange && (attack.shape !== 'CONE' && attack.shape !== 'CHARGE' || Math.abs(deltaAngle) <= telegraph.arcRadians / 2)
+      : attack.shape === 'SLAM' || attack.shape === 'RITUAL' ? Math.hypot(this.player.position.x - enemy.position.x, this.player.position.z - enemy.position.z) <= telegraph.radius
+      : attack.shape === 'SIGIL' ? Math.hypot(this.player.position.x - target.x, this.player.position.z - target.z) <= telegraph.radius
+      : attack.shape === 'CURSE' ? distance <= telegraph.radius
       : false;
     if (!hasSight || !inShape) return;
     if (this.controllerState.invulnerabilitySeconds > 0) {
@@ -396,7 +431,24 @@ export class FPSGameRuntime {
     const damage = attack.damageMultiplier > 0 ? Math.max(1, Math.round(calculateIncomingDamage(enemy, this.player, blocked) * attack.damageMultiplier)) : 0;
     if (damage > 0) this.player = { ...this.player, stats: { ...this.player.stats, hp: Math.max(0, this.player.stats.hp - damage) } };
     if (attack.statusEffect && !blocked) this.player = { ...this.player, statusEffects: applyRealtimeStatus(this.player.statusEffects, attack.statusEffect, attack.id) };
-    this.visualEvents.push({ kind: blocked ? 'impact' : 'enemyHit', effectId: blocked ? 'shield_impact' : attack.statusEffect?.statusId === 'POISON' ? 'poison_splash' : attack.shape === 'SLAM' || attack.shape === 'SIGIL' ? 'stone_shockwave' : 'blood_hit', position: { x: this.player.position.x, y: 0.8, z: this.player.position.z }, color: blocked ? '#e2c074' : attack.telegraphColor, scale: 1, sound: blocked ? 'shield' : damage ? 'playerHit' : 'cast' });
+    const statusEffect = statusVfxEffect(attack.statusEffect?.statusId);
+    const effectId = blocked ? 'shield_impact' : statusEffect ?? (attack.shape === 'SLAM' || attack.shape === 'SIGIL' ? 'stone_shockwave' : 'blood_hit');
+    const impactCenter = blocked ? this.player.position
+      : attack.shape === 'SLAM' || attack.shape === 'RITUAL' ? enemy.position
+      : attack.shape === 'SIGIL' ? target
+      : this.player.position;
+    this.visualEvents.push({
+      kind: blocked ? 'impact' : 'enemyHit',
+      effectId,
+      position: { x: impactCenter.x, y: attack.shape === 'SLAM' || attack.shape === 'RITUAL' || attack.shape === 'SIGIL' ? 0.045 : 0.8, z: impactCenter.z },
+      color: blocked ? '#e2c074' : attack.telegraphColor,
+      scale: 1,
+      sound: blocked ? 'shield' : attack.statusEffect?.statusId === 'POISON' ? 'poison' : damage ? 'playerHit' : 'cast',
+      surface: blocked ? 'metal' : 'organic',
+      sourceId: attack.id,
+      ownerId: enemy.id,
+      priority: enemy.isBoss ? 'critical_hit' : 'ordinary_hit',
+    });
     this.addToast(blocked ? 'Aspis blocked ' + enemy.name + ' for ' + damage + '.' : damage ? enemy.name + ' hit for ' + damage + '.' : attack.name + ' weakens you.');
   }
 
@@ -419,7 +471,7 @@ export class FPSGameRuntime {
     this.enemies = this.enemies.map(enemy => {
       if (enemy.health > 0) {
         if (enemy.definitionId === 'guardian_threadbound_warden' && (enemy.phase ?? 1) < 2 && !enemy.phaseTransitioned && enemy.health <= enemy.maxHealth * 0.5) {
-          this.visualEvents.push({ kind: 'bossPhase', effectId: 'chthonic_bolt', position: { x: enemy.position.x, y: 0.6, z: enemy.position.z }, color: '#d34e4e', scale: 1.4, sound: 'bossPhase' });
+          this.visualEvents.push({ kind: 'bossPhase', effectId: 'guardian_sigil', position: { x: enemy.position.x, y: 0.06, z: enemy.position.z }, color: '#d34e4e', scale: 1.4, sound: 'bossPhase', sourceId: 'warden_phase_two', ownerId: enemy.id, priority: 'critical_hit' });
           this.addLog('The Threadbound Warden breaks its first seal. Red sigils spread through the chamber.');
           this.addToast('Threadbound Warden · Phase II');
           return { ...enemy, phase: 2, phaseTransitioned: true, activeAttackId: undefined, telegraphPosition: undefined, state: 'RECOVER', stateTimer: 0.72, attackCooldown: 0.55 };
@@ -444,7 +496,7 @@ export class FPSGameRuntime {
       }
       const item = makeEnemyDrop(enemy, this.world.level);
       this.loot = [...this.loot, { id: item.instanceId, position: { x: enemy.position.x, y: 0, z: enemy.position.z }, item }];
-      this.visualEvents.push({ kind: 'enemyDeath', effectId: enemy.isBoss ? 'boss_death_burst' : 'blood_hit', position: { x: enemy.position.x, y: 0.4, z: enemy.position.z }, color: '#f4bc72', scale: enemy.isBoss ? 1.7 : 1.1, sound: enemy.isBoss ? 'bossDeath' : undefined });
+      this.visualEvents.push({ kind: 'enemyDeath', effectId: enemy.isBoss ? 'guardian_death' : 'blood_hit', position: { x: enemy.position.x, y: 0.4, z: enemy.position.z }, color: '#f4bc72', scale: enemy.isBoss ? 1.35 : 0.85, sound: enemy.isBoss ? 'bossDeath' : undefined, sourceId: 'enemy_death_reward', ownerId: enemy.id, priority: enemy.isBoss ? 'critical_hit' : 'ordinary_hit' });
       this.addLog(enemy.name + ' defeated. +' + enemy.xpReward + ' XP.');
       if (enemy.definitionId === this.world.floor.guardianId) {
         guardianDefeated = true;
@@ -691,7 +743,7 @@ export class FPSGameRuntime {
   }
 
   getRenderState(): FPSRenderState {
-    return { world: this.world, player: this.player, enemies: this.enemies, projectiles: this.projectiles, loot: this.loot, action: this.combat.action, isMoving: this.isMoving, guarding: this.controllerState.guarding, cameraBob: this.cameraBob, events: this.visualEvents.splice(0) };
+    return { world: this.world, player: this.player, enemies: this.enemies, projectiles: this.projectiles, loot: this.loot, action: this.combat.action, isMoving: this.isMoving, guarding: this.controllerState.guarding, paused: this.paused || this.inventoryOpen || this.mapOpen || Boolean(this.roomOffer) || this.gameOver, cameraBob: this.cameraBob, events: this.visualEvents.splice(0) };
   }
 
   getSnapshot(): FPSGameSnapshot {
@@ -763,4 +815,22 @@ function getAbilityStartSound(ability: NonNullable<ReturnType<typeof getAbility>
   if (ability.meleeStyle === 'BASH') return 'shield';
   if (ability.kind === 'MELEE') return 'blade';
   return ability.manaCost > 0 ? 'cast' : 'projectile';
+}
+
+function statusVfxEffect(statusId?: string): PixelEffectId | undefined {
+  if (statusId === 'POISON') return 'arachne_venom';
+  if (statusId === 'BURN') return 'promethean_flame';
+  if (statusId === 'SLOW') return 'web_snare';
+  if (statusId === 'WEAKNESS') return 'chthonic_bolt';
+  return undefined;
+}
+
+function abilityVfxEffect(abilityId: string, statusId?: string): PixelEffectId | undefined {
+  const statusEffect = statusVfxEffect(statusId);
+  if (statusEffect) return statusEffect;
+  if (/soul_drain|chthonic|underworld|warden|curse|grasp/i.test(abilityId)) return 'chthonic_bolt';
+  if (/sorcerer_|oracle|spark|lightning|charged_bolt/i.test(abilityId)) return 'oracle_spark';
+  if (/fireburst|promethean|flame/i.test(abilityId)) return 'promethean_flame';
+  if (/web|snare/i.test(abilityId)) return 'web_snare';
+  return undefined;
 }

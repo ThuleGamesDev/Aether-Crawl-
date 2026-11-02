@@ -7,6 +7,7 @@ import { loadMazeGame } from './services/mazeSave';
 import { LABYRINTH_THEMES } from './data/mazeContent';
 import type { ClassType, EquipmentSlot, ItemInstance } from './types';
 import type { InputSystem } from './engine/InputSystem';
+import type { VFXMode } from './presentation/vfxDefinitions';
 
 const CLASS_IDS = Object.keys(CLASSES) as ClassType[];
 const EQUIPMENT_SLOTS: EquipmentSlot[] = ['weapon', 'armor', 'offhand', 'accessory'];
@@ -21,6 +22,7 @@ const App: React.FC = () => {
   const [migrationNotice, setMigrationNotice] = useState('');
   const [webglError, setWebglError] = useState('');
   const [mouseSensitivity, setMouseSensitivity] = useState(0.0025);
+  const [vfxMode, setVfxMode] = useState<VFXMode>('full');
 
   useEffect(() => {
     const result = loadMazeGame();
@@ -30,6 +32,8 @@ const App: React.FC = () => {
     try {
       const savedSensitivity = Number(window.localStorage.getItem('aether_fps_mouse_sensitivity'));
       if (Number.isFinite(savedSensitivity) && savedSensitivity >= 0.001 && savedSensitivity <= 0.006) setMouseSensitivity(savedSensitivity);
+      const savedVfxMode = window.localStorage.getItem('aether_fps_vfx_mode_r3b');
+      if (savedVfxMode === 'full' || savedVfxMode === 'reduced' || savedVfxMode === 'off') setVfxMode(savedVfxMode);
     } catch { /* Sensitivity storage is optional. */ }
   }, []);
 
@@ -96,6 +100,11 @@ const App: React.FC = () => {
     try { window.localStorage.setItem('aether_fps_mouse_sensitivity', String(value)); } catch { /* Settings are optional. */ }
   };
 
+  const updateVfxMode = (value: VFXMode) => {
+    setVfxMode(value);
+    try { window.localStorage.setItem('aether_fps_vfx_mode_r3b', value); } catch { /* Display settings are optional. */ }
+  };
+
   if (mode === 'MENU') return (
     <main className="fps-menu-screen">
       <div className="fps-menu-frame">
@@ -157,6 +166,14 @@ const App: React.FC = () => {
         <label className="fps-sensitivity">Mouse sensitivity <strong>{mouseSensitivity.toFixed(4)}</strong>
           <input type="range" min="0.001" max="0.006" step="0.0001" value={mouseSensitivity} onChange={event => updateSensitivity(Number(event.target.value))} />
         </label>
+        <label className="fps-vfx-setting">Combat visual effects
+          <select value={vfxMode} onChange={event => updateVfxMode(event.target.value as VFXMode)}>
+            <option value="full">Full</option>
+            <option value="reduced">Reduced</option>
+            <option value="off">Off</option>
+          </select>
+        </label>
+        <p className="fps-muted">Reduced lowers ordinary particle count and brightness. Off hides combat effects. Guardian attack warnings remain visible in every mode.</p>
         <p className="fps-muted">On touch screens, drag the left side of the view to move and the right side to look. Use the buttons in the lower-right corner for attacks and dodge.</p>
       </section>
     </main>
@@ -175,7 +192,7 @@ const App: React.FC = () => {
   const skills = snapshot.skillAbilityIds.map(id => id ? getAbility(id) : null);
 
   return <main className="fps-game-shell">
-    <FPSViewport runtime={runtime} mouseSensitivity={mouseSensitivity} onSnapshot={setSnapshot} onInputReady={input => { inputRef.current = input; }} onFailure={setWebglError} />
+    <FPSViewport runtime={runtime} mouseSensitivity={mouseSensitivity} vfxMode={vfxMode} onSnapshot={setSnapshot} onInputReady={input => { inputRef.current = input; }} onFailure={setWebglError} />
     {!webglError && <>
       <div className="fps-vignette" aria-hidden="true" />
       <header className="fps-top-hud">
