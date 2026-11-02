@@ -307,6 +307,6 @@ describe('FPS-R4A itemization core', () => {
     expect(loaded.save?.player.stats.baseArmor).toBe(0);
     expect(saveMazeGame(loaded.save!, storage)).toBe(true);
     expect(loadMazeGame(storage).migrationRequired).toBe(false);
-    expect(JSON.parse(storage.getItem(MAZE_SAVE_KEY)!).version).toBe(3);
+    expect(JSON.parse(storage.getItem(MAZE_SAVE_KEY)!).version).toBe(4);
   });
 });

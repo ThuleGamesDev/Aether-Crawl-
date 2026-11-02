@@ -4,6 +4,7 @@ import type { CharacterTemplate, ClassType, EquipmentSlot, Item, ItemInstance, I
 import { CLASS_ABILITY_LOADOUT } from '../combat/AbilityRegistry';
 import { calculateDerivedStats } from './DerivedStats';
 import { consumableEffect, createEnemyDrop, createLootInstance, legacyBaseId, normalizeLegacyItem, type RandomSource } from '../services/itemization';
+import { consumableStackKey, MAX_CONSUMABLE_STACK, moveInventoryGridItem, normalizeInventoryGrid, syncInventoryGrid } from '../services/inventoryGrid';
 
 export const itemSlotFor = (item: Item): EquipmentSlot | null => {
   if (item.type === 'WEAPON') return 'weapon';
@@ -66,6 +67,8 @@ export function createPlayerCharacter(classId: ClassType, spawn = { x: 1.5, y: 0
     stats,
     equipment,
     inventory,
+    inventoryGrid: syncInventoryGrid(inventory),
+    uniqueEffectStates: [],
     skills: [{ abilityId: CLASS_ABILITY_LOADOUT[classId].skill, rank: 1 }],
     statusEffects: [],
   });
@@ -119,14 +122,15 @@ export function equipItem(player: PlayerCharacter, instanceId: string): PlayerCh
     inventory.push(equipment.offhand);
     equipment.offhand = null;
   }
-  return refreshPlayerDerivedCaps({ ...player, equipment, inventory });
+  return refreshPlayerDerivedCaps({ ...player, equipment, inventory, inventoryGrid: syncInventoryGrid(inventory, player.inventoryGrid) });
 }
 
 export function unequipItem(player: PlayerCharacter, slot: EquipmentSlot): PlayerCharacter {
   const item = player.equipment[slot];
   if (!item) return player;
   const equipment = { ...player.equipment, [slot]: null };
-  return refreshPlayerDerivedCaps({ ...player, equipment, inventory: [...player.inventory, item] });
+  const inventory = [...player.inventory, item];
+  return refreshPlayerDerivedCaps({ ...player, equipment, inventory, inventoryGrid: syncInventoryGrid(inventory, player.inventoryGrid) });
 }
 
 export function rollEnemyDrop(enemy: WorldEnemy, floorLevel: number, random: RandomSource): ItemInstance | null {
@@ -151,7 +155,107 @@ export function consumePotion(player: PlayerCharacter, instanceId: string): Play
   const inventory = [...player.inventory];
   if (item.quantity > 1) inventory[index] = { ...item, quantity: item.quantity - 1 };
   else inventory.splice(index, 1);
-  return { ...player, stats, inventory };
+  return { ...player, stats, inventory, inventoryGrid: syncInventoryGrid(inventory, player.inventoryGrid) };
+}
+
+export interface AddInventoryItemResult {
+  player: PlayerCharacter;
+  stored: boolean;
+  stacked: boolean;
+  overflowIds: string[];
+}
+
+/** Adds one reward atomically; overflow remains in the save and is surfaced as a stash. */
+export function addInventoryItem(player: PlayerCharacter, incoming: ItemInstance): AddInventoryItemResult {
+  const existingIds = new Set([
+    ...player.inventory.map(item => item.instanceId),
+    ...Object.values(player.equipment).filter((item): item is ItemInstance => Boolean(item)).map(item => item.instanceId),
+  ]);
+  if (!incoming.instanceId || existingIds.has(incoming.instanceId)) {
+    return { player, stored: false, stacked: false, overflowIds: normalizeInventoryGrid(player.inventory, player.inventoryGrid).overflowIds };
+  }
+
+  const inventory = [...player.inventory];
+  const stackKey = consumableStackKey(incoming);
+  let remaining = Math.max(1, Math.floor(incoming.quantity));
+  let stacked = false;
+  if (stackKey) {
+    for (let index = 0; index < inventory.length && remaining > 0; index += 1) {
+      const current = inventory[index];
+      if (consumableStackKey(current) !== stackKey || current.quantity >= MAX_CONSUMABLE_STACK) continue;
+      const accepted = Math.min(remaining, MAX_CONSUMABLE_STACK - current.quantity);
+      inventory[index] = { ...current, quantity: current.quantity + accepted };
+      remaining -= accepted;
+      stacked ||= accepted > 0;
+    }
+  }
+  if (remaining > 0) {
+    const idStem = incoming.instanceId;
+    let suffix = 1;
+    const nextInstanceId = () => {
+      let id = idStem + '_stack_' + suffix++;
+      while (existingIds.has(id) || inventory.some(item => item.instanceId === id)) id = idStem + '_stack_' + suffix++;
+      return id;
+    };
+    if (existingIds.has(incoming.instanceId) || inventory.some(item => item.instanceId === incoming.instanceId)) incoming = { ...incoming, instanceId: nextInstanceId() };
+    while (remaining > 0) {
+      const quantity = stackKey ? Math.min(MAX_CONSUMABLE_STACK, remaining) : 1;
+      inventory.push({ ...incoming, quantity });
+      remaining -= quantity;
+      if (remaining > 0) incoming = { ...incoming, instanceId: nextInstanceId() };
+    }
+  }
+  const grid = normalizeInventoryGrid(inventory, player.inventoryGrid);
+  return { player: { ...player, inventory, inventoryGrid: grid.placements }, stored: true, stacked, overflowIds: grid.overflowIds };
+}
+
+export function moveInventoryItem(player: PlayerCharacter, instanceId: string, x: number, y: number): { player: PlayerCharacter; moved: boolean; swapped: boolean } {
+  const result = moveInventoryGridItem(player.inventory, player.inventoryGrid ?? [], instanceId, x, y);
+  return result.moved
+    ? { player: { ...player, inventoryGrid: result.placements }, moved: true, swapped: result.swapped }
+    : { player, moved: false, swapped: false };
+}
+
+/** Splits a stack into two persistent consumable stacks without changing its total quantity. */
+export function splitInventoryStack(player: PlayerCharacter, instanceId: string, reservedIds: readonly string[] = []): PlayerCharacter | null {
+  const index = player.inventory.findIndex(item => item.instanceId === instanceId);
+  if (index < 0) return null;
+  const source = player.inventory[index];
+  if (!consumableStackKey(source) || source.quantity < 2) return null;
+  const quantity = Math.floor(source.quantity / 2);
+  const used = new Set([
+    ...reservedIds,
+    ...player.inventory.map(item => item.instanceId),
+    ...Object.values(player.equipment).filter((item): item is ItemInstance => Boolean(item)).map(item => item.instanceId),
+  ]);
+  const stem = source.instanceId + '_split_' + quantity;
+  let instanceIdForSplit = stem;
+  let suffix = 2;
+  while (used.has(instanceIdForSplit)) instanceIdForSplit = stem + '_' + suffix++;
+  const inventory = [...player.inventory];
+  inventory[index] = { ...source, quantity: source.quantity - quantity };
+  inventory.push({ ...source, instanceId: instanceIdForSplit, quantity });
+  return { ...player, inventory, inventoryGrid: syncInventoryGrid(inventory, player.inventoryGrid) };
+}
+
+/** Drops one unit; a split stack gets a fresh ID and the source stack remains intact. */
+export function removeInventoryUnit(player: PlayerCharacter, instanceId: string): { player: PlayerCharacter; item: ItemInstance } | null {
+  const index = player.inventory.findIndex(item => item.instanceId === instanceId);
+  if (index < 0) return null;
+  const source = player.inventory[index];
+  const inventory = [...player.inventory];
+  let item: ItemInstance;
+  if (source.quantity > 1) {
+    let suffix = 1;
+    let splitId = source.instanceId + '_drop_' + suffix++;
+    while (inventory.some(candidate => candidate.instanceId === splitId) || Object.values(player.equipment).some(candidate => candidate?.instanceId === splitId)) splitId = source.instanceId + '_drop_' + suffix++;
+    item = { ...source, instanceId: splitId, quantity: 1 };
+    inventory[index] = { ...source, quantity: source.quantity - 1 };
+  } else {
+    item = source;
+    inventory.splice(index, 1);
+  }
+  return { player: { ...player, inventory, inventoryGrid: syncInventoryGrid(inventory, player.inventoryGrid) }, item };
 }
 
 /** Recomputes cached legacy armor and clamps resources after load/equipment changes. */

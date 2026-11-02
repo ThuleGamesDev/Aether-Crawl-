@@ -459,8 +459,28 @@ export interface PlayerCharacter {
   stats: SoloCharacterStats;
   equipment: Record<EquipmentSlot, ItemInstance | null>;
   inventory: ItemInstance[];
+  /** Persisted 10×5 bag positions; items without a position remain safe in overflow storage. */
+  inventoryGrid?: InventoryGridPlacement[];
+  /** Runtime timers/charges for equipped Unique rules. */
+  uniqueEffectStates?: UniqueEffectState[];
   skills: LearnedSkill[];
   statusEffects: ActiveStatus[];
+}
+
+export interface InventoryGridPlacement {
+  instanceId: string;
+  x: number;
+  y: number;
+}
+
+export type UniqueEffectId = 'ariadnes_thread' | 'aspis_bronze_gate' | 'serpent_queen_fang' | 'promethean_ember'
+  | 'stygian_seal' | 'artemis_mark' | 'cyclopean_mallet' | 'laurel_asclepius';
+
+export interface UniqueEffectState {
+  effectId: UniqueEffectId;
+  cooldownRemaining: number;
+  durationRemaining: number;
+  charges: number;
 }
 
 export type WorldEnemyState = 'IDLE' | 'ALERT' | 'AGGRO' | 'APPROACH' | 'CHASE' | 'REPOSITION' | 'RETREAT' | 'ATTACK_WINDUP' | 'ATTACK_ACTIVE' | 'ATTACK' | 'RECOVER' | 'HURT' | 'STAGGER' | 'DEAD';

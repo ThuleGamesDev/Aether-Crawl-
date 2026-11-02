@@ -1,10 +1,11 @@
 import * as THREE from 'three';
-import type { BiomeId, WeaponVisualType } from '../types';
+import type { BiomeId, ItemInstance, WeaponVisualType } from '../types';
 import { createCombatEffectTexture, createEnemyTexture, createPixelTexture, createWeaponTexture } from './PixelArtRenderer';
 import { biomeVisuals, enemyVisuals, mythicVfxAtlasPath, propVisuals, shieldVisual, weaponVisuals } from '../data/assetRegistry';
 import { CHARACTER_RIG_MANIFEST } from '../data/characterRigs';
 import { VFX_DEFINITIONS, type PixelEffectId } from './vfxDefinitions';
 import vfxAtlasManifest from '../data/generated/mythicVfxAtlas.json';
+import { createItemIconCanvas } from './ItemIconRenderer';
 
 interface VFXAtlasManifest {
   atlasPath: string;
@@ -49,6 +50,23 @@ export class AssetManager {
     const key = 'weapon:' + weaponType + ':' + classId;
     let texture = this.textures.get(key);
     if (!texture) { texture = createWeaponTexture(weaponType, classId); this.textures.set(key, texture); this.loadLocal(texture, weaponVisuals[weaponType]); }
+    return texture;
+  }
+
+  itemTexture(item: ItemInstance): THREE.CanvasTexture {
+    const key = 'item:' + (item.baseId ?? item.id) + ':' + item.rarity + ':' + (item.uniqueEffectId ?? '');
+    let texture = this.textures.get(key);
+    if (!texture) {
+      const fallback = createPixelTexture('loot', 'dungeon');
+      const icon = createItemIconCanvas(item);
+      if (icon) { fallback.image = icon; fallback.needsUpdate = true; }
+      fallback.colorSpace = THREE.SRGBColorSpace;
+      fallback.magFilter = THREE.NearestFilter;
+      fallback.minFilter = THREE.NearestFilter;
+      fallback.generateMipmaps = false;
+      this.textures.set(key, fallback);
+      texture = fallback;
+    }
     return texture;
   }
 

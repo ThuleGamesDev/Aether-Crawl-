@@ -1,6 +1,7 @@
 import { getItemBase } from '../data/itemBases';
 import { getItemAffix } from '../data/itemAffixes';
 import type { DerivedCharacterStats, ItemAffixStat, ItemInstance, ItemTag, PlayerCharacter } from '../types';
+import { getUniqueStatBonuses } from './UniqueEffects';
 
 const MAX_STAT = 100_000;
 
@@ -47,6 +48,10 @@ export function calculateDerivedStats(player: PlayerCharacter): DerivedCharacter
       if (!definition.validItemTags.some(tag => tags.has(tag))) continue;
       values[definition.stat] = (values[definition.stat] ?? 0) + affix.value;
     }
+  }
+
+  for (const [stat, amount] of Object.entries(getUniqueStatBonuses(player)) as Array<[ItemAffixStat, number]>) {
+    values[stat] = (values[stat] ?? 0) + amount;
   }
 
   maxHealthFlat += values.maxHealthFlat ?? 0;

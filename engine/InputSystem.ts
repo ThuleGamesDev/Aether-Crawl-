@@ -9,6 +9,7 @@ export interface InputFrame {
   secondaryPressed: boolean;
   secondaryDown: boolean;
   secondaryReleased: boolean;
+  secondaryCanceled?: boolean;
   skillPressed: boolean;
   skillSlot: number | null;
   dodgePressed: boolean;
@@ -29,13 +30,16 @@ export class InputSystem {
   private lookY = 0;
   private readonly canvas: HTMLCanvasElement;
   private readonly mouseSensitivity: () => number;
+  private mouseButtonOneDown = false;
+  private mouseDragDistance = 0;
+  private lastMouseClient: { x: number; y: number } | null = null;
+  private hadPointerLock = false;
+  private secondaryCanceled = false;
 
   constructor(canvas: HTMLCanvasElement, mouseSensitivity: () => number = () => 0.0025) {
     this.canvas = canvas;
     this.mouseSensitivity = mouseSensitivity;
     canvas.addEventListener('mousedown', this.onMouseDown);
-    canvas.addEventListener('mouseup', this.onMouseUp);
-    canvas.addEventListener('mousemove', this.onMouseMove);
     canvas.addEventListener('contextmenu', this.onContextMenu);
     canvas.addEventListener('pointerdown', this.onPointerDown);
     canvas.addEventListener('pointermove', this.onPointerMove);
@@ -43,12 +47,23 @@ export class InputSystem {
     canvas.addEventListener('pointercancel', this.onPointerUp);
     window.addEventListener('keydown', this.onKeyDown);
     window.addEventListener('keyup', this.onKeyUp);
+    window.addEventListener('mouseup', this.onMouseUp);
+    window.addEventListener('mousemove', this.onMouseMove);
     window.addEventListener('blur', this.clearHeld);
+    document.addEventListener('pointerlockchange', this.onPointerLockChange);
   }
 
   private readonly onMouseDown = (event: MouseEvent) => {
+    if (event.button === 0) {
+      this.mouseButtonOneDown = true;
+      this.mouseDragDistance = 0;
+      this.lastMouseClient = { x: event.clientX, y: event.clientY };
+    }
     if (event.button === 0 && document.pointerLockElement !== this.canvas) {
-      this.canvas.requestPointerLock?.();
+      try {
+        const request = this.canvas.requestPointerLock?.();
+        if (request && typeof request.then === 'function') void request.catch(() => undefined);
+      } catch { /* Drag-to-look remains available when Pointer Lock is denied. */ }
       return;
     }
     if (event.button === 0) this.pressed.add('primary');
@@ -56,13 +71,40 @@ export class InputSystem {
   };
 
   private readonly onMouseUp = (event: MouseEvent) => {
+    if (event.button === 0) {
+      if (this.mouseButtonOneDown && document.pointerLockElement !== this.canvas && this.mouseDragDistance < 5) this.pressed.add('primary');
+      this.mouseButtonOneDown = false;
+      this.lastMouseClient = null;
+    }
     if (event.button === 2 && this.keys.delete('MouseSecondary')) this.pressed.add('secondaryReleased');
   };
 
   private readonly onMouseMove = (event: MouseEvent) => {
-    if (document.pointerLockElement !== this.canvas) return;
-    this.lookX += event.movementX;
-    this.lookY += event.movementY;
+    if (document.pointerLockElement === this.canvas) {
+      this.lookX += event.movementX;
+      this.lookY += event.movementY;
+      return;
+    }
+    if (!this.mouseButtonOneDown) return;
+    const previous = this.lastMouseClient;
+    this.lastMouseClient = { x: event.clientX, y: event.clientY };
+    if (!previous) return;
+    const dx = event.clientX - previous.x, dy = event.clientY - previous.y;
+    this.mouseDragDistance += Math.hypot(dx, dy);
+    this.lookX += dx;
+    this.lookY += dy;
+  };
+
+  private readonly onPointerLockChange = () => {
+    if (document.pointerLockElement === this.canvas) {
+      this.hadPointerLock = true;
+      this.mouseButtonOneDown = false;
+      this.lastMouseClient = null;
+      this.mouseDragDistance = 0;
+    } else if (this.hadPointerLock) {
+      this.hadPointerLock = false;
+      this.clearActiveInputs();
+    }
   };
 
   private readonly onContextMenu = (event: Event) => event.preventDefault();
@@ -108,6 +150,7 @@ export class InputSystem {
   private readonly onKeyDown = (event: KeyboardEvent) => {
     const key = event.code;
     if (['Space', 'Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(key)) event.preventDefault();
+    if (event.repeat) return;
     if (!this.keys.has(key)) {
       this.keys.add(key);
       const action: Record<string, string> = {
@@ -121,6 +164,12 @@ export class InputSystem {
   private readonly onKeyUp = (event: KeyboardEvent) => { this.keys.delete(event.code); };
 
   private readonly clearHeld = () => {
+    this.clearActiveInputs();
+  };
+
+  /** Clears held gameplay actions when an overlay opens or browser focus is lost. */
+  clearActiveInputs(): void {
+    if (this.keys.has('MouseSecondary') || this.pressed.has('secondary') || this.pressed.has('secondaryReleased')) this.secondaryCanceled = true;
     this.keys.clear();
     this.pressed.clear();
     this.movementTouch = null;
@@ -129,6 +178,9 @@ export class InputSystem {
     this.lookY = 0;
     this.lastTouchLookX = undefined;
     this.lastTouchLookY = undefined;
+    this.mouseButtonOneDown = false;
+    this.mouseDragDistance = 0;
+    this.lastMouseClient = null;
   };
 
   readFrame(): InputFrame {
@@ -156,6 +208,7 @@ export class InputSystem {
       secondaryPressed: this.pressed.has('secondary'),
       secondaryDown: this.keys.has('MouseSecondary'),
       secondaryReleased: this.pressed.has('secondaryReleased'),
+      secondaryCanceled: this.secondaryCanceled,
       skillPressed: [1, 2, 3, 4].some(slot => this.pressed.has('skill' + slot)),
       skillSlot: [1, 2, 3, 4].find(slot => this.pressed.has('skill' + slot)) ?? null,
       dodgePressed: this.pressed.has('dodge'),
@@ -165,6 +218,7 @@ export class InputSystem {
       pausePressed: this.pressed.has('pause'),
     };
     this.pressed.clear();
+    this.secondaryCanceled = false;
     this.lookX = 0;
     this.lookY = 0;
     return frame;
@@ -185,8 +239,6 @@ export class InputSystem {
 
   dispose(): void {
     this.canvas.removeEventListener('mousedown', this.onMouseDown);
-    this.canvas.removeEventListener('mouseup', this.onMouseUp);
-    this.canvas.removeEventListener('mousemove', this.onMouseMove);
     this.canvas.removeEventListener('contextmenu', this.onContextMenu);
     this.canvas.removeEventListener('pointerdown', this.onPointerDown);
     this.canvas.removeEventListener('pointermove', this.onPointerMove);
@@ -194,7 +246,10 @@ export class InputSystem {
     this.canvas.removeEventListener('pointercancel', this.onPointerUp);
     window.removeEventListener('keydown', this.onKeyDown);
     window.removeEventListener('keyup', this.onKeyUp);
+    window.removeEventListener('mouseup', this.onMouseUp);
+    window.removeEventListener('mousemove', this.onMouseMove);
     window.removeEventListener('blur', this.clearHeld);
+    document.removeEventListener('pointerlockchange', this.onPointerLockChange);
     if (document.pointerLockElement === this.canvas) document.exitPointerLock?.();
     this.clearHeld();
   }

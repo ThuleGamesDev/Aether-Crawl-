@@ -1,7 +1,7 @@
 import type { ClassType, DerivedCharacterStats, DungeonRoom, EquipmentSlot, ItemInstance, PlayerCharacter, StatusApplication, WorldEnemy, WorldLootDrop, WorldProjectile } from '../types';
 import type { InputFrame } from './InputSystem';
 import { createDungeonWorld, createFloorEnemies, createRoomOffer, findLookTarget, markExplored, randomSeed, type RoomOffer } from '../world/DungeonWorld';
-import { raycastGrid, hasLineOfSight, moveWithWallSlide } from '../world/CollisionWorld';
+import { raycastGrid, hasLineOfSight, isWorldSolid, moveWithWallSlide } from '../world/CollisionWorld';
 import { updateEnemyBrains } from '../enemies/EnemyBrain';
 import { isVisibleProjectileImpact, updateProjectiles, type ProjectileImpact } from '../combat/ProjectileSystem';
 import { calculateIncomingDamage, calculatePlayerDamage, projectileDirection, resolveAreaAttack, resolveMeleeAttack } from '../combat/DamageSystem';
@@ -11,7 +11,7 @@ import { getEnemyAttackTelegraphDescriptor, getGuardianTelegraphEffect } from '.
 import { getFloorGuardianDefinition } from '../data/mazeContent';
 import { createPlayerControllerState, updatePlayerController, type PlayerControllerState } from '../player/PlayerController';
 import { PlayerCombat, type ActivePlayerAction } from '../player/PlayerCombat';
-import { consumePotion, createPlayerCharacter, equipItem, grantExperience, refreshPlayerDerivedCaps, rollEnemyDrop, unequipItem } from '../player/PlayerProgression';
+import { addInventoryItem, consumePotion, createPlayerCharacter, equipItem, grantExperience, moveInventoryItem, refreshPlayerDerivedCaps, removeInventoryUnit, rollEnemyDrop, splitInventoryStack, unequipItem } from '../player/PlayerProgression';
 import { floorRandom } from '../services/floorRandom';
 import { createLootInstance } from '../services/itemization';
 import { spawnFacingAngle } from '../services/firstPerson';
@@ -23,6 +23,7 @@ import { applyRealtimeStatus, hasRealtimeStatus, tickRealtimeStatuses } from '..
 import { getEnemyVfxSurface, resolveSurfaceEffect, type PixelEffectId } from '../presentation/vfxDefinitions';
 import { calculateDerivedStats } from '../player/DerivedStats';
 import { rollItemStatusProc } from '../player/ItemCombatEffects';
+import { consumeUniqueCharge, resolveUniqueTrigger, tickUniqueEffects } from '../player/UniqueEffects';
 
 export interface FPSGameSnapshot {
   player: PlayerCharacter;
@@ -30,6 +31,7 @@ export interface FPSGameSnapshot {
   world: DungeonWorldState;
   enemies: WorldEnemy[];
   loot: WorldLootDrop[];
+  targetLoot: WorldLootDrop | null;
   action: ActivePlayerAction | null;
   primaryAbilityId: string;
   secondaryAbilityId: string;
@@ -116,14 +118,31 @@ export class FPSGameRuntime {
   update(deltaSeconds: number, input: InputFrame): void {
     const dt = Math.max(0, Math.min(0.05, deltaSeconds));
     this.elapsedSeconds += dt;
+    if (input.secondaryCanceled) this.cancelHeldActions();
     if (this.toastSeconds > 0) {
       this.toastSeconds = Math.max(0, this.toastSeconds - dt);
       if (this.toastSeconds === 0) this.toast = '';
     }
-    if (input.pausePressed) { this.paused = !this.paused; this.inventoryOpen = false; this.mapOpen = false; }
-    if (input.inventoryPressed && !this.gameOver) { this.inventoryOpen = !this.inventoryOpen; this.mapOpen = false; }
-    if (input.mapPressed && !this.gameOver) { this.mapOpen = !this.mapOpen; this.inventoryOpen = false; }
+    if (input.pausePressed) {
+      if (this.inventoryOpen || this.mapOpen) { this.inventoryOpen = false; this.mapOpen = false; }
+      else {
+        this.paused = !this.paused;
+        if (this.paused) this.cancelHeldActions();
+      }
+    }
+    if (input.inventoryPressed && !this.gameOver && !this.paused) {
+      this.inventoryOpen = !this.inventoryOpen;
+      this.mapOpen = false;
+      if (this.inventoryOpen) this.cancelHeldActions();
+    }
+    if (input.mapPressed && !this.gameOver && !this.paused) {
+      this.mapOpen = !this.mapOpen;
+      this.inventoryOpen = false;
+      if (this.mapOpen) this.cancelHeldActions();
+    }
     if (this.paused || this.inventoryOpen || this.mapOpen || this.roomOffer || this.gameOver) return;
+
+    this.player = tickUniqueEffects(this.player, dt);
 
     const movement = updatePlayerController(this.player, this.controllerState, input, this.world.map, dt, this.enemies);
     this.player = movement.player;
@@ -131,6 +150,12 @@ export class FPSGameRuntime {
     this.isMoving = movement.isMoving;
     this.cameraBob = movement.cameraBob;
     if (movement.dodgeStarted) {
+      const unique = resolveUniqueTrigger(this.player, 'ariadnes_thread', 'DODGE_SUCCESS');
+      if (unique.activated) {
+        this.player = unique.player;
+        this.addToast("Ariadne's Thread pulls you clear.");
+        this.visualEvents.push({ kind: 'impact', effectId: 'laurel_light', position: { x: this.player.position.x, y: 0.55, z: this.player.position.z }, color: '#e7c879', scale: 0.55 });
+      }
       this.addLog('Dodge.');
       this.visualEvents.push({ kind: 'dodge', position: { x: this.player.position.x, y: 0.15, z: this.player.position.z }, color: '#97ddff', scale: 0.7, sound: 'dodge' });
     }
@@ -216,6 +241,13 @@ export class FPSGameRuntime {
     if (result.error) { if (result.error !== 'Recovering from the current action.') this.addToast(result.error); return; }
     this.player = result.player;
     if (result.ability) {
+      if (abilityId.startsWith('necromancer_')) {
+        const seal = resolveUniqueTrigger(this.player, 'stygian_seal', 'SOUL_SKILL_CAST');
+        if (seal.activated) {
+          this.player = { ...seal.player, statusEffects: applyRealtimeStatus(seal.player.statusEffects, { statusId: 'GUARD', durationSeconds: 2.5, magnitude: seal.magnitude }, 'stygian_seal') };
+          this.addToast('Stygian Seal wards your soulcraft for 2.5 seconds.');
+        }
+      }
       this.addLog(result.ability.name + '.');
       this.visualEvents.push({ kind: 'audio', position: { ...this.player.position }, sound: getAbilityStartSound(result.ability) });
     }
@@ -224,10 +256,33 @@ export class FPSGameRuntime {
   private resolvePlayerAction(action: ActivePlayerAction): void {
     const ability = getAbility(action.abilityId);
     if (!ability) return;
-    const damage = calculatePlayerDamage(this.player, ability, action.damageMultiplier, this.random());
+    let damageMultiplier = action.damageMultiplier;
+    if (ability.kind === 'PROJECTILE') {
+      const mark = consumeUniqueCharge(this.player, 'artemis_mark');
+      if (mark.consumed) {
+        this.player = mark.player;
+        damageMultiplier *= 1.2;
+        this.addToast("Artemis' Mark empowers the next arrow.");
+      }
+    }
+    if (isFireAbility(ability)) {
+      const ember = consumeUniqueCharge(this.player, 'promethean_ember');
+      if (ember.consumed) {
+        this.player = ember.player;
+        damageMultiplier *= 1.25;
+        this.addToast('Promethean Ember flares through your next fire spell.');
+      }
+    }
+    const damage = calculatePlayerDamage(this.player, ability, damageMultiplier, this.random());
     if (ability.selfEffect?.type === 'HEAL') {
-      const restored = Math.ceil(calculateDerivedStats(this.player).maxHealth * (ability.selfEffect.amount ?? 0));
+      const maximumHealth = calculateDerivedStats(this.player).maxHealth;
+      const restored = Math.max(0, Math.min(maximumHealth - this.player.stats.hp, Math.ceil(maximumHealth * (ability.selfEffect.amount ?? 0))));
       this.player = { ...this.player, stats: { ...this.player.stats, hp: Math.min(this.player.stats.maxHp, this.player.stats.hp + restored) } };
+      const laurel = restored > 0 ? resolveUniqueTrigger(this.player, 'laurel_asclepius', 'SELF_HEAL', restored) : { player: this.player, activated: false, magnitude: 0 };
+      if (laurel.activated) {
+        this.player = { ...laurel.player, statusEffects: applyRealtimeStatus(laurel.player.statusEffects, { statusId: 'GUARD', durationSeconds: 3, magnitude: laurel.magnitude }, 'laurel_asclepius') };
+        this.addToast('Laurel of Asclepius wards you for 3 seconds.');
+      }
       this.visualEvents.push({ kind: 'area', effectId: 'laurel_light', position: { x: this.player.position.x, y: 0.8, z: this.player.position.z }, color: '#8cf2b4', scale: 1.15, sound: 'heal' });
       this.addToast(ability.name + ' restored ' + restored + ' health.');
       return;
@@ -241,6 +296,22 @@ export class FPSGameRuntime {
       const result = resolveMeleeAttack(this.world.map, this.player, this.enemies, ability, damage);
       this.enemies = result.enemies;
       this.applyPlayerOnHitEffects(result.hitEnemyIds, ability);
+      if (result.hitEnemyIds.length && action.damageMultiplier >= 1.3) {
+        const shockwave = resolveUniqueTrigger(this.player, 'cyclopean_mallet', 'HEAVY_MELEE_HIT', damage);
+        if (shockwave.activated) {
+          this.player = shockwave.player;
+          const center = this.enemies.find(enemy => enemy.id === result.hitEnemyIds[0]);
+          if (center) {
+            const alreadyHit = new Set(result.hitEnemyIds);
+            const candidates = this.enemies.filter(enemy => enemy.health > 0 && !alreadyHit.has(enemy.id));
+            const wave = resolveAreaAttack(this.world.map, center.position.x, center.position.z, 1.35, candidates, Math.max(1, Math.round(damage * shockwave.magnitude)));
+            const waveById = new Map(wave.enemies.map(enemy => [enemy.id, enemy]));
+            this.enemies = this.enemies.map(enemy => waveById.get(enemy.id) ?? enemy);
+            this.visualEvents.push({ kind: 'area', effectId: 'stone_shockwave', position: { x: center.position.x, y: 0.1, z: center.position.z }, color: '#d5b27a', scale: 1.35, sourceId: 'cyclopean_mallet' });
+            this.addToast('Cyclopean Mallet sends one shockwave through nearby foes.');
+          }
+        }
+      }
       const effectId = ability.meleeStyle === 'THRUST' ? 'spear_thrust' : ability.meleeStyle === 'BASH' ? 'aspis_impact' : 'bronze_slash';
       const reach = Math.min(1, ability.range * 0.45);
       this.visualEvents.push({ kind: 'melee', effectId, position: { x: this.player.position.x + Math.cos(this.player.rotation.yaw) * reach, y: 0.9, z: this.player.position.z + Math.sin(this.player.rotation.yaw) * reach }, direction: { x: Math.cos(this.player.rotation.yaw), z: Math.sin(this.player.rotation.yaw) }, color: ability.projectileColor ?? '#ffd17b', scale: ability.meleeStyle === 'THRUST' ? 0.85 : 1.2, sourceId: ability.id });
@@ -318,7 +389,7 @@ export class FPSGameRuntime {
       if (!hitIds.has(enemy.id) || enemy.health <= 0) return enemy;
       let statuses = enemy.statusEffects ?? [];
       if (status) {
-        const powered = scaleStatusPower(status, derived)!;
+        const powered = this.applyUniqueStatusPower(status, derived);
         const tuned = enemy.isBoss && status.statusId === 'STAGGER'
           ? { ...powered, durationSeconds: powered.durationSeconds * 0.62, magnitude: powered.magnitude * 0.62 }
           : powered;
@@ -327,10 +398,30 @@ export class FPSGameRuntime {
       const proc = rollItemStatusProc(derived, this.random);
       if (proc) {
         const magnitude = Math.max(1, Math.round(Math.max(1, hitDamage * 0.12) * proc.powerMultiplier));
-        statuses = applyRealtimeStatus(statuses, { statusId: proc.statusId, durationSeconds: proc.durationSeconds, magnitude }, 'item_affix');
+        const powered = this.applyUniqueStatusPower({ statusId: proc.statusId, durationSeconds: proc.durationSeconds, magnitude }, derived);
+        statuses = applyRealtimeStatus(statuses, powered, 'item_affix');
       }
       return { ...enemy, statusEffects: statuses };
     });
+  }
+
+  private applyUniqueStatusPower(status: StatusApplication, derived: DerivedCharacterStats): StatusApplication {
+    let powered = scaleStatusPower(status, derived)!;
+    if (status.statusId === 'POISON') {
+      const fang = resolveUniqueTrigger(this.player, 'serpent_queen_fang', 'POISON_APPLIED', powered.magnitude);
+      if (fang.activated) {
+        this.player = fang.player;
+        powered = { ...powered, magnitude: Math.max(1, Math.round(powered.magnitude * fang.magnitude)) };
+        this.addToast("Serpent Queen's Fang deepens the poison.");
+      }
+    } else if (status.statusId === 'BURN') {
+      const ember = resolveUniqueTrigger(this.player, 'promethean_ember', 'BURN_APPLIED', powered.magnitude);
+      if (ember.activated) {
+        this.player = ember.player;
+        this.addToast('Promethean Ember stores one fire charge.');
+      }
+    }
+    return powered;
   }
 
   private processProjectileImpacts(impacts: ProjectileImpact[]): void {
@@ -351,6 +442,7 @@ export class FPSGameRuntime {
         if (!owner) continue;
         const damage = calculateIncomingDamage(owner, this.player, blocked);
         this.player = { ...this.player, stats: { ...this.player.stats, hp: Math.max(0, this.player.stats.hp - damage) } };
+        if (blocked) this.resolveUniqueBlock(owner, damage);
         if (impact.statusEffect && !blocked) this.player = { ...this.player, statusEffects: applyRealtimeStatus(this.player.statusEffects, impact.statusEffect, impact.abilityId) };
         if (impact.healOwnerRatio) this.enemies = this.enemies.map(enemy => enemy.id === owner.id ? { ...enemy, health: Math.min(enemy.maxHealth, enemy.health + Math.ceil(damage * impact.healOwnerRatio!)) } : enemy);
         this.addToast(blocked ? 'Aspis blocked ' + owner.name + ' for ' + damage + '.' : owner.name + ' struck you for ' + damage + '.');
@@ -362,7 +454,13 @@ export class FPSGameRuntime {
         const sound = impact.statusEffect?.statusId === 'POISON' ? 'poison' : surface === 'metal' ? 'bronzeImpact' : surface === 'stone' ? 'stoneImpact' : 'enemyHit';
         this.visualEvents.push({ kind: 'enemyHit', effectId: effect, position: impact.position, color: impact.color, scale: 0.8, sound, surface, sourceId: impact.abilityId, ownerId: impact.enemyId, priority: hit?.isBoss ? 'critical_hit' : 'ordinary_hit' });
         const ability = getAbility(impact.abilityId);
-        if (ability) this.applyPlayerOnHitEffects([impact.enemyId], ability, calculatePlayerDamage(this.player, ability));
+        if (ability) {
+          this.applyPlayerOnHitEffects([impact.enemyId], ability, calculatePlayerDamage(this.player, ability));
+          if (ability.kind === 'PROJECTILE') {
+            const mark = resolveUniqueTrigger(this.player, 'artemis_mark', 'PROJECTILE_HIT');
+            if (mark.activated) { this.player = mark.player; this.addToast("Artemis' Mark sights the next projectile."); }
+          }
+        }
         const healing = (ability?.healOnHit ?? 0);
         if (healing) this.player = { ...this.player, stats: { ...this.player.stats, hp: Math.min(calculateDerivedStats(this.player).maxHealth, this.player.stats.hp + healing) } };
         this.addToast(ability?.healOnHit ? 'Hades’ Grasp restores ' + ability.healOnHit + ' health.' : 'Hit.');
@@ -454,6 +552,7 @@ export class FPSGameRuntime {
     const blocked = this.controllerState.guarding && this.isFacingAttacker(enemy);
     const damage = attack.damageMultiplier > 0 ? Math.max(1, Math.round(calculateIncomingDamage(enemy, this.player, blocked) * attack.damageMultiplier)) : 0;
     if (damage > 0) this.player = { ...this.player, stats: { ...this.player.stats, hp: Math.max(0, this.player.stats.hp - damage) } };
+    if (blocked && damage > 0) this.resolveUniqueBlock(enemy, damage);
     if (attack.statusEffect && !blocked) this.player = { ...this.player, statusEffects: applyRealtimeStatus(this.player.statusEffects, attack.statusEffect, attack.id) };
     const statusEffect = statusVfxEffect(attack.statusEffect?.statusId);
     const effectId = blocked ? 'shield_impact' : statusEffect ?? (attack.shape === 'SLAM' || attack.shape === 'SIGIL' ? 'stone_shockwave' : 'blood_hit');
@@ -480,6 +579,23 @@ export class FPSGameRuntime {
     const toward = Math.atan2(enemy.position.z - this.player.position.z, enemy.position.x - this.player.position.x);
     const delta = Math.atan2(Math.sin(toward - this.player.rotation.yaw), Math.cos(toward - this.player.rotation.yaw));
     return Math.abs(delta) <= 1.18;
+  }
+
+  private resolveUniqueBlock(attacker: WorldEnemy, blockedDamage: number): void {
+    const counter = resolveUniqueTrigger(this.player, 'aspis_bronze_gate', 'BLOCK_SUCCESS', blockedDamage);
+    if (!counter.activated) return;
+    this.player = counter.player;
+    let countered = false;
+    this.enemies = this.enemies.map(enemy => {
+      if (enemy.id !== attacker.id || enemy.health <= 0 || countered) return enemy;
+      countered = true;
+      const health = Math.max(0, enemy.health - counter.magnitude);
+      return { ...enemy, health, state: health <= 0 ? 'DEAD' : 'HURT', stateTimer: health <= 0 ? 1.1 : 0.18 };
+    });
+    if (!countered) return;
+    this.visualEvents.push({ kind: 'impact', effectId: 'aspis_impact', position: { x: attacker.position.x, y: 0.75, z: attacker.position.z }, color: '#ffd675', scale: 0.72, sound: 'shield', sourceId: 'aspis_bronze_gate', ownerId: attacker.id, priority: 'critical_hit' });
+    this.addLog('Aspis of the Bronze Gate counters for ' + counter.magnitude + '.');
+    this.addToast('Bronze Gate countershock · ' + counter.magnitude + ' damage.');
   }
 
   private primeMyrmidonCounter(): void {
@@ -561,11 +677,14 @@ export class FPSGameRuntime {
   interact(): void {
     const drop = this.getLookedAtLoot();
     if (drop) {
+      const stored = addInventoryItem(this.player, drop.item);
+      if (!stored.stored) { this.addToast('This item could not be stored safely. The world drop remains.'); return; }
+      this.player = stored.player;
       this.loot = this.loot.filter(item => item.id !== drop.id);
-      this.player = { ...this.player, inventory: [...this.player.inventory, drop.item] };
       this.visualEvents.push({ kind: 'pickup', position: { ...drop.position, y: 0.35 }, color: '#ffd36d', scale: 0.85, sound: 'pickup' });
-      this.addToast(drop.item.name + ' collected.');
-      this.addLog('Collected ' + drop.item.name + '.');
+      const inOverflow = stored.overflowIds.includes(drop.item.instanceId);
+      this.addToast(inOverflow ? drop.item.name + ' collected to overflow storage.' : drop.item.name + ' collected.');
+      this.addLog((inOverflow ? 'Stored in overflow: ' : 'Collected ') + drop.item.name + '.');
       return;
     }
     const target = findLookTarget(this.world, this.player);
@@ -586,7 +705,7 @@ export class FPSGameRuntime {
     }
     if (target.kind === 'ROOM') {
       const offer = createRoomOffer(target.room);
-      if (offer) { this.roomOffer = offer; return; }
+      if (offer) { this.roomOffer = offer; this.cancelHeldActions(); return; }
       if (target.room.type === 'COMBAT' || target.room.type === 'ELITE') {
         if (this.enemies.some(enemy => enemy.roomId === target.room.id && enemy.health > 0)) this.addToast('Defeat the enemies in this chamber.');
         else this.addToast('This chamber is clear.');
@@ -635,7 +754,11 @@ export class FPSGameRuntime {
       this.addToast('A damage blessing lasts for 35 seconds.');
     } else if (choiceId === 'blood') {
       if (hp <= Math.ceil(maxHp * 0.2)) { this.addToast('You do not have enough health to offer blood.'); return; }
-      this.player = { ...this.player, stats: { ...this.player.stats, hp: Math.max(1, hp - Math.ceil(maxHp * 0.2)) }, inventory: [...this.player.inventory, createLootInstance('ares_votive', 'shrine_' + room.id, this.world.level, 'RARE', seededLootRandom(this.world.seed, 'shrine_' + room.id))] };
+      this.player = { ...this.player, stats: { ...this.player.stats, hp: Math.max(1, hp - Math.ceil(maxHp * 0.2)) } };
+      const reward = createLootInstance('ares_votive', 'shrine_' + room.id, this.world.level, 'RARE', seededLootRandom(this.world.seed, 'shrine_' + room.id));
+      const stored = addInventoryItem(this.player, reward);
+      this.player = stored.player;
+      if (!stored.stored) this.loot = [...this.loot, { id: reward.instanceId, position: { x: room.anchor.x + 0.72, y: 0, z: room.anchor.y + 0.5 }, item: reward }];
     } else if (choiceId === 'aether') this.player = { ...this.player, stats: { ...this.player.stats, mp: Math.min(maxMp, mp + Math.ceil(maxMp * 0.4)) } };
     else if (choiceId === 'key') {
       if (this.world.floor.keys >= 3) this.addToast('You cannot carry more than three Ariadne’s Tokens.');
@@ -652,7 +775,11 @@ export class FPSGameRuntime {
     } else if (choiceId === 'supplies') {
       const health = createLootInstance('healing_draught', 'room_health_' + room.id, this.world.level, 'COMMON', seededLootRandom(this.world.seed, 'room_health_' + room.id));
       const mana = createLootInstance('nectar_flask', 'room_mana_' + room.id, this.world.level, 'COMMON', seededLootRandom(this.world.seed, 'room_mana_' + room.id));
-      this.player = { ...this.player, inventory: [...this.player.inventory, health, mana] };
+      const first = addInventoryItem(this.player, health);
+      this.player = first.player;
+      const second = addInventoryItem(this.player, mana);
+      this.player = second.player;
+      if (!first.stored || !second.stored) this.addToast('Supplies remain in the room because they could not be stored.');
     } else if (choiceId === 'disarm') {
       if (this.rollCheck(this.player.stats.dex, 13 + Math.floor(this.world.level / 3))) this.addToast('Trap safely disarmed.');
       else this.player = { ...this.player, stats: { ...this.player.stats, hp: Math.max(1, hp - Math.ceil(maxHp * 0.12)) } };
@@ -690,15 +817,18 @@ export class FPSGameRuntime {
   private getLookedAtLoot(): WorldLootDrop | null {
     const yaw = this.player.rotation.yaw;
     const forwardX = Math.cos(yaw), forwardZ = Math.sin(yaw);
-    let best: WorldLootDrop | null = null, bestDistance = Infinity;
+    let best: WorldLootDrop | null = null, bestScore = Infinity;
     for (const drop of this.loot) {
       const dx = drop.position.x - this.player.position.x, dz = drop.position.z - this.player.position.z;
       const distance = Math.hypot(dx, dz);
-      if (distance > 2.2 || distance < 0.18 || distance >= bestDistance) continue;
+      if (distance > 2.2 || distance < 0.18) continue;
       const alignment = (dx * forwardX + dz * forwardZ) / distance;
       if (alignment < 0.72 || !hasLineOfSight(this.world.map, this.player.position.x, this.player.position.z, drop.position.x, drop.position.z, 0.1)) continue;
+      const priority = drop.item.rarity === 'UNIQUE' ? 4 : drop.item.rarity === 'RARE' ? 3 : drop.item.rarity === 'MAGIC' ? 2 : 1;
+      const score = distance - priority * 0.16;
+      if (score >= bestScore) continue;
       best = drop;
-      bestDistance = distance;
+      bestScore = score;
     }
     return best;
   }
@@ -723,7 +853,7 @@ export class FPSGameRuntime {
 
   private getPrompt(): string | null {
     const drop = this.getLookedAtLoot();
-    if (drop) return 'E  Collect ' + drop.item.name;
+    if (drop) return 'E  Collect ' + drop.item.name + ' · ' + drop.item.rarity;
     const target = findLookTarget(this.world, this.player);
     if (!target) return null;
     if (target.kind === 'DOOR') return 'E  Open door';
@@ -742,6 +872,28 @@ export class FPSGameRuntime {
     this.player = equipItem(this.player, instanceId);
   }
 
+  /** Cancels held charge/guard input when the game yields to an overlay or browser state change. */
+  cancelHeldActions(): void {
+    this.chargeStartedAt = null;
+    this.controllerState = { ...this.controllerState, guarding: false };
+  }
+
+  moveItem(instanceId: string, x: number, y: number): boolean {
+    const result = moveInventoryItem(this.player, instanceId, x, y);
+    if (!result.moved) return false;
+    this.player = result.player;
+    return true;
+  }
+
+  splitItem(instanceId: string): boolean {
+    const reservedIds = this.loot.flatMap(drop => [drop.id, drop.item.instanceId]);
+    const player = splitInventoryStack(this.player, instanceId, reservedIds);
+    if (!player) return false;
+    this.player = player;
+    this.addToast('Consumable stack split evenly.');
+    return true;
+  }
+
   unequip(slot: EquipmentSlot): void {
     this.player = unequipItem(this.player, slot);
   }
@@ -751,6 +903,28 @@ export class FPSGameRuntime {
     if (!next) { this.addToast('That item cannot be used now.'); return; }
     this.player = next;
     this.addToast('Potion used.');
+  }
+
+  dropItem(instanceId: string): boolean {
+    if (this.loot.length >= 64) { this.addToast('The room is too crowded to safely drop another item.'); return false; }
+    const removed = removeInventoryUnit(this.player, instanceId);
+    if (!removed) return false;
+    let item = removed.item;
+    if (this.loot.some(drop => drop.id === item.instanceId || drop.item.instanceId === item.instanceId)) {
+      const occupied = new Set([...this.loot.map(drop => drop.id), ...this.loot.map(drop => drop.item.instanceId), ...this.player.inventory.map(candidate => candidate.instanceId)]);
+      let suffix = 1;
+      let instanceId = item.instanceId + '_world_' + suffix++;
+      while (occupied.has(instanceId)) instanceId = item.instanceId + '_world_' + suffix++;
+      item = { ...item, instanceId };
+    }
+    this.player = removed.player;
+    const yaw = this.player.rotation.yaw;
+    const desired = { x: this.player.position.x + Math.cos(yaw) * 0.72, y: 0, z: this.player.position.z + Math.sin(yaw) * 0.72 };
+    const tile = this.world.map[Math.floor(desired.z)]?.[Math.floor(desired.x)];
+    const position = isWorldSolid(tile) ? { x: this.player.position.x, y: 0, z: this.player.position.z } : desired;
+    this.loot = [...this.loot, { id: item.instanceId, position, item }];
+    this.addToast(item.name + ' dropped nearby.');
+    return true;
   }
 
   save(storage?: KeyValueStorage): boolean {
@@ -787,6 +961,7 @@ export class FPSGameRuntime {
       world: this.world,
       enemies: this.enemies,
       loot: this.loot,
+      targetLoot: this.getLookedAtLoot(),
       action: this.combat.action,
       primaryAbilityId: loadout.primary,
       secondaryAbilityId: loadout.secondary,
@@ -829,6 +1004,8 @@ function clonePlayer(player: PlayerCharacter): PlayerCharacter {
     stats: { ...player.stats },
     equipment: Object.fromEntries(Object.entries(player.equipment).map(([slot, item]) => [slot, item ? { ...item, affixes: [...item.affixes] } : null])) as PlayerCharacter['equipment'],
     inventory: player.inventory.map(item => ({ ...item, affixes: [...item.affixes] })),
+    inventoryGrid: player.inventoryGrid?.map(placement => ({ ...placement })),
+    uniqueEffectStates: player.uniqueEffectStates?.map(state => ({ ...state })),
     skills: player.skills.map(skill => ({ ...skill })),
     statusEffects: player.statusEffects.map(status => ({ ...status })),
   };
@@ -849,6 +1026,10 @@ function getAbilityStartSound(ability: NonNullable<ReturnType<typeof getAbility>
   if (ability.meleeStyle === 'BASH') return 'shield';
   if (ability.kind === 'MELEE') return 'blade';
   return ability.manaCost > 0 ? 'cast' : 'projectile';
+}
+
+function isFireAbility(ability: NonNullable<ReturnType<typeof getAbility>>): boolean {
+  return ability.onHitStatus?.statusId === 'BURN' || /fire|flame|ember/i.test(ability.id);
 }
 
 function statusVfxEffect(statusId?: string): PixelEffectId | undefined {

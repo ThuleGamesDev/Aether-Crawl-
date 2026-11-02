@@ -158,7 +158,7 @@ export class SceneRenderer {
     this.weapon.update(player, action, isMoving, guarding, elapsedSeconds);
     this.syncEnemies(enemies, world, deltaSeconds);
     this.syncProjectiles(projectiles);
-    this.syncLoot(loot, world);
+    this.syncLoot(loot);
     for (const event of events) {
       if (event.kind === 'audio') continue;
       const effect: PixelEffectId = event.effectId
@@ -311,7 +311,7 @@ export class SceneRenderer {
     }
   }
 
-  private syncLoot(loot: WorldLootDrop[], world: DungeonWorldState): void {
+  private syncLoot(loot: WorldLootDrop[]): void {
     const ids = new Set(loot.map(drop => drop.id));
     for (const [id, sprite] of this.lootSprites) {
       if (!ids.has(id)) { this.scene.remove(sprite); sprite.material.dispose(); this.lootSprites.delete(id); }
@@ -319,14 +319,25 @@ export class SceneRenderer {
     for (const drop of loot) {
       let sprite = this.lootSprites.get(drop.id);
       if (!sprite) {
-        const material = new THREE.SpriteMaterial({ map: this.assets.texture('loot', world.biome), transparent: true, alphaTest: 0.06, depthTest: true, depthWrite: false });
+        const material = new THREE.SpriteMaterial({ map: this.assets.itemTexture(drop.item), transparent: true, alphaTest: 0.06, depthTest: true, depthWrite: false });
         sprite = new THREE.Sprite(material);
         sprite.center.set(0.5, 0);
-        sprite.scale.set(0.42, 0.42, 1);
+        sprite.scale.set(0.46, 0.46, 1);
         sprite.name = 'Loot_' + drop.id;
+        sprite.userData.itemTextureKey = itemTextureKey(drop);
         this.lootSprites.set(drop.id, sprite);
         this.scene.add(sprite);
       }
+      const textureKey = itemTextureKey(drop);
+      if (sprite.userData.itemTextureKey !== textureKey) {
+        sprite.material.map = this.assets.itemTexture(drop.item);
+        sprite.material.needsUpdate = true;
+        sprite.userData.itemTextureKey = textureKey;
+      }
+      sprite.material.color.set(drop.item.rarity === 'UNIQUE' ? '#fff0c1' : '#ffffff');
+      const scale = drop.item.rarity === 'UNIQUE' ? 0.56 + Math.sin(this.elapsedSeconds * 4 + drop.position.z) * 0.025
+        : drop.item.rarity === 'RARE' ? 0.5 : 0.44;
+      sprite.scale.set(scale, scale, 1);
       sprite.position.set(drop.position.x, 0.12 + Math.sin(this.elapsedSeconds * 3 + drop.position.x) * 0.04, drop.position.z);
     }
   }
@@ -386,6 +397,10 @@ export class SceneRenderer {
     this.assets.dispose();
     this.renderer.dispose();
   }
+}
+
+function itemTextureKey(drop: WorldLootDrop): string {
+  return [drop.item.baseId ?? drop.item.id, drop.item.rarity, drop.item.uniqueEffectId ?? ''].join(':');
 }
 
 function projectileTrailEffect(abilityId: string, statusId?: string): PixelEffectId {
