@@ -1,4 +1,4 @@
-import type { ClassType, DungeonRoom, EquipmentSlot, ItemInstance, PlayerCharacter, StatusApplication, WorldEnemy, WorldLootDrop, WorldProjectile } from '../types';
+import type { ClassType, DerivedCharacterStats, DungeonRoom, EquipmentSlot, ItemInstance, PlayerCharacter, StatusApplication, WorldEnemy, WorldLootDrop, WorldProjectile } from '../types';
 import type { InputFrame } from './InputSystem';
 import { createDungeonWorld, createFloorEnemies, createRoomOffer, findLookTarget, markExplored, randomSeed, type RoomOffer } from '../world/DungeonWorld';
 import { raycastGrid, hasLineOfSight, moveWithWallSlide } from '../world/CollisionWorld';
@@ -11,8 +11,9 @@ import { getEnemyAttackTelegraphDescriptor, getGuardianTelegraphEffect } from '.
 import { getFloorGuardianDefinition } from '../data/mazeContent';
 import { createPlayerControllerState, updatePlayerController, type PlayerControllerState } from '../player/PlayerController';
 import { PlayerCombat, type ActivePlayerAction } from '../player/PlayerCombat';
-import { consumePotion, createItemInstance, createPlayerCharacter, equipItem, grantExperience, makeEnemyDrop, unequipItem } from '../player/PlayerProgression';
+import { consumePotion, createPlayerCharacter, equipItem, grantExperience, refreshPlayerDerivedCaps, rollEnemyDrop, unequipItem } from '../player/PlayerProgression';
 import { floorRandom } from '../services/floorRandom';
+import { createLootInstance } from '../services/itemization';
 import { spawnFacingAngle } from '../services/firstPerson';
 import { saveMazeGame, type MazeRunSave } from '../services/mazeSave';
 import type { KeyValueStorage } from '../services/fpsSave';
@@ -20,9 +21,12 @@ import type { DungeonWorldState } from '../world/DungeonWorld';
 import type { VisualEvent } from './SceneRenderer';
 import { applyRealtimeStatus, hasRealtimeStatus, tickRealtimeStatuses } from '../combat/StatusSystem';
 import { getEnemyVfxSurface, resolveSurfaceEffect, type PixelEffectId } from '../presentation/vfxDefinitions';
+import { calculateDerivedStats } from '../player/DerivedStats';
+import { rollItemStatusProc } from '../player/ItemCombatEffects';
 
 export interface FPSGameSnapshot {
   player: PlayerCharacter;
+  derivedStats: DerivedCharacterStats;
   world: DungeonWorldState;
   enemies: WorldEnemy[];
   loot: WorldLootDrop[];
@@ -90,7 +94,7 @@ export class FPSGameRuntime {
 
   constructor(classId: ClassType, save?: Pick<MazeRunSave, 'player' | 'world' | 'enemies' | 'loot' | 'combat'>) {
     if (save) {
-      this.player = clonePlayer(save.player);
+      this.player = refreshPlayerDerivedCaps(clonePlayer(save.player));
       this.world = cloneWorld(save.world);
       this.enemies = save.enemies.map(enemy => ({ ...enemy, position: { ...enemy.position } }));
       this.loot = save.loot.map(drop => ({ ...drop, position: { ...drop.position }, item: { ...drop.item, affixes: [...drop.item.affixes] } }));
@@ -168,8 +172,9 @@ export class FPSGameRuntime {
     this.tickCombatStatuses(dt);
     this.processEnemyRewards();
 
-    if (this.player.stats.mp < this.player.stats.maxMp) {
-      this.player = { ...this.player, stats: { ...this.player.stats, mp: Math.min(this.player.stats.maxMp, this.player.stats.mp + dt * 0.7) } };
+    const derived = calculateDerivedStats(this.player);
+    if (this.player.stats.mp < derived.maxMana) {
+      this.player = { ...this.player, stats: { ...this.player.stats, mp: Math.min(derived.maxMana, this.player.stats.mp + dt * 0.7) } };
     }
 
     if (this.player.stats.hp <= 0) {
@@ -219,9 +224,9 @@ export class FPSGameRuntime {
   private resolvePlayerAction(action: ActivePlayerAction): void {
     const ability = getAbility(action.abilityId);
     if (!ability) return;
-    const damage = calculatePlayerDamage(this.player, ability, action.damageMultiplier);
+    const damage = calculatePlayerDamage(this.player, ability, action.damageMultiplier, this.random());
     if (ability.selfEffect?.type === 'HEAL') {
-      const restored = Math.ceil(this.player.stats.maxHp * (ability.selfEffect.amount ?? 0));
+      const restored = Math.ceil(calculateDerivedStats(this.player).maxHealth * (ability.selfEffect.amount ?? 0));
       this.player = { ...this.player, stats: { ...this.player.stats, hp: Math.min(this.player.stats.maxHp, this.player.stats.hp + restored) } };
       this.visualEvents.push({ kind: 'area', effectId: 'laurel_light', position: { x: this.player.position.x, y: 0.8, z: this.player.position.z }, color: '#8cf2b4', scale: 1.15, sound: 'heal' });
       this.addToast(ability.name + ' restored ' + restored + ' health.');
@@ -265,17 +270,19 @@ export class FPSGameRuntime {
       const lateral = this.player.equipment.weapon?.visualType === 'bow' ? 0 : 0.2;
       const originX = this.player.position.x + direction.x * 0.42 - Math.sin(this.player.rotation.yaw) * lateral;
       const originZ = this.player.position.z + direction.z * 0.42 + Math.cos(this.player.rotation.yaw) * lateral;
+      const derived = calculateDerivedStats(this.player);
+      const projectileSpeed = (ability.projectileSpeed ?? 10) * derived.projectileSpeedMultiplier;
       this.projectiles.push({
         id: this.nextProjectileId++,
         position: { x: originX, y: 1.28 + direction.y * 0.12, z: originZ },
-        velocity: { x: direction.x * (ability.projectileSpeed ?? 10), y: direction.y * (ability.projectileSpeed ?? 10), z: direction.z * (ability.projectileSpeed ?? 10) },
+        velocity: { x: direction.x * projectileSpeed, y: direction.y * projectileSpeed, z: direction.z * projectileSpeed },
         radius: ability.projectileRadius ?? 0.13,
         damage,
-        remainingSeconds: ability.range / Math.max(1, ability.projectileSpeed ?? 10),
+        remainingSeconds: ability.range / Math.max(1, projectileSpeed),
         sourceAbilityId: ability.id,
         color: ability.projectileColor ?? '#8bddff',
         faction: 'PLAYER',
-        statusEffect: ability.onHitStatus,
+        statusEffect: scaleStatusPower(ability.onHitStatus, derived),
       });
       this.visualEvents.push({ kind: 'cast', effectId: abilityVfxEffect(ability.id, ability.onHitStatus?.statusId) ?? (ability.manaCost > 0 ? 'chthonic_bolt' : 'oracle_spark'), position: { x: originX, y: 1.25, z: originZ }, direction: { x: direction.x, z: direction.z }, color: ability.projectileColor, scale: 0.55, sourceId: ability.id });
       return;
@@ -298,16 +305,31 @@ export class FPSGameRuntime {
     this.addToast(ability.name + (result.hitEnemyIds.length ? ' hit ' + result.hitEnemyIds.length + '.' : '.'));
   }
 
-  private applyPlayerOnHitEffects(enemyIds: readonly string[], ability: NonNullable<ReturnType<typeof getAbility>>): void {
+  private applyPlayerOnHitEffects(enemyIds: readonly string[], ability: NonNullable<ReturnType<typeof getAbility>>, hitDamage = ability.damage): void {
     const status = ability.onHitStatus ?? (ability.staggerSeconds ? { statusId: 'STAGGER' as const, durationSeconds: ability.staggerSeconds, magnitude: ability.staggerSeconds } : undefined);
-    if (!status || !enemyIds.length) return;
+    if (!enemyIds.length) return;
+    const derived = calculateDerivedStats(this.player);
+    if (derived.lifeOnHit > 0) {
+      const restored = derived.lifeOnHit * enemyIds.length;
+      this.player = { ...this.player, stats: { ...this.player.stats, hp: Math.min(derived.maxHealth, this.player.stats.hp + restored) } };
+    }
     const hitIds = new Set(enemyIds);
     this.enemies = this.enemies.map(enemy => {
       if (!hitIds.has(enemy.id) || enemy.health <= 0) return enemy;
-      const tuned = enemy.isBoss && status.statusId === 'STAGGER'
-        ? { ...status, durationSeconds: status.durationSeconds * 0.62, magnitude: status.magnitude * 0.62 }
-        : status;
-      return { ...enemy, statusEffects: applyRealtimeStatus(enemy.statusEffects, tuned, ability.id) };
+      let statuses = enemy.statusEffects ?? [];
+      if (status) {
+        const powered = scaleStatusPower(status, derived)!;
+        const tuned = enemy.isBoss && status.statusId === 'STAGGER'
+          ? { ...powered, durationSeconds: powered.durationSeconds * 0.62, magnitude: powered.magnitude * 0.62 }
+          : powered;
+        statuses = applyRealtimeStatus(statuses, tuned, ability.id);
+      }
+      const proc = rollItemStatusProc(derived, this.random);
+      if (proc) {
+        const magnitude = Math.max(1, Math.round(Math.max(1, hitDamage * 0.12) * proc.powerMultiplier));
+        statuses = applyRealtimeStatus(statuses, { statusId: proc.statusId, durationSeconds: proc.durationSeconds, magnitude }, 'item_affix');
+      }
+      return { ...enemy, statusEffects: statuses };
     });
   }
 
@@ -340,7 +362,9 @@ export class FPSGameRuntime {
         const sound = impact.statusEffect?.statusId === 'POISON' ? 'poison' : surface === 'metal' ? 'bronzeImpact' : surface === 'stone' ? 'stoneImpact' : 'enemyHit';
         this.visualEvents.push({ kind: 'enemyHit', effectId: effect, position: impact.position, color: impact.color, scale: 0.8, sound, surface, sourceId: impact.abilityId, ownerId: impact.enemyId, priority: hit?.isBoss ? 'critical_hit' : 'ordinary_hit' });
         const ability = getAbility(impact.abilityId);
-        if (ability?.healOnHit) this.player = { ...this.player, stats: { ...this.player.stats, hp: Math.min(this.player.stats.maxHp, this.player.stats.hp + ability.healOnHit) } };
+        if (ability) this.applyPlayerOnHitEffects([impact.enemyId], ability, calculatePlayerDamage(this.player, ability));
+        const healing = (ability?.healOnHit ?? 0);
+        if (healing) this.player = { ...this.player, stats: { ...this.player.stats, hp: Math.min(calculateDerivedStats(this.player).maxHealth, this.player.stats.hp + healing) } };
         this.addToast(ability?.healOnHit ? 'Hades’ Grasp restores ' + ability.healOnHit + ' health.' : 'Hit.');
         continue;
       }
@@ -467,6 +491,7 @@ export class FPSGameRuntime {
 
   private processEnemyRewards(): void {
     let changed = false;
+    let dropCount = 0;
     let guardianDefeated = false;
     this.enemies = this.enemies.map(enemy => {
       if (enemy.health > 0) {
@@ -494,8 +519,13 @@ export class FPSGameRuntime {
         this.addToast('Level ' + this.player.stats.level + ' reached. Your core stats improved.');
         this.visualEvents.push({ kind: 'audio', position: { ...this.player.position }, sound: 'levelUp' });
       }
-      const item = makeEnemyDrop(enemy, this.world.level);
-      this.loot = [...this.loot, { id: item.instanceId, position: { x: enemy.position.x, y: 0, z: enemy.position.z }, item }];
+      const derived = calculateDerivedStats(this.player);
+      if (derived.lifeOnKill > 0) this.player = { ...this.player, stats: { ...this.player.stats, hp: Math.min(derived.maxHealth, this.player.stats.hp + derived.lifeOnKill) } };
+      const item = rollEnemyDrop(enemy, this.world.level, seededLootRandom(this.world.seed, enemy.id));
+      if (item) {
+        this.loot = [...this.loot, { id: item.instanceId, position: { x: enemy.position.x, y: 0, z: enemy.position.z }, item }];
+        dropCount += 1;
+      }
       this.visualEvents.push({ kind: 'enemyDeath', effectId: enemy.isBoss ? 'guardian_death' : 'blood_hit', position: { x: enemy.position.x, y: 0.4, z: enemy.position.z }, color: '#f4bc72', scale: enemy.isBoss ? 1.35 : 0.85, sound: enemy.isBoss ? 'bossDeath' : undefined, sourceId: 'enemy_death_reward', ownerId: enemy.id, priority: enemy.isBoss ? 'critical_hit' : 'ordinary_hit' });
       this.addLog(enemy.name + ' defeated. +' + enemy.xpReward + ' XP.');
       if (enemy.definitionId === this.world.floor.guardianId) {
@@ -508,14 +538,16 @@ export class FPSGameRuntime {
       return rewarded;
     });
     if (guardianDefeated) this.addToast('The Guardian falls. Descent unlocked; the rest of the floor remains open.');
-    else if (changed) this.addToast('Loot dropped. Press E to collect.');
+    else if (dropCount > 0) this.addToast(dropCount === 1 ? 'Loot dropped. Press E to collect.' : 'Loot dropped. Press E to collect it.');
+    else if (changed) this.addToast('Enemy defeated.');
   }
 
   private tickCombatStatuses(deltaSeconds: number): void {
     if (this.player.statusEffects.length) {
       const tick = tickRealtimeStatuses(this.player.statusEffects, deltaSeconds);
-      this.player = { ...this.player, stats: { ...this.player.stats, hp: Math.max(0, Math.min(this.player.stats.maxHp, this.player.stats.hp - tick.damage + tick.healing)) }, statusEffects: tick.statuses };
-      if (tick.ticks.length) this.visualEvents.push({ kind: 'impact', effectId: tick.ticks.some(effect => effect.statusId === 'POISON') ? 'poison_splash' : 'fire_burst', position: { x: this.player.position.x, y: 0.8, z: this.player.position.z }, color: '#a8c65a', scale: 0.48 });
+      const maxHealth = calculateDerivedStats(this.player).maxHealth;
+      this.player = { ...this.player, stats: { ...this.player.stats, hp: Math.max(0, Math.min(maxHealth, this.player.stats.hp - tick.damage + tick.healing)) }, statusEffects: tick.statuses };
+      if (tick.ticks.length) this.visualEvents.push({ kind: 'impact', effectId: tick.ticks.some(effect => effect.statusId === 'BLEED') ? 'blood_hit' : tick.ticks.some(effect => effect.statusId === 'POISON') ? 'poison_splash' : 'fire_burst', position: { x: this.player.position.x, y: 0.8, z: this.player.position.z }, color: '#a8c65a', scale: 0.48 });
     }
     this.enemies = this.enemies.map(enemy => {
       if (enemy.health <= 0 || !enemy.statusEffects?.length) return enemy;
@@ -569,7 +601,8 @@ export class FPSGameRuntime {
       this.addToast('The lock has already resisted. Find Ariadne’s Token.');
       return;
     }
-    const stat = isSecret ? this.player.stats.dex : this.player.stats.str;
+    const derived = calculateDerivedStats(this.player);
+    const stat = isSecret ? derived.dexterity : derived.strength;
     const success = useKey || this.rollCheck(stat, isSecret ? 15 : 12 + Math.floor(this.world.level / 2));
     if (!success) {
       if (!isSecret) this.player = { ...this.player, stats: { ...this.player.stats, hp: Math.max(1, this.player.stats.hp - 3) } };
@@ -602,7 +635,7 @@ export class FPSGameRuntime {
       this.addToast('A damage blessing lasts for 35 seconds.');
     } else if (choiceId === 'blood') {
       if (hp <= Math.ceil(maxHp * 0.2)) { this.addToast('You do not have enough health to offer blood.'); return; }
-      this.player = { ...this.player, stats: { ...this.player.stats, hp: Math.max(1, hp - Math.ceil(maxHp * 0.2)) }, inventory: [...this.player.inventory, createItemInstance({ id: 'shrine_charm_' + room.id, name: 'Ares’ Bronze Votive', description: 'A rare bronze charm taken from the Altar of Ares.', type: 'ACCESSORY', value: 4 + this.world.level, statBonus: 'STR', icon: '◇', quantity: 1 }, 'shrine_' + room.id, this.world.level, 'RARE')] };
+      this.player = { ...this.player, stats: { ...this.player.stats, hp: Math.max(1, hp - Math.ceil(maxHp * 0.2)) }, inventory: [...this.player.inventory, createLootInstance('ares_votive', 'shrine_' + room.id, this.world.level, 'RARE', seededLootRandom(this.world.seed, 'shrine_' + room.id))] };
     } else if (choiceId === 'aether') this.player = { ...this.player, stats: { ...this.player.stats, mp: Math.min(maxMp, mp + Math.ceil(maxMp * 0.4)) } };
     else if (choiceId === 'key') {
       if (this.world.floor.keys >= 3) this.addToast('You cannot carry more than three Ariadne’s Tokens.');
@@ -613,12 +646,12 @@ export class FPSGameRuntime {
     }
     else if (choiceId === 'gear' || choiceId === 'fortune' || choiceId === 'investigate') {
       const rarity = room.type === 'LOCKED' || choiceId === 'fortune' ? 'RARE' : 'COMMON';
-      const reward = createItemInstance({ id: 'vault_blade_' + room.id, name: 'Bronze Kopis of the Fallen', description: 'A balanced bronze weapon recovered from a sealed chamber.', type: 'WEAPON', value: 5 + this.world.level * 2, visualType: 'dagger', icon: '⌁', quantity: 1 }, 'room_reward_' + room.id, this.world.level, rarity);
+      const reward = createLootInstance('kopis', 'room_reward_' + room.id, this.world.level, rarity, seededLootRandom(this.world.seed, 'room_reward_' + room.id));
       this.loot = [...this.loot, { id: reward.instanceId, position: { x: room.anchor.x + 0.72, y: 0, z: room.anchor.y + 0.5 }, item: reward }];
       this.addToast('A reward appeared in the room. Press E to collect it.');
     } else if (choiceId === 'supplies') {
-      const health = createItemInstance({ id: 'room_health_' + room.id, name: 'Healing Draught', description: 'Restores health when used from your inventory.', type: 'POTION', value: 35, icon: '▣', quantity: 1 }, 'room_health_' + room.id, this.world.level);
-      const mana = createItemInstance({ id: 'room_mana_' + room.id, name: 'Nectar Flask', description: 'Restores mana when used from your inventory.', type: 'POTION', value: 25, icon: '▣', quantity: 1 }, 'room_mana_' + room.id, this.world.level);
+      const health = createLootInstance('healing_draught', 'room_health_' + room.id, this.world.level, 'COMMON', seededLootRandom(this.world.seed, 'room_health_' + room.id));
+      const mana = createLootInstance('nectar_flask', 'room_mana_' + room.id, this.world.level, 'COMMON', seededLootRandom(this.world.seed, 'room_mana_' + room.id));
       this.player = { ...this.player, inventory: [...this.player.inventory, health, mana] };
     } else if (choiceId === 'disarm') {
       if (this.rollCheck(this.player.stats.dex, 13 + Math.floor(this.world.level / 3))) this.addToast('Trap safely disarmed.');
@@ -750,6 +783,7 @@ export class FPSGameRuntime {
     const loadout = CLASS_ABILITY_LOADOUT[this.player.classId];
     return {
       player: this.player,
+      derivedStats: calculateDerivedStats(this.player),
       world: this.world,
       enemies: this.enemies,
       loot: this.loot,
@@ -818,11 +852,26 @@ function getAbilityStartSound(ability: NonNullable<ReturnType<typeof getAbility>
 }
 
 function statusVfxEffect(statusId?: string): PixelEffectId | undefined {
+  if (statusId === 'BLEED') return 'blood_hit';
   if (statusId === 'POISON') return 'arachne_venom';
   if (statusId === 'BURN') return 'promethean_flame';
   if (statusId === 'SLOW') return 'web_snare';
   if (statusId === 'WEAKNESS') return 'chthonic_bolt';
   return undefined;
+}
+
+function seededLootRandom(floorSeed: number, key: string): () => number {
+  let hash = 2166136261;
+  for (let index = 0; index < key.length; index += 1) hash = Math.imul(hash ^ key.charCodeAt(index), 16777619);
+  return floorRandom((floorSeed ^ hash ^ 0x71007) >>> 0);
+}
+
+function scaleStatusPower(status: StatusApplication | undefined, derived: DerivedCharacterStats): StatusApplication | undefined {
+  if (!status) return undefined;
+  const power = status.statusId === 'BLEED' ? derived.bleedPowerMultiplier
+    : status.statusId === 'POISON' ? derived.poisonPowerMultiplier
+      : status.statusId === 'BURN' ? derived.firePowerMultiplier : 1;
+  return power === 1 ? status : { ...status, magnitude: Math.max(0, status.magnitude * power) };
 }
 
 function abilityVfxEffect(abilityId: string, statusId?: string): PixelEffectId | undefined {

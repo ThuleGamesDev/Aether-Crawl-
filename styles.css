@@ -229,12 +229,21 @@ canvas {
 .fps-equipment-slot strong { color: #e4dbcf; font: 12px Georgia, serif; }
 .fps-equipment-slot span { color: #a59c8e; font-size: 9px; }
 .fps-equipment-slot button, .fps-item-actions button { border: 1px solid #705339; background: #34271f; color: #e6ceb0; padding: 8px 9px; font: 9px ui-monospace, monospace; cursor: pointer; }
-.fps-item-card { display: grid; grid-template-columns: 36px minmax(0,1fr) auto; align-items: center; gap: 10px; border: 1px solid #3a3430; background: rgba(6,6,8,.5); padding: 9px; }
+.fps-item-card { display: grid; grid-template-columns: 36px minmax(0,1fr) auto; align-items: start; gap: 10px; border: 1px solid #3a3430; background: rgba(6,6,8,.5); padding: 9px; }
+.fps-item-card.fps-rarity-magic { border-color: #586c8b; }
+.fps-item-card.fps-rarity-rare { border-color: #9a7440; }
 .fps-item-icon { width: 34px; height: 34px; display: grid; place-items: center; border: 1px solid rgba(208,176,129,.35); background: #171416; color: #d4ae76; font-size: 20px; }
 .fps-item-info { min-width: 0; display: grid; gap: 3px; }
 .fps-item-info strong { color: #e9dfd1; font: bold 12px Georgia, serif; }
 .fps-item-info span, .fps-item-info small { color: #a99d8c; font: 9px ui-monospace, monospace; }
 .fps-item-info p { margin: 0; color: #aaa399; font-size: 10px; }
+.fps-item-affixes { display: grid; gap: 2px; margin: 3px 0; padding-left: 15px; color: #d1bd99; font: 9px ui-monospace, monospace; }
+.fps-item-comparison { display: grid; gap: 3px; border-top: 1px solid #35302d; margin-top: 5px; padding-top: 5px; font: 9px ui-monospace, monospace; }
+.fps-item-comparison b { color: #c8a16b; font-size: 8px; text-transform: uppercase; letter-spacing: .08em; }
+.fps-item-comparison span.positive { color: #a9d7a8; }
+.fps-item-comparison span.negative { color: #e2a095; }
+.fps-item-requirement { color: #e2a095 !important; }
+.fps-item-actions button:disabled { opacity: .45; cursor: not-allowed; }
 .fps-item-actions { display: grid; gap: 5px; }
 .fps-room-choices { display: grid; gap: 8px; }
 .fps-room-choice { display: grid; gap: 5px; min-height: 58px; border: 1px solid #514338; background: #1d1917; text-align: left; padding: 12px; cursor: pointer; }

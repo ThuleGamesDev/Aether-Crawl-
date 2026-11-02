@@ -3,6 +3,8 @@ import type { DungeonWorldState } from '../world/DungeonWorld';
 import { isWorldSolid } from '../world/CollisionWorld';
 import type { PlayerCombatSaveState } from '../player/PlayerCombat';
 import { getAbility } from '../combat/AbilityRegistry';
+import { calculateDerivedStats } from '../player/DerivedStats';
+import { getItemBase } from '../data/itemBases';
 
 export const FPS_SAVE_KEY = 'aether_crawl_fps_r1_save_v1';
 export const FPS_SAVE_VERSION = 1;
@@ -59,11 +61,11 @@ function defaultStorage(): KeyValueStorage | null {
   catch { return null; }
 }
 
-export function isFPSRunSave(value: unknown): value is FPSRunSave {
+export function isFPSRunSave(value: unknown, allowDerivedCaps = false, requireBaseId = false): value is FPSRunSave {
   if (!isRecord(value) || value.version !== FPS_SAVE_VERSION || !Number.isFinite(value.savedAt)) return false;
-  if (!isPlayerCharacter(value.player) || !isDungeonWorld(value.world)) return false;
+  if (!isPlayerCharacter(value.player, allowDerivedCaps, requireBaseId) || !isDungeonWorld(value.world)) return false;
   if (!Array.isArray(value.enemies) || !value.enemies.every(isWorldEnemy)) return false;
-  if (!Array.isArray(value.loot) || !value.loot.every(isWorldLoot)) return false;
+  if (!Array.isArray(value.loot) || !value.loot.every((drop: unknown) => isWorldLoot(drop, requireBaseId))) return false;
   if (value.combat !== undefined && !isPlayerCombatSaveState(value.combat)) return false;
   if (!isPositionInDungeon(value.world, value.player.position) || !value.enemies.every(enemy => isPositionInDungeon(value.world, enemy.position)) || !value.loot.every(drop => isPositionInDungeon(value.world, drop.position))) return false;
   return true;
@@ -73,7 +75,7 @@ function isRecord(value: unknown): value is Record<string, any> {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value));
 }
 
-function isPlayerCharacter(value: unknown): value is PlayerCharacter {
+function isPlayerCharacter(value: unknown, allowDerivedCaps = false, requireBaseId = false): value is PlayerCharacter {
   if (!isRecord(value) || typeof value.id !== 'string' || typeof value.name !== 'string') return false;
   if (!['BARBARIAN', 'PALADIN', 'SORCERER', 'ROGUE', 'RANGER', 'CLERIC', 'MONK', 'NECROMANCER'].includes(value.classId)) return false;
   if (!isRecord(value.position) || !Number.isFinite(value.position.x) || !Number.isFinite(value.position.y) || !Number.isFinite(value.position.z)) return false;
@@ -82,12 +84,22 @@ function isPlayerCharacter(value: unknown): value is PlayerCharacter {
   const statValues = ['hp', 'maxHp', 'mp', 'maxMp', 'str', 'dex', 'int', 'xp', 'level', 'damageBonus', 'armor'];
   if (!statValues.every(key => Number.isFinite(value.stats[key]))) return false;
   if (value.stats.maxHp <= 0 || value.stats.hp < 0 || value.stats.hp > value.stats.maxHp || value.stats.maxMp < 0 || value.stats.mp < 0 || value.stats.mp > value.stats.maxMp || value.stats.level < 1 || !Number.isInteger(value.stats.level) || value.stats.xp < 0) return false;
-  if (!Array.isArray(value.inventory) || !value.inventory.every(isItemInstance)) return false;
+  if (!Array.isArray(value.inventory) || !value.inventory.every((item: unknown) => isItemInstance(item, requireBaseId))) return false;
   if (!isRecord(value.equipment)) return false;
   const slotTypes: Record<string, string> = { weapon: 'WEAPON', armor: 'ARMOR', offhand: 'SHIELD', accessory: 'ACCESSORY' };
-  if (!Object.entries(slotTypes).every(([slot, type]) => value.equipment[slot] === null || isItemInstance(value.equipment[slot]) && value.equipment[slot].type === type)) return false;
+  if (!Object.entries(slotTypes).every(([slot, type]) => value.equipment[slot] === null || isItemInstance(value.equipment[slot], requireBaseId) && value.equipment[slot].type === type)) return false;
   if (!Array.isArray(value.skills) || !value.skills.every(skill => isRecord(skill) && typeof skill.abilityId === 'string' && Number.isInteger(skill.rank) && skill.rank >= 1)) return false;
-  return Array.isArray(value.statusEffects) && value.statusEffects.length <= 8 && value.statusEffects.every(status => isRecord(status) && typeof status.id === 'string' && typeof status.statusId === 'string' && Number.isFinite(status.durationSeconds) && status.durationSeconds >= 0 && Number.isFinite(status.magnitude) && (status.tickRemainingSeconds === undefined || Number.isFinite(status.tickRemainingSeconds) && status.tickRemainingSeconds >= 0));
+  if (!Array.isArray(value.statusEffects) || value.statusEffects.length > 8 || !value.statusEffects.every(status => isRecord(status) && typeof status.id === 'string' && typeof status.statusId === 'string' && Number.isFinite(status.durationSeconds) && status.durationSeconds >= 0 && Number.isFinite(status.magnitude) && (status.tickRemainingSeconds === undefined || Number.isFinite(status.tickRemainingSeconds) && status.tickRemainingSeconds >= 0))) return false;
+  if (allowDerivedCaps) {
+    if (![value.stats.baseMaxHp, value.stats.baseMaxMp, value.stats.baseArmor].every(Number.isFinite) || value.stats.baseMaxHp <= 0 || value.stats.baseMaxMp < 0 || value.stats.baseArmor < 0) return false;
+    const derived = calculateDerivedStats(value as PlayerCharacter);
+    if (Math.abs(value.stats.maxHp - derived.maxHealth) > 0.000001 || Math.abs(value.stats.maxMp - derived.maxMana) > 0.000001 || Math.abs(value.stats.armor - derived.armor) > 0.000001) return false;
+    if (value.stats.hp > derived.maxHealth || value.stats.mp > derived.maxMana) return false;
+    const equipped = Object.values(value.equipment) as Array<ItemInstance | null>;
+    if (equipped.some(item => item && item.quantity !== 1)) return false;
+    if (isTwoHanded(value.equipment.weapon) && value.equipment.offhand) return false;
+  }
+  return true;
 }
 
 function isDungeonWorld(value: unknown): value is DungeonWorldState {
@@ -125,22 +137,27 @@ function isWorldEnemy(value: unknown): value is WorldEnemy {
     && (value.pathTargetCell === undefined || isRecord(value.pathTargetCell) && Number.isInteger(value.pathTargetCell.x) && Number.isInteger(value.pathTargetCell.y))
     && (value.pathStep === undefined || isRecord(value.pathStep) && Number.isInteger(value.pathStep.x) && Number.isInteger(value.pathStep.y))
     && (value.telegraphPosition === undefined || isRecord(value.telegraphPosition) && Number.isFinite(value.telegraphPosition.x) && Number.isFinite(value.telegraphPosition.y) && Number.isFinite(value.telegraphPosition.z))
+    && (value.lootTier === undefined || ['NORMAL', 'ELITE', 'GUARDIAN'].includes(value.lootTier))
     && typeof value.rewardGranted === 'boolean' && typeof value.isBoss === 'boolean';
 }
 
-function isWorldLoot(value: unknown): value is WorldLootDrop {
+function isWorldLoot(value: unknown, requireBaseId = false): value is WorldLootDrop {
   return isRecord(value) && typeof value.id === 'string' && isRecord(value.position) && Number.isFinite(value.position.x)
-    && Number.isFinite(value.position.y) && Number.isFinite(value.position.z) && isItemInstance(value.item);
+    && Number.isFinite(value.position.y) && Number.isFinite(value.position.z) && isItemInstance(value.item, requireBaseId);
 }
 
-function isItemInstance(value: unknown): value is ItemInstance {
+function isItemInstance(value: unknown, requireBaseId = false): value is ItemInstance {
   const rarities = ['COMMON', 'MAGIC', 'RARE', 'UNIQUE'];
   const types = ['WEAPON', 'ARMOR', 'POTION', 'SCROLL', 'SHIELD', 'ACCESSORY'];
   return isRecord(value) && typeof value.instanceId === 'string' && typeof value.id === 'string' && typeof value.name === 'string'
     && typeof value.description === 'string' && types.includes(value.type) && Number.isFinite(value.value) && value.value >= 0
     && Number.isInteger(value.quantity) && value.quantity >= 1 && Number.isInteger(value.itemLevel) && value.itemLevel >= 1
     && rarities.includes(value.rarity) && Array.isArray(value.affixes)
-    && value.affixes.every(affix => isRecord(affix) && typeof affix.id === 'string' && Number.isFinite(affix.value))
+    && (!requireBaseId || typeof value.baseId === 'string' && value.baseId.length > 0)
+    && (value.baseId === undefined || typeof value.baseId === 'string' && value.baseId.length > 0)
+    && (!value.baseId || !getItemBase(value.baseId) || getItemBase(value.baseId)!.type === value.type)
+    && (value.consumableEffect === undefined || value.consumableEffect === 'HEALTH' || value.consumableEffect === 'MANA')
+    && value.affixes.every(affix => isRecord(affix) && typeof affix.id === 'string' && Number.isFinite(affix.value) && (affix.tier === undefined || Number.isInteger(affix.tier) && affix.tier >= 1))
     && (value.uniqueEffectId === undefined || typeof value.uniqueEffectId === 'string');
 }
 
@@ -150,7 +167,14 @@ function isPlayerCombatSaveState(value: unknown): value is PlayerCombatSaveState
     && Object.entries(value.cooldowns).every(([id, cooldown]) => Boolean(getAbility(id)) && Number.isFinite(cooldown) && cooldown >= 0)
     && (value.action === null || isRecord(value.action) && typeof value.action.abilityId === 'string' && Boolean(getAbility(value.action.abilityId))
       && phases.includes(value.action.phase) && Number.isFinite(value.action.remainingSeconds) && value.action.remainingSeconds >= 0
-      && Number.isFinite(value.action.damageMultiplier) && value.action.damageMultiplier > 0);
+      && Number.isFinite(value.action.damageMultiplier) && value.action.damageMultiplier > 0
+      && (value.action.speedMultiplier === undefined || Number.isFinite(value.action.speedMultiplier) && value.action.speedMultiplier >= 0.5 && value.action.speedMultiplier <= 1.75));
+}
+
+function isTwoHanded(item: ItemInstance | null | undefined): boolean {
+  if (!item) return false;
+  return Boolean(getItemBase(item.baseId)?.twoHanded)
+    || item.visualType === 'bow' || item.visualType === 'axe' || item.visualType === 'staff';
 }
 
 function isPositionInDungeon(world: DungeonWorldState, position: { x: number; y: number; z: number }): boolean {

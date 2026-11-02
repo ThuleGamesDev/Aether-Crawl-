@@ -6,18 +6,21 @@ import { enemyDefinitions } from '../data/enemies';
 import { getFloorGuardianDefinition } from '../data/mazeContent';
 import { getAbility } from '../combat/AbilityRegistry';
 import { CLASSES } from '../constants';
+import { normalizeLegacyItem } from './itemization';
+import { refreshPlayerDerivedCaps } from '../player/PlayerProgression';
+import { getItemBase } from '../data/itemBases';
 
 export const MAZE_SAVE_KEY = 'maze_of_the_minotaur_fps_r2a_save_v2';
-export const MAZE_SAVE_VERSION = 2;
+export const MAZE_SAVE_VERSION = 3;
 export interface MazeRunSave {
-  version: 2;
+  version: 3;
   savedAt: number;
   player: PlayerCharacter;
   world: DungeonWorldState;
   enemies: WorldEnemy[];
   loot: WorldLootDrop[];
   combat?: FPSRunSave['combat'];
-  migratedFrom?: 'FPS_R1';
+  migratedFrom?: 'FPS_R1' | 'FPS_R2A';
 }
 export type MazeRunState = Pick<MazeRunSave, 'player' | 'world' | 'enemies' | 'loot' | 'combat'>;
 
@@ -32,33 +35,38 @@ export function saveMazeGame(save: MazeRunState, storage?: KeyValueStorage): boo
   } catch { return false; }
 }
 
-export function loadMazeGame(storage?: KeyValueStorage): { save: MazeRunSave | null; invalid: boolean; migratedFromR1: boolean } {
+export function loadMazeGame(storage?: KeyValueStorage): { save: MazeRunSave | null; invalid: boolean; migratedFromR1: boolean; migratedFromR2A: boolean; migrationRequired: boolean } {
   const target = storage ?? defaultStorage();
-  if (!target) return { save: null, invalid: true, migratedFromR1: false };
+  if (!target) return { save: null, invalid: true, migratedFromR1: false, migratedFromR2A: false, migrationRequired: false };
   try {
     const raw = target.getItem(MAZE_SAVE_KEY);
     if (raw) {
       const value: unknown = JSON.parse(raw);
-      return isMazeRunSave(value)
-        ? { save: value, invalid: false, migratedFromR1: false }
-        : { save: null, invalid: true, migratedFromR1: false };
+      if (isMazeRunSave(value)) return { save: value, invalid: false, migratedFromR1: false, migratedFromR2A: false, migrationRequired: false };
+      if (isLegacyMazeRunSaveV2(value)) {
+        const migrated = migrateR2ASave(value);
+        return isMazeRunSave(migrated)
+          ? { save: migrated, invalid: false, migratedFromR1: false, migratedFromR2A: true, migrationRequired: true }
+          : { save: null, invalid: true, migratedFromR1: false, migratedFromR2A: false, migrationRequired: false };
+      }
+      return { save: null, invalid: true, migratedFromR1: false, migratedFromR2A: false, migrationRequired: false };
     }
-  } catch { return { save: null, invalid: true, migratedFromR1: false }; }
+  } catch { return { save: null, invalid: true, migratedFromR1: false, migratedFromR2A: false, migrationRequired: false }; }
   const legacy = loadFPSGame(target);
-  if (legacy.invalid) return { save: null, invalid: true, migratedFromR1: false };
-  if (!legacy.save) return { save: null, invalid: false, migratedFromR1: false };
+  if (legacy.invalid) return { save: null, invalid: true, migratedFromR1: false, migratedFromR2A: false, migrationRequired: false };
+  if (!legacy.save) return { save: null, invalid: false, migratedFromR1: false, migratedFromR2A: false, migrationRequired: false };
   try {
     const migrated = migrateR1Save(legacy.save);
     return isMazeRunSave(migrated)
-      ? { save: migrated, invalid: false, migratedFromR1: true }
-      : { save: null, invalid: true, migratedFromR1: false };
-  } catch { return { save: null, invalid: true, migratedFromR1: false }; }
+      ? { save: migrated, invalid: false, migratedFromR1: true, migratedFromR2A: false, migrationRequired: true }
+      : { save: null, invalid: true, migratedFromR1: false, migratedFromR2A: false, migrationRequired: false };
+  } catch { return { save: null, invalid: true, migratedFromR1: false, migratedFromR2A: false, migrationRequired: false }; }
 }
 
 export function isMazeRunSave(value: unknown): value is MazeRunSave {
   if (!isRecord(value) || value.version !== MAZE_SAVE_VERSION || !Number.isFinite(value.savedAt)) return false;
   const legacyShape = { ...value, version: 1 };
-  if (!isFPSRunSave(legacyShape)) return false;
+  if (!isFPSRunSave(legacyShape, true, true)) return false;
   const floor = value.world.floor as FloorState;
   const guardian = getFloorGuardianDefinition(value.world.level);
   if (floor.guardianId !== guardian.id || !['NOT_DISCOVERED', 'ALIVE', 'DEFEATED', 'DESCENT_UNLOCKED'].includes(String(floor.guardianState))) return false;
@@ -69,7 +77,46 @@ export function isMazeRunSave(value: unknown): value is MazeRunSave {
     const combat = value.combat;
     if (!isRecord(combat) || !isRecord(combat.cooldowns) || Object.entries(combat.cooldowns).some(([id, cooldown]) => !getAbility(id) || !Number.isFinite(cooldown) || Number(cooldown) < 0)) return false;
   }
+  const allItems = [...value.player.inventory, ...Object.values(value.player.equipment).filter(Boolean), ...value.loot.map((drop: WorldLootDrop) => drop.item)] as ItemInstance[];
+  if (new Set(allItems.map(item => item.instanceId)).size !== allItems.length) return false;
   return true;
+}
+
+interface LegacyMazeRunSaveV2 extends Omit<MazeRunSave, 'version' | 'migratedFrom'> {
+  version: 2;
+  migratedFrom?: 'FPS_R1';
+}
+
+function isLegacyMazeRunSaveV2(value: unknown): value is LegacyMazeRunSaveV2 {
+  if (!isRecord(value) || value.version !== 2 || !Number.isFinite(value.savedAt)) return false;
+  if (!isFPSRunSave({ ...value, version: 1 })) return false;
+  const floor = value.world.floor as FloorState;
+  const guardian = getFloorGuardianDefinition(value.world.level);
+  const guardians = value.enemies.filter((enemy: WorldEnemy) => enemy.definitionId === guardian.id);
+  if (floor.guardianId !== guardian.id || !['NOT_DISCOVERED', 'ALIVE', 'DEFEATED', 'DESCENT_UNLOCKED'].includes(String(floor.guardianState))) return false;
+  if (guardians.length !== 1 || !guardians[0].isBoss) return false;
+  if (floor.guardianState === 'DESCENT_UNLOCKED' && (guardians[0].health > 0 || !guardians[0].rewardGranted)) return false;
+  return true;
+}
+
+/** In-memory conversion only. The v2 source key is replaced only after a valid v3 write. */
+export function migrateR2ASave(save: LegacyMazeRunSaveV2): MazeRunSave {
+  const normalizedPlayer = normalizePlayerItems(save.player);
+  const player = refreshPlayerDerivedCaps(normalizedPlayer);
+  const enemies = save.enemies.map(enemy => ({
+    ...enemy,
+    lootTier: enemy.lootTier ?? (enemy.isBoss ? 'GUARDIAN' : save.world.floor.rooms.find(room => room.id === enemy.roomId)?.type === 'ELITE' ? 'ELITE' : 'NORMAL'),
+  }));
+  return {
+    version: 3,
+    savedAt: Date.now(),
+    migratedFrom: 'FPS_R2A',
+    player,
+    world: save.world,
+    enemies,
+    loot: save.loot.map(drop => ({ ...drop, item: normalizeLegacyItem(drop.item) })),
+    combat: save.combat,
+  };
 }
 
 export function migrateR1Save(save: FPSRunSave): MazeRunSave {
@@ -127,12 +174,12 @@ export function migrateR1Save(save: FPSRunSave): MazeRunSave {
     guardianState: 'NOT_DISCOVERED',
   };
   const world: DungeonWorldState = { ...oldWorld, map, decorations, explored, floor, worldRevision: oldWorld.worldRevision + 1 };
-  const player: PlayerCharacter = {
+  const player = normalizePlayerItems({
     ...save.player,
     name: CLASSES[save.player.classId].name,
     position: { ...save.player.position, x: save.player.position.x + offsetX, z: save.player.position.z + offsetZ },
     equipment: mapEquipment(save.player.equipment), inventory: save.player.inventory.map(migrateItem),
-  };
+  });
   const guardianDefinition = getFloorGuardianDefinition(oldWorld.level);
   const normalDefinitions = new Map(enemyDefinitions.map(definition => [definition.id, definition]));
   const oldBosses = save.enemies.filter(enemy => enemy.isBoss);
@@ -154,6 +201,7 @@ export function migrateR1Save(save: FPSRunSave): MazeRunSave {
       attackSetId: definition?.attackSetId ?? 'shade',
       position,
       attackIndex: enemy.attackIndex ?? 0,
+      lootTier: enemy.lootTier ?? 'NORMAL',
       isBoss: false,
     });
   }
@@ -182,6 +230,7 @@ export function migrateR1Save(save: FPSRunSave): MazeRunSave {
     attackIndex: 0,
     rewardGranted: rewarded,
     roomId: bossRoom.id,
+    lootTier: 'GUARDIAN',
     isBoss: true,
   };
   enemies.push(guardianEnemy);
@@ -189,7 +238,7 @@ export function migrateR1Save(save: FPSRunSave): MazeRunSave {
   if (floor.guardianState === 'DESCENT_UNLOCKED') bossRoom.resolved = true;
 
   const migrated: MazeRunSave = {
-    version: 2, savedAt: Date.now(), migratedFrom: 'FPS_R1',
+    version: 3, savedAt: Date.now(), migratedFrom: 'FPS_R1',
     player, world, enemies,
     loot: save.loot.map(drop => ({ ...drop, position: { ...drop.position, x: drop.position.x + offsetX, z: drop.position.z + offsetZ }, item: migrateItem(drop.item) })),
     combat: save.combat,
@@ -206,10 +255,43 @@ const ITEM_NAMES: Record<string, string> = {
 };
 function migrateItem(item: ItemInstance): ItemInstance {
   const name = ITEM_NAMES[item.name] ?? item.name;
-  return { ...item, name, description: item.description.replace(/dungeon/ig, 'labyrinth').replace(/iron key/ig, 'Ariadne’s Token') };
+  return normalizeLegacyItem({ ...item, name, description: item.description.replace(/dungeon/ig, 'labyrinth').replace(/iron key/ig, 'Ariadne’s Token') });
 }
 function mapEquipment(equipment: PlayerCharacter['equipment']): PlayerCharacter['equipment'] {
   return Object.fromEntries(Object.entries(equipment).map(([slot, item]) => [slot, item ? migrateItem(item) : null])) as PlayerCharacter['equipment'];
+}
+function normalizePlayerItems(source: PlayerCharacter): PlayerCharacter {
+  const equipment = { ...mapEquipment(source.equipment) };
+  const inventory = source.inventory.map(item => normalizeLegacyItem(item));
+  const usedIds = new Set([
+    ...inventory.map(item => item.instanceId),
+    ...Object.values(equipment).filter((item): item is ItemInstance => Boolean(item)).map(item => item.instanceId),
+  ]);
+  for (const slot of ['weapon', 'armor', 'offhand', 'accessory'] as const) {
+    const item = equipment[slot];
+    if (!item) continue;
+    equipment[slot] = { ...item, quantity: 1 };
+    if (item.quantity > 1) {
+      let splitId = item.instanceId + '_split_' + (item.quantity - 1);
+      let suffix = 2;
+      while (usedIds.has(splitId)) splitId = item.instanceId + '_split_' + (item.quantity - 1) + '_' + suffix++;
+      usedIds.add(splitId);
+      inventory.push({ ...item, instanceId: splitId, quantity: item.quantity - 1 });
+    }
+  }
+  if (isTwoHanded(equipment.weapon) && equipment.offhand) {
+    inventory.push(equipment.offhand);
+    equipment.offhand = null;
+  }
+  const legacyEquippedArmor = (source.equipment.armor?.value ?? 0) + (source.equipment.offhand?.value ?? 0);
+  const baseMaxHp = source.stats.baseMaxHp ?? source.stats.maxHp;
+  const baseMaxMp = source.stats.baseMaxMp ?? source.stats.maxMp;
+  const baseArmor = source.stats.baseArmor ?? Math.max(0, source.stats.armor - legacyEquippedArmor);
+  const normalized = { ...source, equipment, inventory, stats: { ...source.stats, baseMaxHp, baseMaxMp, baseArmor } };
+  return refreshPlayerDerivedCaps(normalized);
+}
+function isTwoHanded(item: ItemInstance | null): boolean {
+  return Boolean(item && (getItemBase(item.baseId)?.twoHanded || item.visualType === 'bow' || item.visualType === 'axe' || item.visualType === 'staff'));
 }
 function findExit(map: number[][]): { x: number; y: number } | null {
   for (let y = 1; y < map.length - 1; y += 1) for (let x = 1; x < map[y].length - 1; x += 1) if (map[y][x] === TileType.EXIT) return { x, y };

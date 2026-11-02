@@ -40,12 +40,15 @@ export interface Stats {
 
 export interface Item {
   id: string;
+  /** Stable base definition ID. Missing only in pre-R4A saves and legacy authored items. */
+  baseId?: string;
   name: string;
   description: string;
   type: 'WEAPON' | 'ARMOR' | 'POTION' | 'SCROLL' | 'SHIELD' | 'ACCESSORY';
   value: number; // damage, armor, heal amount, or stat boost
   armorWeight?: 'LIGHT' | 'MEDIUM' | 'HEAVY';
   statBonus?: 'STR' | 'DEX' | 'INT' | 'HP' | 'MP'; // For accessories
+  consumableEffect?: 'HEALTH' | 'MANA';
   icon?: string; 
   isEquipped?: boolean;
   quantity: number;
@@ -348,24 +351,68 @@ export interface SoloCharacterStats {
   maxHp: number;
   mp: number;
   maxMp: number;
+  /** Unmodified progression caps. maxHp/maxMp are derived caches for the active FPS run. */
+  baseMaxHp?: number;
+  baseMaxMp?: number;
   str: number;
   dex: number;
   int: number;
   xp: number;
   level: number;
   damageBonus: number;
+  /** Base armor for authored class progression. Equipment armor is derived separately. */
+  baseArmor?: number;
+  /** Legacy cached equipment armor. R4A recalculates it from equipment and never aggregates it. */
   armor: number;
 }
 
 export type EquipmentSlot = 'weapon' | 'armor' | 'offhand' | 'accessory';
 export type ItemRarity = 'COMMON' | 'MAGIC' | 'RARE' | 'UNIQUE';
 
+export type ItemTag = 'WEAPON' | 'PHYSICAL' | 'SPELL' | 'MELEE' | 'PROJECTILE' | 'BOW' | 'DAGGER' | 'STAFF' | 'TWO_HANDED'
+  | 'ARMOR' | 'SHIELD' | 'ACCESSORY' | 'RING' | 'AMULET' | 'CONSUMABLE';
+
+/** Immutable authored base; item instances store its stable baseId and rolled modifiers. */
+export interface ItemBaseDefinition extends Omit<Item, 'isEquipped' | 'quantity' | 'baseId'> {
+  baseId: string;
+  tags: ItemTag[];
+  requiredLevel: number;
+  twoHanded?: boolean;
+  legacyIds?: string[];
+}
+
+export type ItemAffixStat = 'strengthFlat' | 'dexterityFlat' | 'intelligenceFlat'
+  | 'physicalDamageFlat' | 'physicalDamagePercent' | 'spellDamageFlat' | 'spellDamagePercent'
+  | 'attackSpeedPercent' | 'castSpeedPercent' | 'criticalChancePercent' | 'criticalDamagePercent'
+  | 'maxHealthFlat' | 'maxHealthPercent' | 'maxManaFlat' | 'maxManaPercent'
+  | 'armorFlat' | 'armorPercent' | 'movementSpeedPercent' | 'cooldownReductionPercent' | 'manaCostReductionPercent'
+  | 'projectileDamagePercent' | 'projectileSpeedPercent'
+  | 'bleedChancePercent' | 'bleedPowerPercent' | 'poisonChancePercent' | 'poisonPowerPercent'
+  | 'fireChancePercent' | 'firePowerPercent' | 'lifeOnHit' | 'lifeOnKill';
+
+export interface ItemAffixDefinition {
+  id: string;
+  name: string;
+  side: 'PREFIX' | 'SUFFIX';
+  stat: ItemAffixStat;
+  tier: number;
+  minLevel: number;
+  validItemTags: ItemTag[];
+  minValue: number;
+  maxValue: number;
+  /** Affixes with the same group cannot appear together on one item. */
+  group: string;
+}
+
 export interface ItemAffixInstance {
   id: string;
   value: number;
+  tier?: number;
 }
 
 export interface ItemInstance extends Omit<Item, 'quantity' | 'isEquipped'> {
+  /** Required on R4A-created/saved items; optional in TypeScript for lossless legacy reads. */
+  baseId?: string;
   instanceId: string;
   itemLevel: number;
   rarity: ItemRarity;
@@ -388,7 +435,7 @@ export interface ActiveStatus {
   tickRemainingSeconds?: number;
 }
 
-export type RealtimeStatusId = 'POISON' | 'BURN' | 'SLOW' | 'STAGGER' | 'WEAKNESS' | 'GUARD' | 'COUNTER';
+export type RealtimeStatusId = 'BLEED' | 'POISON' | 'BURN' | 'SLOW' | 'STAGGER' | 'WEAKNESS' | 'GUARD' | 'COUNTER';
 
 export interface StatusApplication {
   statusId: RealtimeStatusId;
@@ -452,7 +499,40 @@ export interface WorldEnemy {
   telegraphPosition?: Vector3Like;
   rewardGranted: boolean;
   roomId?: string;
+  lootTier?: 'NORMAL' | 'ELITE' | 'GUARDIAN';
   isBoss: boolean;
+}
+
+/** Single canonical output of player base stats, equipped bases, and validated affixes. */
+export interface DerivedCharacterStats {
+  strength: number;
+  dexterity: number;
+  intelligence: number;
+  maxHealth: number;
+  maxMana: number;
+  armor: number;
+  weaponPower: number;
+  physicalDamageFlat: number;
+  physicalDamageMultiplier: number;
+  spellDamageFlat: number;
+  spellDamageMultiplier: number;
+  attackSpeedMultiplier: number;
+  castSpeedMultiplier: number;
+  criticalChance: number;
+  criticalDamageMultiplier: number;
+  movementSpeedMultiplier: number;
+  cooldownMultiplier: number;
+  manaCostMultiplier: number;
+  projectileDamageMultiplier: number;
+  projectileSpeedMultiplier: number;
+  bleedChance: number;
+  bleedPowerMultiplier: number;
+  poisonChance: number;
+  poisonPowerMultiplier: number;
+  fireChance: number;
+  firePowerMultiplier: number;
+  lifeOnHit: number;
+  lifeOnKill: number;
 }
 
 export interface WorldProjectile {

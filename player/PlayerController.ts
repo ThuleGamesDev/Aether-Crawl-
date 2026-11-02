@@ -2,6 +2,7 @@ import type { PlayerCharacter, WorldEnemy } from '../types';
 import type { InputFrame } from '../engine/InputSystem';
 import { moveWithEntitySlide } from '../world/CollisionWorld';
 import { movementSpeedMultiplier } from '../combat/StatusSystem';
+import { calculateDerivedStats } from './DerivedStats';
 
 export const MOUSE_LOOK_SENSITIVITY = 0.0025;
 export const MAX_CAMERA_PITCH = 1.18;
@@ -48,6 +49,7 @@ export function updatePlayerController(
   enemies: readonly WorldEnemy[] = [],
 ): PlayerControllerUpdate {
   const dt = Math.max(0, Math.min(0.05, deltaSeconds));
+  const derived = calculateDerivedStats(player);
   const nextState = { ...state, dodgeSeconds: Math.max(0, state.dodgeSeconds - dt), dodgeCooldown: Math.max(0, state.dodgeCooldown - dt), invulnerabilitySeconds: Math.max(0, state.invulnerabilitySeconds - dt) };
   let yaw = player.rotation.yaw + input.lookX + input.movement.turn * 2.25 * dt;
   yaw = ((yaw % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
@@ -64,10 +66,10 @@ export function updatePlayerController(
   if (input.dodgePressed && nextState.dodgeCooldown <= 0) {
     const dodgeX = intentLength > 0.05 ? normalizedX : forwardX;
     const dodgeZ = intentLength > 0.05 ? normalizedZ : forwardZ;
-    nextState.velocityX = dodgeX * PLAYER_DODGE_SPEED;
-    nextState.velocityZ = dodgeZ * PLAYER_DODGE_SPEED;
+    nextState.velocityX = dodgeX * PLAYER_DODGE_SPEED * derived.movementSpeedMultiplier;
+    nextState.velocityZ = dodgeZ * PLAYER_DODGE_SPEED * derived.movementSpeedMultiplier;
     nextState.dodgeSeconds = PLAYER_DODGE_DURATION;
-    nextState.dodgeCooldown = PLAYER_DODGE_COOLDOWN;
+    nextState.dodgeCooldown = PLAYER_DODGE_COOLDOWN * derived.cooldownMultiplier;
     nextState.invulnerabilitySeconds = PLAYER_DODGE_DURATION;
     dodgeStarted = true;
   }
@@ -77,7 +79,7 @@ export function updatePlayerController(
 
   if (nextState.dodgeSeconds <= 0) {
     const speed = (input.sprint && !nextState.guarding ? PLAYER_SPRINT_SPEED : PLAYER_WALK_SPEED)
-      * movementSpeedMultiplier(player.statusEffects) * (nextState.guarding ? 0.55 : 1);
+      * movementSpeedMultiplier(player.statusEffects) * derived.movementSpeedMultiplier * (nextState.guarding ? 0.55 : 1);
     const targetX = normalizedX * speed, targetZ = normalizedZ * speed;
     const acceleration = intentLength > 0.01 ? 26 : 34;
     nextState.velocityX = approach(nextState.velocityX, targetX, acceleration * dt);

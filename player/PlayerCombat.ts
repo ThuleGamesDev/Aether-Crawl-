@@ -1,5 +1,6 @@
 import type { PlayerCharacter } from '../types';
-import { CLASS_ABILITY_LOADOUT, getAbility, type AbilityDefinition } from '../combat/AbilityRegistry';
+import { CLASS_ABILITY_LOADOUT, getAbility, getAbilityDamageType, type AbilityDefinition } from '../combat/AbilityRegistry';
+import { calculateDerivedStats } from './DerivedStats';
 
 export type PlayerActionPhase = 'WINDUP' | 'ACTIVE' | 'RECOVERY';
 
@@ -8,6 +9,8 @@ export interface ActivePlayerAction {
   phase: PlayerActionPhase;
   remainingSeconds: number;
   damageMultiplier: number;
+  /** Captured when the action starts so equipment changes cannot alter a live animation. */
+  speedMultiplier?: number;
 }
 
 export interface PlayerActionStart {
@@ -35,7 +38,7 @@ export class PlayerCombat {
     this.reset();
     if (!state) return;
     for (const [id, cooldown] of Object.entries(state.cooldowns)) if (cooldown > 0) this.cooldowns.set(id, cooldown);
-    this.activeAction = state.action ? { ...state.action } : null;
+    this.activeAction = state.action ? { speedMultiplier: 1, ...state.action } : null;
   }
 
   getCooldown(abilityId: string): number { return Math.max(0, this.cooldowns.get(abilityId) ?? 0); }
@@ -45,13 +48,16 @@ export class PlayerCombat {
     const ability = getAbility(abilityId);
     if (!ability) return { player, ability: null, error: 'That skill is not available.' };
     if (this.getCooldown(abilityId) > 0) return { player, ability: null, error: ability.name + ' is not ready.' };
-    if (player.stats.mp < ability.manaCost) return { player, ability: null, error: 'Not enough mana.' };
+    const derived = calculateDerivedStats(player);
+    const manaCost = ability.manaCost * derived.manaCostMultiplier;
+    if (player.stats.mp < manaCost) return { player, ability: null, error: 'Not enough mana.' };
+    const speedMultiplier = getAbilityDamageType(ability) === 'SPELL' ? derived.castSpeedMultiplier : derived.attackSpeedMultiplier;
     const chargeScale = ability.chargeMinSeconds
       ? 1 + Math.max(0, Math.min(0.65, (chargeSeconds - ability.chargeMinSeconds) * 0.45))
       : 1;
-    this.cooldowns.set(abilityId, ability.cooldownSeconds);
-    this.activeAction = { abilityId, phase: 'WINDUP', remainingSeconds: ability.windupSeconds, damageMultiplier: chargeScale };
-    return { player: { ...player, stats: { ...player.stats, mp: player.stats.mp - ability.manaCost } }, ability };
+    this.cooldowns.set(abilityId, ability.cooldownSeconds * derived.cooldownMultiplier);
+    this.activeAction = { abilityId, phase: 'WINDUP', remainingSeconds: ability.windupSeconds / speedMultiplier, damageMultiplier: chargeScale, speedMultiplier };
+    return { player: { ...player, stats: { ...player.stats, mp: player.stats.mp - manaCost } }, ability };
   }
 
   update(deltaSeconds: number): { activeStarted: boolean; completed: boolean; action: ActivePlayerAction | null } {
@@ -67,13 +73,13 @@ export class PlayerCombat {
     if (this.activeAction.phase === 'WINDUP') {
       const ability = getAbility(this.activeAction.abilityId)!;
       this.activeAction.phase = 'ACTIVE';
-      this.activeAction.remainingSeconds = ability.activeSeconds;
+      this.activeAction.remainingSeconds = ability.activeSeconds / (this.activeAction.speedMultiplier ?? 1);
       return { activeStarted: true, completed: false, action: this.action };
     }
     if (this.activeAction.phase === 'ACTIVE') {
       const ability = getAbility(this.activeAction.abilityId)!;
       this.activeAction.phase = 'RECOVERY';
-      this.activeAction.remainingSeconds = ability.recoverySeconds;
+      this.activeAction.remainingSeconds = ability.recoverySeconds / (this.activeAction.speedMultiplier ?? 1);
       return { activeStarted: false, completed: false, action: this.action };
     }
     this.activeAction = null;

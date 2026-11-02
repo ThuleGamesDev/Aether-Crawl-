@@ -8,6 +8,10 @@ import { LABYRINTH_THEMES } from './data/mazeContent';
 import type { ClassType, EquipmentSlot, ItemInstance } from './types';
 import type { InputSystem } from './engine/InputSystem';
 import type { VFXMode } from './presentation/vfxDefinitions';
+import { compareDerivedStats } from './player/DerivedStats';
+import { equipItem } from './player/PlayerProgression';
+import { describeAffix, describeItem, consumableEffect } from './services/itemization';
+import { getItemBase } from './data/itemBases';
 
 const CLASS_IDS = Object.keys(CLASSES) as ClassType[];
 const EQUIPMENT_SLOTS: EquipmentSlot[] = ['weapon', 'armor', 'offhand', 'accessory'];
@@ -28,7 +32,7 @@ const App: React.FC = () => {
     const result = loadMazeGame();
     setHasSave(Boolean(result.save));
     if (result.invalid) setSaveWarning('A saved expedition is invalid or unavailable. Existing save data has not been overwritten.');
-    else if (result.migratedFromR1) setSaveWarning('An FPS-R1 expedition is ready to migrate when you continue. Its original save will be preserved.');
+    else if (result.migrationRequired) setSaveWarning((result.migratedFromR1 ? 'An FPS-R1' : 'An FPS-R2A') + ' expedition is ready to migrate when you continue. Its original save is preserved until the new save is written.');
     try {
       const savedSensitivity = Number(window.localStorage.getItem('aether_fps_mouse_sensitivity'));
       if (Number.isFinite(savedSensitivity) && savedSensitivity >= 0.001 && savedSensitivity <= 0.006) setMouseSensitivity(savedSensitivity);
@@ -55,9 +59,14 @@ const App: React.FC = () => {
     }
     setSaveWarning('');
     const runtime = new FPSGameRuntime(result.save.player.classId, result.save);
-    if (result.migratedFromR1) {
-      runtime.save();
-      setMigrationNotice('FPS-R1 progress migrated into the Labyrinth. The original save remains preserved.');
+    if (result.migrationRequired) {
+      const saved = runtime.save();
+      if (saved) {
+        setHasSave(true);
+        setMigrationNotice(result.migratedFromR1
+          ? 'FPS-R1 progress migrated into the Labyrinth. The original save remains preserved.'
+          : 'FPS-R2A item data migrated successfully. Your items and Guardian rewards were preserved.');
+      } else setMigrationNotice('Migration is ready, but the updated save could not be written. The original save is still intact.');
     } else setMigrationNotice('');
     runtimeRef.current = runtime;
     setSnapshot(runtime.getSnapshot());
@@ -183,8 +192,8 @@ const App: React.FC = () => {
   if (!runtime || !snapshot) return null;
   const player = snapshot.player;
   const target = snapshot.targetEnemy;
-  const hpPercent = Math.max(0, Math.min(100, player.stats.hp / player.stats.maxHp * 100));
-  const mpPercent = Math.max(0, Math.min(100, player.stats.mp / player.stats.maxMp * 100));
+  const hpPercent = Math.max(0, Math.min(100, player.stats.hp / snapshot.derivedStats.maxHealth * 100));
+  const mpPercent = snapshot.derivedStats.maxMana > 0 ? Math.max(0, Math.min(100, player.stats.mp / snapshot.derivedStats.maxMana * 100)) : 0;
   const xpNeeded = 20 + player.stats.level * 20;
   const xpPercent = Math.max(0, Math.min(100, player.stats.xp / xpNeeded * 100));
   const primary = getAbility(snapshot.primaryAbilityId)!;
@@ -198,8 +207,8 @@ const App: React.FC = () => {
       <header className="fps-top-hud">
         <div className="fps-player-panel">
           <div className="fps-player-title"><span className="fps-player-glyph">{classMark(player.classId)}</span><span>{player.name}</span><small>LV {player.stats.level}</small></div>
-          <div className="fps-resource-row"><span>HP</span><div className="fps-bar"><i className="fps-health-bar" style={{ width: hpPercent + '%' }} /></div><b>{Math.ceil(player.stats.hp)}/{player.stats.maxHp}</b></div>
-          <div className="fps-resource-row"><span>MP</span><div className="fps-bar"><i className="fps-mana-bar" style={{ width: mpPercent + '%' }} /></div><b>{Math.floor(player.stats.mp)}/{player.stats.maxMp}</b></div>
+          <div className="fps-resource-row"><span>HP</span><div className="fps-bar"><i className="fps-health-bar" style={{ width: hpPercent + '%' }} /></div><b>{Math.ceil(player.stats.hp)}/{Math.ceil(snapshot.derivedStats.maxHealth)}</b></div>
+          <div className="fps-resource-row"><span>MP</span><div className="fps-bar"><i className="fps-mana-bar" style={{ width: mpPercent + '%' }} /></div><b>{Math.floor(player.stats.mp)}/{Math.floor(snapshot.derivedStats.maxMana)}</b></div>
           <div className="fps-resource-row fps-xp-row"><span>XP</span><div className="fps-bar"><i className="fps-xp-bar" style={{ width: xpPercent + '%' }} /></div><b>{player.stats.xp}/{xpNeeded}</b></div>
         </div>
         <div className="fps-floor-label">FLOOR {snapshot.world.level}<span>{biomeName(snapshot.world.biome)}</span></div>
@@ -231,7 +240,7 @@ const App: React.FC = () => {
             ? <button key={skill.id} className="fps-action-card fps-skill-card" title={abilityTooltip(skill)} onClick={() => inputRef.current?.triggerSkill(index + 1)}><kbd>{index + 1}</kbd><strong>{skill.name}</strong><small className={snapshot.skillCooldowns[index] > 0 ? 'fps-cooldown-active' : ''}>{snapshot.skillCooldowns[index] > 0 ? snapshot.skillCooldowns[index].toFixed(1) + 's cooldown' : skill.manaCost + ' MP · Ready'}</small></button>
             : <div key={'empty-skill-' + index} className="fps-action-card fps-action-card-empty" title={'Skill slot ' + (index + 1) + ' is empty'}><kbd>{index + 1}</kbd><strong>Empty</strong><small>Skill slot</small></div>)}
         </div>
-        <div className="fps-bottom-stats"><span>ARMOR {player.stats.armor}</span><span>LEVEL {snapshot.world.level}</span><span>{snapshot.enemies.filter(enemy => enemy.health > 0).length} HOSTILES</span>{player.statusEffects.filter(status => status.durationSeconds > 0 && status.statusId !== 'prepared_damage').map(status => <span key={status.id} className="fps-status-tag">{status.statusId} {status.durationSeconds.toFixed(0)}s</span>)}</div>
+        <div className="fps-bottom-stats"><span>ARMOR {Math.round(snapshot.derivedStats.armor)}</span><span>LEVEL {snapshot.world.level}</span><span>{snapshot.enemies.filter(enemy => enemy.health > 0).length} HOSTILES</span>{player.statusEffects.filter(status => status.durationSeconds > 0 && status.statusId !== 'prepared_damage').map(status => <span key={status.id} className="fps-status-tag">{status.statusId} {status.durationSeconds.toFixed(0)}s</span>)}</div>
       </footer>
 
       <div className="fps-mobile-hints" aria-hidden="true"><span>MOVE</span><span>LOOK</span></div>
@@ -252,9 +261,9 @@ const App: React.FC = () => {
         <div className="fps-inventory-layout">
           <section><h3>Equipped</h3><div className="fps-equipment-list">{EQUIPMENT_SLOTS.map(slot => {
             const item = player.equipment[slot];
-            return <div className="fps-equipment-slot" key={slot}><div><small>{slot.toUpperCase()}</small><strong>{item?.name ?? 'Empty'}</strong>{item && <span>Item Level {item.itemLevel} · {item.rarity} · {itemEffect(item)}</span>}</div>{item && <button onClick={() => { runtime.unequip(slot); refreshSnapshot(); }}>Unequip</button>}</div>;
+            return <div className="fps-equipment-slot" key={slot}><div><small>{slot.toUpperCase()}</small><strong>{item ? describeItem(item) : 'Empty'}</strong>{item && <span>Item Level {item.itemLevel} · {item.rarity} · {itemEffect(item)}</span>}{item && <small>Requires level {getItemBase(item.baseId)?.requiredLevel ?? 1}</small>}{item?.affixes.length ? <small>{item.affixes.map(affix => describeAffix(affix.id, affix.value)).join(' · ')}</small> : null}</div>{item && <button onClick={() => { runtime.unequip(slot); refreshSnapshot(); }}>Unequip</button>}</div>;
           })}</div></section>
-          <section><h3>Bag</h3><div className="fps-inventory-items">{player.inventory.length === 0 && <p className="fps-muted">Your bag is empty.</p>}{player.inventory.map(item => <InventoryItem key={item.instanceId} item={item} onEquip={() => { runtime.equip(item.instanceId); refreshSnapshot(); }} onUse={() => { runtime.useItem(item.instanceId); refreshSnapshot(); }} />)}</div></section>
+          <section><h3>Bag</h3><div className="fps-inventory-items">{player.inventory.length === 0 && <p className="fps-muted">Your bag is empty.</p>}{player.inventory.map(item => <InventoryItem key={item.instanceId} player={player} item={item} onEquip={() => { runtime.equip(item.instanceId); refreshSnapshot(); }} onUse={() => { runtime.useItem(item.instanceId); refreshSnapshot(); }} />)}</div></section>
         </div>
       </Overlay>}
 
@@ -280,10 +289,29 @@ const Overlay: React.FC<{ title: string; onClose: () => void; children: React.Re
   <section className="fps-overlay-panel"><header><div className="fps-kicker">MAZE OF THE MINOTAUR</div><h2>{title}</h2><button aria-label="Close" onClick={onClose}>×</button></header><div className="fps-overlay-content">{children}</div></section>
 </div>;
 
-const InventoryItem: React.FC<{ item: ItemInstance; onEquip: () => void; onUse: () => void }> = ({ item, onEquip, onUse }) => <article className="fps-item-card">
-  <div className="fps-item-icon">{item.icon ?? '◇'}</div><div className="fps-item-info"><strong>{item.name}</strong><span>{item.type} · {item.rarity} · Item Level {item.itemLevel}</span><p>{item.description}</p><small>{itemEffect(item)}</small></div>
-  <div className="fps-item-actions">{item.type === 'POTION' ? <button onClick={onUse}>Use</button> : item.type === 'WEAPON' || item.type === 'ARMOR' || item.type === 'SHIELD' || item.type === 'ACCESSORY' ? <button onClick={onEquip}>Equip</button> : null}</div>
-</article>;
+const InventoryItem: React.FC<{ item: ItemInstance; player: FPSGameSnapshot['player']; onEquip: () => void; onUse: () => void }> = ({ item, player, onEquip, onUse }) => {
+  const equipmentType = item.type === 'WEAPON' || item.type === 'ARMOR' || item.type === 'SHIELD' || item.type === 'ACCESSORY';
+  const projected = equipmentType ? equipItem(player, item.instanceId) : player;
+  const canEquip = equipmentType && projected !== player;
+  const changes = canEquip ? compareDerivedStats(player, projected).filter(change => Math.abs(change.delta) >= 0.01) : [];
+  const requiredLevel = getItemBase(item.baseId)?.requiredLevel ?? 1;
+  return <article className={'fps-item-card fps-rarity-' + item.rarity.toLowerCase()}>
+    <div className="fps-item-icon">{item.icon ?? '◇'}</div>
+    <div className="fps-item-info">
+      <strong>{describeItem(item)}</strong>
+      <span>{item.type} · {item.rarity} · Item Level {item.itemLevel}</span>
+      <small>Requires level {requiredLevel}</small>
+      <p>{item.description}</p>
+      <small>{itemEffect(item)}</small>
+      {item.affixes.length > 0 && <ul className="fps-item-affixes">{item.affixes.map((affix, index) => <li key={affix.id + ':' + index}>{describeAffix(affix.id, affix.value)}</li>)}</ul>}
+      {equipmentType && changes.length > 0 && <div className="fps-item-comparison" aria-label="Stat changes after equipping">
+        <b>After equip</b>{changes.map(change => <span key={change.id} className={change.delta > 0 ? 'positive' : 'negative'}>{change.label} {formatComparisonDelta(change.id, change.delta)}</span>)}
+      </div>}
+      {equipmentType && requiredLevel > player.stats.level && <small className="fps-item-requirement">Level {requiredLevel} required</small>}
+    </div>
+    <div className="fps-item-actions">{item.type === 'POTION' ? <button onClick={onUse} disabled={!consumableEffect(item)}>Use</button> : equipmentType ? <button onClick={onEquip} disabled={!canEquip}>{canEquip ? 'Equip' : requiredLevel > player.stats.level ? 'Locked' : 'Unavailable'}</button> : null}</div>
+  </article>;
+};
 
 const DungeonMap: React.FC<{ snapshot: FPSGameSnapshot }> = ({ snapshot }) => <div className="fps-map-wrap"><div className="fps-map-grid" style={{ gridTemplateColumns: 'repeat(' + (snapshot.world.map[0]?.length ?? 12) + ', minmax(0,1fr))' }}>
   {snapshot.world.map.map((row, z) => row.map((tile, x) => {
@@ -308,10 +336,20 @@ const CompactMinimap: React.FC<{ snapshot: FPSGameSnapshot; onOpen: () => void }
 
 function itemEffect(item: ItemInstance): string {
   if (item.type === 'WEAPON') return 'Weapon Power +' + item.value;
-  if (item.type === 'ARMOR' || item.type === 'SHIELD') return 'Defense +' + item.value;
-  if (item.type === 'POTION') return /mana|mp|nectar|ambrosial/i.test(item.name) || /mana|_mp/i.test(item.id) ? 'Restores ' + item.value + ' mana' : 'Restores ' + item.value + ' health';
+  if (item.type === 'ARMOR' || item.type === 'SHIELD') return 'Armor +' + item.value;
+  if (item.type === 'POTION') {
+    const effect = consumableEffect(item);
+    return effect ? 'Restores ' + item.value + (effect === 'MANA' ? ' mana' : ' health') : 'No consumable effect';
+  }
   if (item.type === 'ACCESSORY') return (item.statBonus ?? 'Stat') + ' +' + item.value;
   return item.description;
+}
+
+function formatComparisonDelta(id: string, delta: number): string {
+  const formatted = Math.abs(delta) < 0.1 ? Math.abs(delta).toFixed(1) : Math.abs(delta).toFixed(0);
+  const normalizedId = id.toLowerCase();
+  const percent = normalizedId.includes('multiplier') || normalizedId.includes('chance') || id === 'cooldownRecovery' || id === 'manaCostReduction';
+  return (delta > 0 ? '+' : '−') + formatted + (percent ? '%' : '');
 }
 
 function classMark(classId: ClassType): string {

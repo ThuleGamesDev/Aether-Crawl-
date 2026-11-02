@@ -29,6 +29,13 @@ export interface AbilityDefinition {
   description: string;
 }
 
+/** Spell scaling is explicit by stable ability ID; weapon-style strikes remain physical. */
+export function getAbilityDamageType(ability: AbilityDefinition): 'PHYSICAL' | 'SPELL' {
+  if (ability.id === 'cleric_warhammer') return 'PHYSICAL';
+  if (ability.id.startsWith('sorcerer_') || ability.id === 'paladin_consecration' || ability.id === 'cleric_holy_bolt' || ability.id === 'cleric_restoration' || ability.id.startsWith('necromancer_')) return 'SPELL';
+  return 'PHYSICAL';
+}
+
 export const ABILITY_REGISTRY: Record<string, AbilityDefinition> = {
   barbarian_cleave: { id: 'barbarian_cleave', name: 'Bronze Cleave', kind: 'MELEE', damage: 17, manaCost: 0, cooldownSeconds: 0.55, windupSeconds: 0.14, activeSeconds: 0.16, recoverySeconds: 0.2, range: 2.05, arcRadians: 1.35, meleeStyle: 'SWEEP', description: 'A quick, broad labrys swing.' },
   barbarian_heavy_strike: { id: 'barbarian_heavy_strike', name: 'Heroic Strike', kind: 'MELEE', damage: 34, manaCost: 0, cooldownSeconds: 1.2, windupSeconds: 0.42, activeSeconds: 0.18, recoverySeconds: 0.36, range: 2.3, arcRadians: 0.82, meleeStyle: 'SWEEP', staggerSeconds: 0.48, description: 'A committed labrys blow. The clear windup trades time for impact.' },
