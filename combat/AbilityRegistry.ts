@@ -1,4 +1,4 @@
-import type { ClassType, MagicSchool, StatusApplication } from '../types';
+import type { ClassType, MagicSchool, RealtimeStatusId, StatusApplication } from '../types';
 
 export type AbilityKind = 'MELEE' | 'PROJECTILE' | 'AOE';
 export type AbilityPhase = 'WINDUP' | 'ACTIVE' | 'RECOVERY';
@@ -37,6 +37,15 @@ export interface AbilityDefinition {
   finisher?: { healthRatio: number; damageMultiplier: number };
   /** Bounded secondary targets; damage falls off from the first hit. */
   chain?: { maxJumps: number; jumpRange: number; damageMultiplier: number };
+  /** Bounded projectile fan and hit-through behavior. */
+  projectileCount?: number;
+  projectileSpreadRadians?: number;
+  damagePerProjectileMultiplier?: number;
+  pierceCount?: number;
+  statusDamageBonus?: { statusId: RealtimeStatusId; multiplier: number };
+  cleanseStatuses?: RealtimeStatusId[];
+  requiresCounterWindow?: boolean;
+  knockbackDistance?: number;
   /** Utility actions apply their declared self effects and do not deal area damage. */
   utilityOnly?: boolean;
   targeting?: 'SELF' | 'AIMED_POINT';
@@ -46,7 +55,7 @@ export interface AbilityDefinition {
 /** Spell scaling is explicit by stable ability ID; weapon-style strikes remain physical. */
 export function getAbilityDamageType(ability: AbilityDefinition): 'PHYSICAL' | 'SPELL' {
   if (ability.id === 'cleric_warhammer') return 'PHYSICAL';
-  if (ability.id.startsWith('sorcerer_') || ability.id === 'paladin_consecration' || ability.id === 'cleric_holy_bolt' || ability.id === 'cleric_restoration' || ability.id.startsWith('necromancer_')) return 'SPELL';
+  if (ability.id.startsWith('sorcerer_') || ability.id === 'paladin_consecration' || ability.id.startsWith('cleric_') || ability.id.startsWith('necromancer_')) return 'SPELL';
   return 'PHYSICAL';
 }
 
@@ -55,7 +64,7 @@ export const ABILITY_REGISTRY: Record<string, AbilityDefinition> = {
   barbarian_heavy_strike: { id: 'barbarian_heavy_strike', name: 'Heroic Strike', kind: 'MELEE', damage: 34, manaCost: 0, cooldownSeconds: 1.2, windupSeconds: 0.42, activeSeconds: 0.18, recoverySeconds: 0.36, range: 2.3, arcRadians: 0.82, meleeStyle: 'SWEEP', staggerSeconds: 0.48, description: 'A committed labrys blow. The clear windup trades time for impact.' },
   barbarian_ground_slam: { id: 'barbarian_ground_slam', name: 'Ares’ Quake', kind: 'AOE', damage: 24, manaCost: 0, cooldownSeconds: 5, windupSeconds: 0.42, activeSeconds: 0.2, recoverySeconds: 0.38, range: 2.2, radius: 2.2, targeting: 'SELF', onHitStatus: { statusId: 'STAGGER', durationSeconds: 0.7, magnitude: 0.7 }, projectileColor: '#d98248', description: 'A short ground shock that damages and staggers nearby foes.' },
   sorcerer_arcane_bolt: { id: 'sorcerer_arcane_bolt', name: 'Oracle’s Spark', kind: 'PROJECTILE', damage: 13, manaCost: 0, cooldownSeconds: 0.28, windupSeconds: 0.06, activeSeconds: 0.08, recoverySeconds: 0.1, range: 18, projectileSpeed: 10, projectileRadius: 0.13, projectileColor: '#efd18a', element: 'ARCANE', description: 'A quick bolt of omen-lit bronze fire.' },
-  sorcerer_charged_bolt: { id: 'sorcerer_charged_bolt', name: 'Fatebound Bolt', kind: 'PROJECTILE', damage: 34, manaCost: 4, cooldownSeconds: 1, windupSeconds: 0.13, activeSeconds: 0.08, recoverySeconds: 0.3, range: 20, projectileSpeed: 13, projectileRadius: 0.18, projectileColor: '#f1b45e', chargeMinSeconds: 0.32, element: 'ARCANE', onHitStatus: { statusId: 'STAGGER', durationSeconds: 0.28, magnitude: 0.28 }, description: 'Hold Secondary Attack briefly to charge a piercing oracle bolt.' },
+  sorcerer_charged_bolt: { id: 'sorcerer_charged_bolt', name: 'Fatebound Bolt', kind: 'PROJECTILE', damage: 34, manaCost: 4, cooldownSeconds: 1, windupSeconds: 0.13, activeSeconds: 0.08, recoverySeconds: 0.3, range: 20, projectileSpeed: 13, projectileRadius: 0.18, projectileColor: '#f1b45e', pierceCount: 1, chargeMinSeconds: 0.32, element: 'ARCANE', onHitStatus: { statusId: 'STAGGER', durationSeconds: 0.28, magnitude: 0.28 }, description: 'Hold Secondary Attack briefly to charge a bolt that pierces one additional foe.' },
   sorcerer_fireburst: { id: 'sorcerer_fireburst', name: 'Promethean Flame', kind: 'AOE', damage: 32, manaCost: 18, cooldownSeconds: 6, windupSeconds: 0.36, activeSeconds: 0.2, recoverySeconds: 0.42, range: 9, radius: 2.1, element: 'FIRE', projectileColor: '#ef693d', onHitStatus: { statusId: 'BURN', durationSeconds: 4, magnitude: 3 }, description: 'A small fireburst at the aimed point. Burns enemies caught in the blast.' },
   paladin_arming_sword: { id: 'paladin_arming_sword', name: 'Dory Thrust', kind: 'MELEE', damage: 19, manaCost: 0, cooldownSeconds: 0.48, windupSeconds: 0.15, activeSeconds: 0.12, recoverySeconds: 0.18, range: 2.75, arcRadians: 0.34, meleeStyle: 'THRUST', description: 'A precise, long-reaching spear thrust with a narrow attack line.' },
   paladin_smite: { id: 'paladin_smite', name: 'Aspis Bash', kind: 'MELEE', damage: 22, manaCost: 0, cooldownSeconds: 2.8, windupSeconds: 0.18, activeSeconds: 0.12, recoverySeconds: 0.22, range: 1.75, arcRadians: 0.72, meleeStyle: 'BASH', staggerSeconds: 0.34, projectileColor: '#d4a550', description: 'Drive the Aspis into one foe to interrupt its attack.' },
@@ -76,17 +85,29 @@ export const ABILITY_REGISTRY: Record<string, AbilityDefinition> = {
   rogue_shadow_strike: { id: 'rogue_shadow_strike', name: 'Hermes’ Feint', kind: 'MELEE', damage: 29, manaCost: 8, cooldownSeconds: 4, windupSeconds: 0.18, activeSeconds: 0.12, recoverySeconds: 0.24, range: 2.25, arcRadians: 0.72, meleeStyle: 'THRUST', staggerSeconds: 0.3, description: 'A deceptive lunging strike that briefly staggers its target.' },
   rogue_knife_fan: { id: 'rogue_knife_fan', name: 'Kopis Fan', kind: 'PROJECTILE', damage: 16, manaCost: 10, cooldownSeconds: 4.5, windupSeconds: 0.32, activeSeconds: 0.08, recoverySeconds: 0.3, range: 12, projectileSpeed: 14, projectileColor: '#d2d9e6', description: 'A thrown kopis aimed at the crosshair.' },
   ranger_shortbow: { id: 'ranger_shortbow', name: 'Artemis’ Arrow', kind: 'PROJECTILE', damage: 17, manaCost: 0, cooldownSeconds: 0.48, windupSeconds: 0.16, activeSeconds: 0.08, recoverySeconds: 0.2, range: 20, projectileSpeed: 18, projectileRadius: 0.09, projectileColor: '#d5b77a', description: 'A fast, direct arrow from the Hunter’s bow.' },
-  ranger_piercing_arrow: { id: 'ranger_piercing_arrow', name: 'Boar-Spear Arrow', kind: 'PROJECTILE', damage: 31, manaCost: 5, cooldownSeconds: 2, windupSeconds: 0.32, activeSeconds: 0.08, recoverySeconds: 0.32, range: 22, projectileSpeed: 18, projectileColor: '#efd18a', description: 'A heavier arrow with a longer windup.' },
-  ranger_volley: { id: 'ranger_volley', name: 'Hunter’s Rain', kind: 'AOE', damage: 24, manaCost: 12, cooldownSeconds: 5, windupSeconds: 0.5, activeSeconds: 0.12, recoverySeconds: 0.36, range: 12, radius: 2, projectileColor: '#d5b77a', description: 'A focused burst of arrows at the aimed point.' },
+  ranger_piercing_arrow: { id: 'ranger_piercing_arrow', name: 'Boar-Spear Arrow', kind: 'PROJECTILE', damage: 31, manaCost: 5, cooldownSeconds: 2, windupSeconds: 0.32, activeSeconds: 0.08, recoverySeconds: 0.32, range: 22, projectileSpeed: 18, projectileColor: '#efd18a', pierceCount: 1, description: 'A heavier arrow with a longer windup that pierces one additional foe.' },
+  ranger_volley: { id: 'ranger_volley', name: 'Javelin Volley', kind: 'PROJECTILE', damage: 19, manaCost: 12, cooldownSeconds: 5.5, windupSeconds: 0.38, activeSeconds: 0.08, recoverySeconds: 0.34, range: 16, projectileSpeed: 15, projectileRadius: 0.13, projectileColor: '#d5b77a', projectileCount: 3, projectileSpreadRadians: 0.1, damagePerProjectileMultiplier: 0.62, description: 'Launch three deliberate javelins in a narrow fan; each spear deals 62% damage.' },
+  ranger_piercing_hunt: { id: 'ranger_piercing_hunt', name: 'Piercing Hunt', kind: 'PROJECTILE', damage: 30, manaCost: 7, cooldownSeconds: 3.2, windupSeconds: 0.28, activeSeconds: 0.08, recoverySeconds: 0.3, range: 22, projectileSpeed: 21, projectileRadius: 0.11, projectileColor: '#ecd49b', pierceCount: 2, description: 'Loose a precise arrow that can pierce its first target and up to two more foes.' },
+  ranger_hunters_snare: { id: 'ranger_hunters_snare', name: 'Hunter’s Snare', kind: 'AOE', damage: 8, manaCost: 10, cooldownSeconds: 6.5, windupSeconds: 0.26, activeSeconds: 0.12, recoverySeconds: 0.28, range: 10, radius: 1.45, projectileColor: '#a5b77d', onHitStatus: { statusId: 'SLOW', durationSeconds: 3, magnitude: 0.28 }, description: 'Set a small trap at the aimed point. It deals light damage and slows caught foes by 28% for 3 seconds.' },
+  ranger_moonlit_pursuit: { id: 'ranger_moonlit_pursuit', name: 'Moonlit Pursuit', kind: 'AOE', damage: 0, manaCost: 8, cooldownSeconds: 9, windupSeconds: 0.12, activeSeconds: 0.08, recoverySeconds: 0.18, range: 0, radius: 0, targeting: 'SELF', utilityOnly: true, dashDistance: 0.8, selfStatuses: [{ statusId: 'HASTE', durationSeconds: 3, magnitude: 0.18 }, { statusId: 'PRECISION', durationSeconds: 4, magnitude: 0.15 }], projectileColor: '#d5b77a', description: 'Step up to 0.8 metres through clear space; gain 18% movement and action speed for 3 seconds and 15% projectile damage for 4 seconds.' },
   cleric_warhammer: { id: 'cleric_warhammer', name: 'Asclepiad Staff Strike', kind: 'MELEE', damage: 19, manaCost: 0, cooldownSeconds: 0.62, windupSeconds: 0.2, activeSeconds: 0.16, recoverySeconds: 0.25, range: 1.95, arcRadians: 0.78, meleeStyle: 'BASH', description: 'A deliberate blow with a bronze-capped ritual staff.' },
   cleric_holy_bolt: { id: 'cleric_holy_bolt', name: 'Temple Light', kind: 'PROJECTILE', damage: 20, manaCost: 4, cooldownSeconds: 1.1, windupSeconds: 0.2, activeSeconds: 0.08, recoverySeconds: 0.2, range: 16, projectileSpeed: 11, projectileColor: '#e9d391', description: 'A compact bolt of sacred light.' },
   cleric_restoration: { id: 'cleric_restoration', name: 'Asclepius’ Grace', kind: 'AOE', damage: 0, manaCost: 10, cooldownSeconds: 8, windupSeconds: 0.4, activeSeconds: 0.08, recoverySeconds: 0.18, range: 0, radius: 0, projectileColor: '#8dbf8c', selfEffect: { type: 'HEAL', amount: 0.3 }, description: 'A self-directed rite that restores 30% of your maximum health.' },
+  cleric_serpents_renewal: { id: 'cleric_serpents_renewal', name: 'Serpent’s Renewal', kind: 'AOE', damage: 0, manaCost: 12, cooldownSeconds: 14, windupSeconds: 0.24, activeSeconds: 0.08, recoverySeconds: 0.2, range: 0, radius: 0, targeting: 'SELF', utilityOnly: true, selfStatuses: [{ statusId: 'REGEN', durationSeconds: 5, magnitude: 5 }], projectileColor: '#8dbf8c', description: 'Restore 5 health once per second for 5 seconds. The effect refreshes and does not stack.' },
+  cleric_purifying_rite: { id: 'cleric_purifying_rite', name: 'Purifying Rite', kind: 'AOE', damage: 0, manaCost: 8, cooldownSeconds: 9, windupSeconds: 0.2, activeSeconds: 0.08, recoverySeconds: 0.18, range: 0, radius: 0, targeting: 'SELF', utilityOnly: true, cleanseStatuses: ['POISON', 'BURN', 'BLEED', 'SLOW', 'WEAKNESS'], projectileColor: '#d9dfb3', description: 'Remove one poison, burn, bleed, slow, or weakness effect. Stagger and enemy curses are not cleansed.' },
+  cleric_sacred_aegis: { id: 'cleric_sacred_aegis', name: 'Sacred Aegis', kind: 'AOE', damage: 0, manaCost: 10, cooldownSeconds: 11, windupSeconds: 0.18, activeSeconds: 0.08, recoverySeconds: 0.18, range: 0, radius: 0, targeting: 'SELF', utilityOnly: true, selfEffect: { type: 'GUARD', durationSeconds: 4, magnitude: 0.35 }, projectileColor: '#e9d391', description: 'Reduce incoming damage by 35% for 4 seconds.' },
   monk_palm_strike: { id: 'monk_palm_strike', name: 'Pankration Strike', kind: 'MELEE', damage: 14, manaCost: 0, cooldownSeconds: 0.28, windupSeconds: 0.06, activeSeconds: 0.1, recoverySeconds: 0.1, range: 1.55, arcRadians: 0.7, meleeStyle: 'UNARMED', description: 'A fast unarmed strike drawn from pankration.' },
   monk_flurry: { id: 'monk_flurry', name: 'Pankration Flurry', kind: 'MELEE', damage: 31, manaCost: 5, cooldownSeconds: 3.5, windupSeconds: 0.18, activeSeconds: 0.3, recoverySeconds: 0.24, range: 1.7, arcRadians: 0.95, description: 'A rapid sequence of close strikes.' },
-  monk_flying_kick: { id: 'monk_flying_kick', name: 'Olympian Kick', kind: 'MELEE', damage: 32, manaCost: 8, cooldownSeconds: 4.5, windupSeconds: 0.34, activeSeconds: 0.16, recoverySeconds: 0.3, range: 2.4, arcRadians: 0.72, description: 'A forceful forward kick with extended reach.' },
+  monk_flying_kick: { id: 'monk_flying_kick', name: 'Olympian Kick', kind: 'MELEE', damage: 32, manaCost: 8, cooldownSeconds: 4.5, windupSeconds: 0.34, activeSeconds: 0.16, recoverySeconds: 0.3, range: 2.4, arcRadians: 0.72, dashDistance: 0.55, knockbackDistance: 0.65, staggerSeconds: 0.3, projectileColor: '#d5a366', description: 'Advance up to 0.55 metres without crossing walls, then kick one foe back up to 0.65 metres.' },
+  monk_twin_palm: { id: 'monk_twin_palm', name: 'Twin Palm', kind: 'MELEE', damage: 24, manaCost: 6, cooldownSeconds: 3.6, windupSeconds: 0.12, activeSeconds: 0.28, recoverySeconds: 0.24, range: 1.7, arcRadians: 0.78, meleeStyle: 'UNARMED', activeHitCount: 2, damagePerHitMultiplier: 0.56, projectileColor: '#e2b87d', description: 'Two measured palm strikes resolve in separate active windows, each dealing 56% damage.' },
+  monk_grapplers_counter: { id: 'monk_grapplers_counter', name: 'Grappler’s Counter', kind: 'AOE', damage: 0, manaCost: 6, cooldownSeconds: 7, windupSeconds: 0.08, activeSeconds: 0.08, recoverySeconds: 0.18, range: 0, radius: 0, targeting: 'SELF', utilityOnly: true, requiresCounterWindow: true, selfStatuses: [{ statusId: 'GUARD', durationSeconds: 2, magnitude: 0.3 }, { statusId: 'COUNTER', durationSeconds: 3, magnitude: 0.28 }], projectileColor: '#ddb779', description: 'Time this during a dodge window or an enemy windup within 3 metres. Gain 30% guard for 2 seconds and empower one melee counter by 28% for 3 seconds.' },
+  monk_champions_rush: { id: 'monk_champions_rush', name: 'Champion’s Rush', kind: 'AOE', damage: 0, manaCost: 8, cooldownSeconds: 10, windupSeconds: 0.12, activeSeconds: 0.08, recoverySeconds: 0.18, range: 0, radius: 0, targeting: 'SELF', utilityOnly: true, selfStatuses: [{ statusId: 'HASTE', durationSeconds: 4, magnitude: 0.2 }], projectileColor: '#d6a96e', description: 'Gain 20% movement and action speed for 4 seconds.' },
   necromancer_bone_shard: { id: 'necromancer_bone_shard', name: 'Styx Shard', kind: 'PROJECTILE', damage: 15, manaCost: 0, cooldownSeconds: 0.36, windupSeconds: 0.1, activeSeconds: 0.08, recoverySeconds: 0.16, range: 18, projectileSpeed: 10, projectileColor: '#b9b5a1', description: 'A pale shard pulled from the river’s dark bank.' },
   necromancer_soul_drain: { id: 'necromancer_soul_drain', name: 'Hades’ Grasp', kind: 'PROJECTILE', damage: 25, manaCost: 8, cooldownSeconds: 3.2, windupSeconds: 0.26, activeSeconds: 0.08, recoverySeconds: 0.25, range: 14, projectileSpeed: 8, projectileRadius: 0.16, projectileColor: '#8c607d', healOnHit: 5, description: 'A slow chthonic bolt that restores 5 health when it strikes.' },
   necromancer_corpse_burst: { id: 'necromancer_corpse_burst', name: 'Underworld Eruption', kind: 'AOE', damage: 28, manaCost: 14, cooldownSeconds: 5.5, windupSeconds: 0.42, activeSeconds: 0.18, recoverySeconds: 0.35, range: 8, radius: 2, projectileColor: '#8c5369', description: 'Black-red force erupts at a point before the hero.' },
+  necromancer_shade_mark: { id: 'necromancer_shade_mark', name: 'Shade Mark', kind: 'PROJECTILE', damage: 11, manaCost: 8, cooldownSeconds: 4.5, windupSeconds: 0.2, activeSeconds: 0.08, recoverySeconds: 0.22, range: 18, projectileSpeed: 11, projectileRadius: 0.14, projectileColor: '#72506f', onHitStatus: { statusId: 'CURSE', durationSeconds: 5, magnitude: 0.2 }, description: 'Curse one foe, causing it to take 20% more damage for 5 seconds. Bosses resist half the effect.' },
+  necromancer_death_burst: { id: 'necromancer_death_burst', name: 'Death Burst', kind: 'AOE', damage: 25, manaCost: 13, cooldownSeconds: 6.5, windupSeconds: 0.38, activeSeconds: 0.16, recoverySeconds: 0.3, range: 8, radius: 2.1, projectileColor: '#8c5369', statusDamageBonus: { statusId: 'CURSE', multiplier: 1.35 }, description: 'Detonate a chthonic blast at the aimed point. Cursed foes take 35% additional damage from this blast.' },
+  necromancer_soul_ward: { id: 'necromancer_soul_ward', name: 'Soul Ward', kind: 'AOE', damage: 0, manaCost: 10, cooldownSeconds: 10, windupSeconds: 0.14, activeSeconds: 0.08, recoverySeconds: 0.18, range: 0, radius: 0, targeting: 'SELF', utilityOnly: true, selfEffect: { type: 'GUARD', durationSeconds: 3, magnitude: 0.28 }, projectileColor: '#8c607d', description: 'Reduce incoming damage by 28% for 3 seconds.' },
 };
 
 export interface ClassAbilityLoadout {
@@ -101,10 +122,10 @@ export const CLASS_ABILITY_LOADOUT: Record<ClassType, ClassAbilityLoadout> = {
   PALADIN: { primary: 'paladin_arming_sword', secondary: 'paladin_smite', skill: 'paladin_consecration', skillSlots: ['paladin_consecration', 'paladin_dory_impale', 'paladin_bronze_reprisal', 'paladin_aspis_charge'] },
   SORCERER: { primary: 'sorcerer_arcane_bolt', secondary: 'sorcerer_charged_bolt', skill: 'sorcerer_fireburst', skillSlots: ['sorcerer_fireburst', 'sorcerer_storm_invocation', 'sorcerer_prophetic_veil', 'sorcerer_omenfall'] },
   ROGUE: { primary: 'rogue_quick_stab', secondary: 'rogue_shadow_strike', skill: 'rogue_knife_fan', skillSlots: ['rogue_knife_fan', 'rogue_kopis_flurry', 'rogue_venomous_cut', 'rogue_shadow_lunge'] },
-  RANGER: { primary: 'ranger_shortbow', secondary: 'ranger_piercing_arrow', skill: 'ranger_volley', skillSlots: ['ranger_volley', null, null, null] },
-  CLERIC: { primary: 'cleric_warhammer', secondary: 'cleric_holy_bolt', skill: 'cleric_restoration', skillSlots: ['cleric_restoration', null, null, null] },
-  MONK: { primary: 'monk_palm_strike', secondary: 'monk_flurry', skill: 'monk_flying_kick', skillSlots: ['monk_flying_kick', null, null, null] },
-  NECROMANCER: { primary: 'necromancer_bone_shard', secondary: 'necromancer_soul_drain', skill: 'necromancer_corpse_burst', skillSlots: ['necromancer_corpse_burst', null, null, null] },
+  RANGER: { primary: 'ranger_shortbow', secondary: 'ranger_piercing_arrow', skill: 'ranger_volley', skillSlots: ['ranger_volley', 'ranger_piercing_hunt', 'ranger_hunters_snare', 'ranger_moonlit_pursuit'] },
+  CLERIC: { primary: 'cleric_warhammer', secondary: 'cleric_holy_bolt', skill: 'cleric_restoration', skillSlots: ['cleric_restoration', 'cleric_serpents_renewal', 'cleric_purifying_rite', 'cleric_sacred_aegis'] },
+  MONK: { primary: 'monk_palm_strike', secondary: 'monk_flurry', skill: 'monk_flying_kick', skillSlots: ['monk_flying_kick', 'monk_twin_palm', 'monk_grapplers_counter', 'monk_champions_rush'] },
+  NECROMANCER: { primary: 'necromancer_bone_shard', secondary: 'necromancer_soul_drain', skill: 'necromancer_corpse_burst', skillSlots: ['necromancer_corpse_burst', 'necromancer_shade_mark', 'necromancer_death_burst', 'necromancer_soul_ward'] },
 };
 
 export const getAbility = (id: string): AbilityDefinition | undefined => ABILITY_REGISTRY[id];
@@ -118,17 +139,28 @@ export function abilityTooltip(ability: AbilityDefinition, overrides?: { manaCos
   const perHit = ability.activeHitCount && ability.activeHitCount > 1
     ? `${ability.damage} × ${Math.round((ability.damagePerHitMultiplier ?? 1 / ability.activeHitCount) * 100)}% · ${ability.activeHitCount} hits`
     : `${ability.damage} damage`;
-  const effect = ability.utilityOnly ? ability.dashDistance ? `Move up to ${ability.dashDistance.toFixed(1)}m` : 'Self effect'
+  const effect = ability.utilityOnly ? ability.dashDistance ? `Move up to ${ability.dashDistance.toFixed(1)}m` : ability.cleanseStatuses?.length ? 'Cleanse one listed effect' : 'Self effect'
     : ability.selfEffect?.type === 'HEAL' ? `Heal ${Math.round((ability.selfEffect.amount ?? 0) * 100)}% of max health`
     : ability.selfEffect?.type === 'GUARD' ? `Guard for ${(ability.selfEffect.durationSeconds ?? 0).toFixed(1)}s`
     : ability.kind === 'MELEE' ? `${perHit} · ${ability.range.toFixed(1)}m range`
     : ability.kind === 'PROJECTILE' ? `${perHit} · ${ability.range}m range`
     : `${perHit} · ${ability.radius ?? 0}m radius`;
-  const status = ability.onHitStatus ? ` · ${ability.onHitStatus.statusId.toLowerCase()} ${ability.onHitStatus.durationSeconds}s` : '';
+  const status = ability.onHitStatus ? ` · ${formatTooltipStatus(ability.onHitStatus)}` : '';
   const charge = ability.chargeMinSeconds ? ` · charge ${(ability.chargeMinSeconds * 1000).toFixed(0)}ms+` : '';
   const hits = ability.activeHitCount && ability.activeHitCount > 1 ? ` · timed hit windows` : '';
-  const selfStatuses = ability.selfStatuses?.length ? ` · self: ${ability.selfStatuses.map(entry => entry.statusId.toLowerCase()).join(', ')}` : '';
+  const projectile = ability.kind === 'PROJECTILE' && (ability.projectileCount ?? 1) > 1
+    ? ` · ${Math.min(7, Math.floor(ability.projectileCount!))} projectiles${ability.projectileSpreadRadians ? ` · ${(ability.projectileSpreadRadians * 57.3).toFixed(0)}° fan` : ''}${ability.damagePerProjectileMultiplier ? ` · ${Math.round(ability.damagePerProjectileMultiplier * 100)}% each` : ''}` : '';
+  const pierce = ability.pierceCount ? ` · pierces up to ${Math.min(3, Math.floor(ability.pierceCount))} additional target${ability.pierceCount === 1 ? '' : 's'}` : '';
+  const selfStatuses = ability.selfStatuses?.length ? ` · self: ${ability.selfStatuses.map(formatTooltipStatus).join(', ')}` : '';
+  const cleanse = ability.cleanseStatuses?.length ? ` · may cleanse: ${ability.cleanseStatuses.map(statusId => statusId.toLowerCase()).join(', ')}` : '';
+  const synergy = ability.statusDamageBonus ? ` · +${Math.round((ability.statusDamageBonus.multiplier - 1) * 100)}% vs ${ability.statusDamageBonus.statusId.toLowerCase()}` : '';
   const manaCost = overrides?.manaCost ?? ability.manaCost;
   const cooldownSeconds = overrides?.cooldownSeconds ?? ability.cooldownSeconds;
-  return `${ability.name} — ${effect}${status}${selfStatuses}${hits} · ${manaCost.toFixed(manaCost % 1 ? 1 : 0)} MP · ${cooldownSeconds.toFixed(1)}s cooldown${charge}. ${ability.description}`;
+  return `${ability.name} — ${effect}${projectile}${pierce}${synergy}${status}${selfStatuses}${cleanse}${hits} · ${manaCost.toFixed(manaCost % 1 ? 1 : 0)} MP · ${cooldownSeconds.toFixed(1)}s cooldown${charge}. ${ability.description}`;
+}
+
+function formatTooltipStatus(status: StatusApplication): string {
+  const percentStatuses = new Set(['SLOW', 'WEAKNESS', 'GUARD', 'COUNTER', 'BLOOD_OATH', 'HASTE', 'PRECISION', 'CURSE']);
+  const amount = percentStatuses.has(status.statusId) ? `${Math.round(status.magnitude * 100)}%` : `${Math.round(status.magnitude)} per tick`;
+  return `${status.statusId.toLowerCase()} ${amount} · ${status.durationSeconds.toFixed(1)}s`;
 }
