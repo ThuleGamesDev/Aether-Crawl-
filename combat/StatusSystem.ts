@@ -21,7 +21,7 @@ export function applyRealtimeStatus(statuses: readonly ActiveStatus[] = [], appl
       ...existing,
       durationSeconds: Math.max(existing.durationSeconds, application.durationSeconds),
       magnitude: Math.max(existing.magnitude, application.magnitude),
-      tickRemainingSeconds: Math.min(existing.tickRemainingSeconds ?? tickInterval, tickInterval),
+    ...(isPeriodicStatus(application.statusId) ? { tickRemainingSeconds: Math.min(existing.tickRemainingSeconds ?? tickInterval, tickInterval) } : {}),
     };
     return current;
   }
@@ -31,7 +31,7 @@ export function applyRealtimeStatus(statuses: readonly ActiveStatus[] = [], appl
     statusId: application.statusId,
     durationSeconds: Math.max(0, application.durationSeconds),
     magnitude: Math.max(0, application.magnitude),
-      ...(isDamageOverTime(application.statusId) ? { tickRemainingSeconds: tickInterval } : {}),
+    ...(isPeriodicStatus(application.statusId) ? { tickRemainingSeconds: tickInterval } : {}),
   };
   if (current.length >= MAX_ACTIVE_REALTIME_STATUSES) {
     const replaceIndex = current.reduce((shortest, status, index) => status.durationSeconds < current[shortest].durationSeconds ? index : shortest, 0);
@@ -51,7 +51,7 @@ export function tickRealtimeStatuses(statuses: readonly ActiveStatus[] = [], del
   for (const source of statuses) {
     let status = { ...source };
     let timeLeft = dt;
-    if (isDamageOverTime(status.statusId)) {
+    if (isPeriodicStatus(status.statusId)) {
       const interval = DEFAULT_STATUS_TICK_SECONDS;
       let tickRemaining = status.tickRemainingSeconds ?? interval;
       let duration = status.durationSeconds;
@@ -62,7 +62,8 @@ export function tickRealtimeStatuses(statuses: readonly ActiveStatus[] = [], del
         tickRemaining -= step;
         if (tickRemaining <= 0.00001 && duration >= 0) {
           const amount = Math.max(1, Math.floor(status.magnitude));
-          damage += amount;
+          if (status.statusId === 'REGEN') healing += amount;
+          else damage += amount;
           ticks.push({ statusId: status.statusId, amount });
           tickRemaining += interval;
         }
@@ -81,12 +82,34 @@ export function hasRealtimeStatus(statuses: readonly ActiveStatus[] = [], status
   return statuses.some(status => status.statusId === statusId && status.durationSeconds > 0);
 }
 
+/** Removes no more than the requested number of explicitly approved adverse effects. */
+export function cleanseRealtimeStatuses(
+  statuses: readonly ActiveStatus[] = [],
+  allowed: readonly RealtimeStatusId[],
+  limit = 1,
+): { statuses: ActiveStatus[]; removed: RealtimeStatusId[] } {
+  const remaining = Math.max(0, Math.min(8, Math.floor(limit)));
+  const removed: RealtimeStatusId[] = [];
+  const next = statuses.filter(status => {
+    if (remaining === removed.length || status.durationSeconds <= 0 || !allowed.includes(status.statusId as RealtimeStatusId)) return true;
+    removed.push(status.statusId as RealtimeStatusId);
+    return false;
+  });
+  return { statuses: next, removed };
+}
+
 export function statusMagnitude(statuses: readonly ActiveStatus[] = [], statusId: RealtimeStatusId): number {
   return statuses.reduce((value, status) => status.statusId === statusId && status.durationSeconds > 0 ? Math.max(value, status.magnitude) : value, 0);
 }
 
 export function movementSpeedMultiplier(statuses: readonly ActiveStatus[] = []): number {
-  return Math.max(0.3, 1 - Math.min(0.7, statusMagnitude(statuses, 'SLOW')));
+  const slow = Math.min(0.7, statusMagnitude(statuses, 'SLOW'));
+  const haste = Math.min(0.5, statusMagnitude(statuses, 'HASTE'));
+  return Math.max(0.3, 1 - slow) * (1 + haste);
+}
+
+export function actionSpeedMultiplier(statuses: readonly ActiveStatus[] = []): number {
+  return 1 + Math.min(0.35, statusMagnitude(statuses, 'HASTE'));
 }
 
 export function outgoingDamageMultiplier(statuses: readonly ActiveStatus[] = []): number {
@@ -97,6 +120,10 @@ export function incomingDamageMultiplier(statuses: readonly ActiveStatus[] = [])
   return Math.max(0.2, 1 - Math.min(0.8, statusMagnitude(statuses, 'GUARD')));
 }
 
-function isDamageOverTime(statusId: string): statusId is 'BLEED' | 'POISON' | 'BURN' {
-  return statusId === 'BLEED' || statusId === 'POISON' || statusId === 'BURN';
+export function enemyDamageTakenMultiplier(statuses: readonly ActiveStatus[] = []): number {
+  return 1 + Math.min(0.5, statusMagnitude(statuses, 'CURSE'));
+}
+
+function isPeriodicStatus(statusId: string): statusId is 'BLEED' | 'POISON' | 'BURN' | 'REGEN' {
+  return statusId === 'BLEED' || statusId === 'POISON' || statusId === 'BURN' || statusId === 'REGEN';
 }
