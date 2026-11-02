@@ -55,7 +55,7 @@ export function getWeaponPresentationPose(input: WeaponPresentationPoseInput): W
   const moving = input.moving ? Math.sin(input.elapsedSeconds * 9.5) : Math.sin(input.elapsedSeconds * 1.5) * 0.08;
   const pose: WeaponPresentationPose = {
     weaponX: 0.68,
-    weaponY: -0.48 + moving * (input.moving ? 0.045 : 0.045),
+    weaponY: -0.48 + moving * 0.045,
     weaponZ: -1.05,
     weaponRotationX: 0,
     weaponRotationY: 0,
