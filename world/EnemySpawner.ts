@@ -45,6 +45,7 @@ export function spawnFloorEnemies(map: number[][], floor: FloorState): WorldEnem
       pathRefreshSeconds: 0,
       rewardGranted: false,
       roomId: roomId ?? (guardian ? floor.rooms.find(room => room.type === 'BOSS')?.id : undefined),
+      lootTier: guardian ? 'GUARDIAN' : floor.rooms.find(room => room.id === roomId)?.type === 'ELITE' ? 'ELITE' : 'NORMAL',
       isBoss: guardian,
     });
     return true;

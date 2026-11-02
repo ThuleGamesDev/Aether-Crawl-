@@ -31,7 +31,7 @@ export function applyRealtimeStatus(statuses: readonly ActiveStatus[] = [], appl
     statusId: application.statusId,
     durationSeconds: Math.max(0, application.durationSeconds),
     magnitude: Math.max(0, application.magnitude),
-    ...(application.statusId === 'POISON' || application.statusId === 'BURN' ? { tickRemainingSeconds: tickInterval } : {}),
+      ...(isDamageOverTime(application.statusId) ? { tickRemainingSeconds: tickInterval } : {}),
   };
   if (current.length >= MAX_ACTIVE_REALTIME_STATUSES) {
     const replaceIndex = current.reduce((shortest, status, index) => status.durationSeconds < current[shortest].durationSeconds ? index : shortest, 0);
@@ -51,7 +51,7 @@ export function tickRealtimeStatuses(statuses: readonly ActiveStatus[] = [], del
   for (const source of statuses) {
     let status = { ...source };
     let timeLeft = dt;
-    if (status.statusId === 'POISON' || status.statusId === 'BURN') {
+    if (isDamageOverTime(status.statusId)) {
       const interval = DEFAULT_STATUS_TICK_SECONDS;
       let tickRemaining = status.tickRemainingSeconds ?? interval;
       let duration = status.durationSeconds;
@@ -95,4 +95,8 @@ export function outgoingDamageMultiplier(statuses: readonly ActiveStatus[] = [])
 
 export function incomingDamageMultiplier(statuses: readonly ActiveStatus[] = []): number {
   return Math.max(0.2, 1 - Math.min(0.8, statusMagnitude(statuses, 'GUARD')));
+}
+
+function isDamageOverTime(statusId: string): statusId is 'BLEED' | 'POISON' | 'BURN' {
+  return statusId === 'BLEED' || statusId === 'POISON' || statusId === 'BURN';
 }

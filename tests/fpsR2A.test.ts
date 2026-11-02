@@ -228,7 +228,7 @@ describe('FPS-R2A Greek rebrand and Guardian progression', () => {
     expect(storage.getItem(MAZE_SAVE_KEY)).toBeNull();
     expect(saveMazeGame(migration.save!, storage)).toBe(true);
     expect(storage.getItem(FPS_SAVE_KEY)).toBe(original);
-    expect(loadMazeGame(storage).save?.version).toBe(2);
+    expect(loadMazeGame(storage).save?.version).toBe(3);
 
     const invalid = new MemoryStorage();
     invalid.setItem(MAZE_SAVE_KEY, '{broken-json');

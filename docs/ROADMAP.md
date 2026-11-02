@@ -20,12 +20,13 @@ Merged into `main`. Adds six local pixel-rig pilots, combat-state-driven poses, 
 
 Implemented on `codex/maze-of-the-minotaur-fps-r3b`; awaiting review. Adds authored local pixel VFX, gameplay-timed world effects, material-specific impacts, Guardian threat markers, audio cue gating, and Full/Reduced/Off presentation settings. See [R3B VFX documentation](FPS_R3B_MYTHIC_VFX.md) and [gallery](previews/FPS_R3B_MYTHIC_VFX_GALLERY.png).
 
-## FPS-R4 — ARPG itemization and builds
+## FPS-R4A — ARPG itemization core and affix engine
 
-- Add affixes, unique effects, and deeper equipment choices to the instance-based item model.
-- Expand class skill kits and build progression.
-- Keep new item and skill VFX attached to existing stable ability IDs and simulation events; do not introduce a separate visual damage path or a new save field for cosmetic settings.
-- Extend the local atlas and effect definitions only when an item or skill has a distinct visual cue; preserve the shared pool limits and reduced-mode readability.
+Implemented and validated on `codex/maze-of-the-minotaur-fps-r4a`; pull request is ready for review. Adds stable item-base and affix registries, seeded rarity rolls, normal/elite/Guardian reward tiers, one derived-stat pipeline, equipment comparisons, and version-3 save migration. The four existing equipment slots remain compatible, with enforced two-handed/offhand rules. See [itemization formulas, audit, and migration](ARPG_ITEMIZATION.md).
+
+## FPS-R4B — Inventory, uniques, and character stats
+
+Planned. Build the grid inventory and unique-item layer on the R4A item contracts, with the requested character-stats view and mouse controls. Preserve the solo real-time loop and stable content IDs.
 
 ## Later
 

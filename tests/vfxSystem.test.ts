@@ -146,6 +146,7 @@ describe('R3B mythic VFX definitions and runtime', () => {
       stateTimer: 5,
       attackCooldown: 99,
       rewardGranted: false,
+      lootTier: 'GUARDIAN',
       isBoss: false,
     }];
     runtime.projectiles = [{

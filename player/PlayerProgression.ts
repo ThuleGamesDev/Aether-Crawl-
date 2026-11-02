@@ -1,6 +1,9 @@
 import { CLASSES } from '../constants';
+import { getItemBase, LEGACY_ITEM_BASE_IDS } from '../data/itemBases';
 import type { CharacterTemplate, ClassType, EquipmentSlot, Item, ItemInstance, ItemRarity, PlayerCharacter, SoloCharacterStats, WorldEnemy } from '../types';
 import { CLASS_ABILITY_LOADOUT } from '../combat/AbilityRegistry';
+import { calculateDerivedStats } from './DerivedStats';
+import { consumableEffect, createEnemyDrop, createLootInstance, legacyBaseId, normalizeLegacyItem, type RandomSource } from '../services/itemization';
 
 export const itemSlotFor = (item: Item): EquipmentSlot | null => {
   if (item.type === 'WEAPON') return 'weapon';
@@ -12,7 +15,18 @@ export const itemSlotFor = (item: Item): EquipmentSlot | null => {
 
 export function createItemInstance(item: Item, instanceId: string, itemLevel = 1, rarity: ItemRarity = 'COMMON'): ItemInstance {
   const { isEquipped: _isEquipped, ...base } = item;
-  return { ...base, instanceId, itemLevel: Math.max(1, Math.floor(itemLevel)), rarity, affixes: [], quantity: Math.max(1, item.quantity || 1) };
+  const baseId = item.baseId || (getItemBase(item.id) ? item.id : LEGACY_ITEM_BASE_IDS[item.id]) || legacyBaseId(item as ItemInstance);
+  const definition = getItemBase(baseId);
+  return normalizeLegacyItem({
+    ...base,
+    ...(definition?.consumableEffect && !base.consumableEffect ? { consumableEffect: definition.consumableEffect } : {}),
+    baseId,
+    instanceId,
+    itemLevel: Math.max(1, Math.floor(itemLevel)),
+    rarity,
+    affixes: [],
+    quantity: Math.max(1, item.quantity || 1),
+  } as ItemInstance);
 }
 
 export function createPlayerCharacter(classId: ClassType, spawn = { x: 1.5, y: 0, z: 1.5 }): PlayerCharacter {
@@ -32,15 +46,18 @@ export function createPlayerCharacter(classId: ClassType, spawn = { x: 1.5, y: 0
     maxHp: template.stats.maxHp,
     mp: template.stats.maxMp,
     maxMp: template.stats.maxMp,
+    baseMaxHp: template.stats.maxHp,
+    baseMaxMp: template.stats.maxMp,
     str: template.stats.str,
     dex: template.stats.dex,
     int: template.stats.int,
     xp: 0,
     level: 1,
     damageBonus: 0,
+    baseArmor: 0,
     armor: 0,
   };
-  return {
+  return refreshPlayerDerivedCaps({
     id,
     classId,
     name: template.name,
@@ -51,7 +68,7 @@ export function createPlayerCharacter(classId: ClassType, spawn = { x: 1.5, y: 0
     inventory,
     skills: [{ abilityId: CLASS_ABILITY_LOADOUT[classId].skill, rank: 1 }],
     statusEffects: [],
-  };
+  });
 }
 
 export function xpToNextLevel(level: number): number {
@@ -66,16 +83,16 @@ export function grantExperience(player: PlayerCharacter, amount: number): { play
     next.stats.xp -= threshold;
     next.stats.level += 1;
     levelsGained += 1;
-    next.stats.maxHp += 8;
-    next.stats.hp = Math.min(next.stats.maxHp, next.stats.hp + 8);
-    next.stats.maxMp += 4;
-    next.stats.mp = Math.min(next.stats.maxMp, next.stats.mp + 4);
+    next.stats.baseMaxHp = (next.stats.baseMaxHp ?? next.stats.maxHp) + 8;
+    next.stats.hp = Math.min(calculateDerivedStats(next).maxHealth, next.stats.hp + 8);
+    next.stats.baseMaxMp = (next.stats.baseMaxMp ?? next.stats.maxMp) + 4;
+    next.stats.mp = Math.min(calculateDerivedStats(next).maxMana, next.stats.mp + 4);
     const primary = next.classId === 'BARBARIAN' || next.classId === 'PALADIN' ? 'str'
       : next.classId === 'ROGUE' || next.classId === 'RANGER' || next.classId === 'MONK' ? 'dex' : 'int';
     next.stats[primary] += 1;
     threshold = xpToNextLevel(next.stats.level);
   }
-  return { player: next, levelsGained };
+  return { player: refreshPlayerDerivedCaps(next), levelsGained };
 }
 
 export function equipItem(player: PlayerCharacter, instanceId: string): PlayerCharacter {
@@ -84,63 +101,90 @@ export function equipItem(player: PlayerCharacter, instanceId: string): PlayerCh
   const item = player.inventory[itemIndex];
   const slot = itemSlotFor(item);
   if (!slot) return player;
+  const base = getItemBase(item.baseId);
+  if (player.stats.level < (base?.requiredLevel ?? 1)) return player;
+  const weapon = slot === 'weapon' ? item : player.equipment.weapon;
+  if (slot === 'offhand' && isTwoHanded(weapon)) return player;
+
   const inventory = player.inventory.filter((_, index) => index !== itemIndex);
-  const replaced = player.equipment[slot];
+  if (item.quantity > 1) {
+    const splitId = allocateSplitInstanceId(player, item);
+    inventory.push({ ...item, instanceId: splitId, quantity: item.quantity - 1 });
+  }
+  const equipment = { ...player.equipment };
+  const replaced = equipment[slot];
   if (replaced) inventory.push(replaced);
-  const equipment = { ...player.equipment, [slot]: item };
-  const armor = (equipment.armor?.value ?? 0) + (equipment.offhand?.value ?? 0);
-  return { ...player, equipment, inventory, stats: { ...player.stats, armor } };
+  equipment[slot] = { ...item, quantity: 1 };
+  if (slot === 'weapon' && isTwoHanded(item) && equipment.offhand) {
+    inventory.push(equipment.offhand);
+    equipment.offhand = null;
+  }
+  return refreshPlayerDerivedCaps({ ...player, equipment, inventory });
 }
 
 export function unequipItem(player: PlayerCharacter, slot: EquipmentSlot): PlayerCharacter {
   const item = player.equipment[slot];
   if (!item) return player;
   const equipment = { ...player.equipment, [slot]: null };
-  const armor = (equipment.armor?.value ?? 0) + (equipment.offhand?.value ?? 0);
-  return { ...player, equipment, inventory: [...player.inventory, item], stats: { ...player.stats, armor } };
+  return refreshPlayerDerivedCaps({ ...player, equipment, inventory: [...player.inventory, item] });
 }
 
-export function makeEnemyDrop(enemy: WorldEnemy, floorLevel: number): ItemInstance {
-  const guardianLoot: Record<string, Item> = {
-    guardian_bronze_gatekeeper: { id: 'guardian_aspis', name: 'Guardian’s Aspis', description: 'A bronze-faced shield whose rim still bears the Gatekeeper’s final blow.', type: 'SHIELD', value: 5, icon: '◉', quantity: 1 },
-    guardian_serpent_priestess: { id: 'serpent_fang', name: 'Serpent Fang', description: 'A curved ritual kopis that cuts cleanly through venom-soaked linen.', type: 'WEAPON', value: 8, visualType: 'dagger', icon: '⌁', quantity: 1 },
-    guardian_cyclopean_mason: { id: 'cyclopean_hammer', name: 'Cyclopean Hammer', description: 'A bronze-capped stoneworker’s hammer with a heavy, balanced head.', type: 'WEAPON', value: 10, visualType: 'mace', icon: '⚒', quantity: 1 },
-    guardian_lamia_cistern: { id: 'lamia_veil', name: 'Lamia’s Veil', description: 'Water-dark linen that turns aside a little of the Cistern’s chill.', type: 'ARMOR', value: 6, armorWeight: 'LIGHT', icon: '▧', quantity: 1 },
-    guardian_threadbound_warden: { id: 'threadbound_seal', name: 'Threadbound Seal', description: 'A chthonic seal that steadies the mind against curses.', type: 'ACCESSORY', value: 7, statBonus: 'INT', icon: '⌘', quantity: 1 },
-  };
-  const guardianReward = guardianLoot[enemy.definitionId];
-  if (guardianReward) return createItemInstance({ ...guardianReward, id: guardianReward.id + '_' + enemy.definitionId, value: guardianReward.value + Math.max(0, Math.floor((floorLevel - 1) / 2)) }, 'drop_' + enemy.id, floorLevel, 'RARE');
-  if (enemy.definitionId === 'giant_rat') {
-    return createItemInstance({ id: 'rat_hide_' + enemy.id, name: 'Cretan Rat Pelt', description: 'A tough pelt from a cave scavenger of the old palace.', type: 'ARMOR', value: 2 + Math.floor(floorLevel / 2), armorWeight: 'LIGHT', icon: '▧', quantity: 1 }, 'drop_' + enemy.id, floorLevel);
-  }
-  if (enemy.definitionId === 'skeleton_warrior') {
-    return createItemInstance({ id: 'bone_charm_' + enemy.id, name: 'Chthonic Seal', description: 'A cold seal that sharpens the bearer’s resolve.', type: 'ACCESSORY', value: 2 + Math.floor(floorLevel / 2), statBonus: 'STR', icon: '◇', quantity: 1 }, 'drop_' + enemy.id, floorLevel, enemy.isBoss ? 'RARE' : 'COMMON');
-  }
-  const weapon = enemy.attackSetId === 'plunderer' || enemy.attackSetId === 'empusa'
-    ? { name: 'Bronze Kopis of the Fallen', visualType: 'dagger' as const, icon: '⌁' }
-    : enemy.attackSetId === 'raider'
-      ? { name: 'Dory of the Lost Guard', visualType: 'spear' as const, icon: '↗' }
-      : enemy.attackSetId === 'brute' || enemy.attackSetId === 'bull_enforcer'
-        ? { name: 'Bronze Mace of the Deep', visualType: 'mace' as const, icon: '⚒' }
-        : { name: 'Labyrinth Xiphos', visualType: 'sword' as const, icon: '†' };
-  return createItemInstance({ id: 'dungeon_cache_' + enemy.id, name: weapon.name, description: 'A bronze weapon recovered from the buried halls.', type: 'WEAPON', value: 3 + floorLevel, visualType: weapon.visualType, icon: weapon.icon, quantity: 1 }, 'drop_' + enemy.id, floorLevel);
+export function rollEnemyDrop(enemy: WorldEnemy, floorLevel: number, random: RandomSource): ItemInstance | null {
+  return createEnemyDrop(enemy, floorLevel, random);
 }
 
 export function consumePotion(player: PlayerCharacter, instanceId: string): PlayerCharacter | null {
   const index = player.inventory.findIndex(item => item.instanceId === instanceId && item.type === 'POTION');
   if (index < 0) return null;
   const item = player.inventory[index];
-  const isMana = /mana|mp|nectar|ambrosial/i.test(item.name) || /mana|_mp/i.test(item.id);
+  const effect = consumableEffect(item);
+  if (!effect) return null;
+  const derived = calculateDerivedStats(player);
   const stats = { ...player.stats };
-  if (isMana) {
-    if (stats.mp >= stats.maxMp) return null;
-    stats.mp = Math.min(stats.maxMp, stats.mp + item.value);
+  if (effect === 'MANA') {
+    if (stats.mp >= derived.maxMana) return null;
+    stats.mp = Math.min(derived.maxMana, stats.mp + item.value);
   } else {
-    if (stats.hp >= stats.maxHp) return null;
-    stats.hp = Math.min(stats.maxHp, stats.hp + item.value);
+    if (stats.hp >= derived.maxHealth) return null;
+    stats.hp = Math.min(derived.maxHealth, stats.hp + item.value);
   }
   const inventory = [...player.inventory];
   if (item.quantity > 1) inventory[index] = { ...item, quantity: item.quantity - 1 };
   else inventory.splice(index, 1);
   return { ...player, stats, inventory };
+}
+
+/** Recomputes cached legacy armor and clamps resources after load/equipment changes. */
+export function refreshPlayerDerivedCaps(player: PlayerCharacter): PlayerCharacter {
+  const baseMaxHp = Math.max(1, Number.isFinite(player.stats.baseMaxHp) ? player.stats.baseMaxHp! : player.stats.maxHp);
+  const baseMaxMp = Math.max(0, Number.isFinite(player.stats.baseMaxMp) ? player.stats.baseMaxMp! : player.stats.maxMp);
+  const withBaseCaps = { ...player, stats: { ...player.stats, baseMaxHp, baseMaxMp, baseArmor: Math.max(0, player.stats.baseArmor ?? 0) } };
+  const derived = calculateDerivedStats(withBaseCaps);
+  return { ...player, stats: {
+    ...player.stats,
+    baseMaxHp,
+    baseMaxMp,
+    baseArmor: withBaseCaps.stats.baseArmor,
+    maxHp: derived.maxHealth,
+    maxMp: derived.maxMana,
+    armor: derived.armor,
+    hp: Math.max(0, Math.min(derived.maxHealth, Number.isFinite(player.stats.hp) ? player.stats.hp : derived.maxHealth)),
+    mp: Math.max(0, Math.min(derived.maxMana, Number.isFinite(player.stats.mp) ? player.stats.mp : derived.maxMana)),
+  } };
+}
+
+function isTwoHanded(item: ItemInstance | null): boolean {
+  return Boolean(item && (getItemBase(item.baseId)?.twoHanded || item.visualType === 'bow' || item.visualType === 'axe' || item.visualType === 'staff'));
+}
+
+function allocateSplitInstanceId(player: PlayerCharacter, item: ItemInstance): string {
+  const used = new Set<string>([
+    ...player.inventory.map(candidate => candidate.instanceId),
+    ...Object.values(player.equipment).filter((candidate): candidate is ItemInstance => Boolean(candidate)).map(candidate => candidate.instanceId),
+  ]);
+  const stem = item.instanceId + '_split_' + Math.max(1, item.quantity - 1);
+  let id = stem;
+  let suffix = 2;
+  while (used.has(id)) id = stem + '_' + suffix++;
+  return id;
 }
