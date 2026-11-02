@@ -63,6 +63,6 @@ Keyboard slots 1–4 and the four mobile skill buttons trigger learned skills. L
 
 No browser/WebGL smoke was performed: Chromium is not installed in the workspace. No large gameplay or balance simulation was run; the numerical values are technical starting points and still need the user's in-game feel review.
 
-## R5B integration seam
+## R5B follow-up
 
-R5B can register the four remaining class kits through `CLASS_SKILL_KITS`, the stable ability registry, and `ClassPassiveState`. It can reuse rank/choice UI, save validation, modifier calculations, timed-hit persistence, and collision helpers. Keep class kit data separate from `App.tsx` and avoid changing the version-4 save namespace unless a later field genuinely requires a migration.
+R5B completes the remaining four kits through the same `CLASS_SKILL_KITS`, stable ability registry, and `ClassPassiveState` systems. The shared rank/choice UI, save validation, derived modifiers, timed-hit persistence, and collision helpers are reused. The version-4 save namespace remains unchanged. See [R5B class skill documentation](CLASS_SKILLS_R5B.md) for the combined eight-class catalog and validation status.
