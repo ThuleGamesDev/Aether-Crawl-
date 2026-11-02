@@ -37,7 +37,7 @@ export function spawnFloorEnemies(map: number[][], floor: FloorState): WorldEnem
       attackTelegraphSeconds: guardian ? 0.82 : 0.65,
       attackSetId: guardian ? guardianDefinition!.attackSetId : definition.attackSetId,
       attackIndex: 0,
-      behaviorRole: guardian ? (floor.level === 4 ? 'SKIRMISHER' : floor.level === 2 || floor.level === 5 ? 'CONTROLLER' : 'HEAVY') : definition.fpsRole ?? 'CHASER',
+      behaviorRole: guardian ? guardianDefinition!.behaviorRole : definition.fpsRole ?? 'CHASER',
       statusEffects: [],
       phase: 1,
       phaseTransitioned: false,
