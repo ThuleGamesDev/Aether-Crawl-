@@ -147,7 +147,7 @@ const App: React.FC = () => {
         <button className="fps-back-button" onClick={() => setMode('MENU')}>← Main Menu</button>
         <div className="fps-kicker">CHOOSE YOUR CLASS</div>
         <h2>One hero enters the Labyrinth.</h2>
-        <p className="fps-muted">Choose a champion of the old world. Each hero begins with a primary action, a secondary action and a class skill.</p>
+        <p className="fps-muted">Choose a champion of the old world. Each hero has a primary action, a secondary action and four rankable class skill slots.</p>
         <div className="fps-class-grid">
           {CLASS_IDS.map(classId => {
             const definition = CLASSES[classId];
