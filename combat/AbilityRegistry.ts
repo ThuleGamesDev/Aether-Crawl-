@@ -1,4 +1,7 @@
 import type { ClassType, MagicSchool, RealtimeStatusId, StatusApplication } from '../types';
+import { isPeriodicRealtimeStatus } from './StatusSystem';
+
+const PERCENT_TOOLTIP_STATUS_IDS: ReadonlySet<string> = new Set(['SLOW', 'WEAKNESS', 'GUARD', 'COUNTER', 'BLOOD_OATH', 'HASTE', 'PRECISION', 'CURSE']);
 
 export type AbilityKind = 'MELEE' | 'PROJECTILE' | 'AOE';
 export type AbilityPhase = 'WINDUP' | 'ACTIVE' | 'RECOVERY';
@@ -75,7 +78,7 @@ export const ABILITY_REGISTRY: Record<string, AbilityDefinition> = {
   paladin_dory_impale: { id: 'paladin_dory_impale', name: 'Dory Impale', kind: 'MELEE', damage: 23, manaCost: 5, cooldownSeconds: 3.2, windupSeconds: 0.22, activeSeconds: 0.12, recoverySeconds: 0.22, range: 3.2, arcRadians: 0.2, meleeStyle: 'THRUST', staggerSeconds: 0.22, projectileColor: '#ddb85e', description: 'A narrow spear thrust reaches 3.2 metres and respects walls.' },
   paladin_bronze_reprisal: { id: 'paladin_bronze_reprisal', name: 'Bronze Reprisal', kind: 'AOE', damage: 0, manaCost: 6, cooldownSeconds: 8, windupSeconds: 0.12, activeSeconds: 0.08, recoverySeconds: 0.18, range: 0, radius: 0, targeting: 'SELF', utilityOnly: true, selfStatuses: [{ statusId: 'GUARD', durationSeconds: 2.5, magnitude: 0.32 }, { statusId: 'COUNTER', durationSeconds: 3, magnitude: 0.24 }], projectileColor: '#e9cb7a', description: 'Guard for 2.5 seconds and empower one melee counter by up to 24%.' },
   paladin_aspis_charge: { id: 'paladin_aspis_charge', name: 'Aspis Charge', kind: 'MELEE', damage: 25, manaCost: 7, cooldownSeconds: 7, windupSeconds: 0.12, activeSeconds: 0.12, recoverySeconds: 0.3, range: 1.35, arcRadians: 0.72, meleeStyle: 'BASH', dashDistance: 1.15, staggerSeconds: 0.4, projectileColor: '#d4a550', description: 'Advance up to 1.15 metres without passing through walls, then bash.' },
-  sorcerer_storm_invocation: { id: 'sorcerer_storm_invocation', name: 'Storm Invocation', kind: 'AOE', damage: 22, manaCost: 16, cooldownSeconds: 7.5, windupSeconds: 0.34, activeSeconds: 0.12, recoverySeconds: 0.32, range: 9, radius: 0.72, targeting: 'AIMED_POINT', chain: { maxJumps: 2, jumpRange: 3.2, damageMultiplier: 0.45 }, element: 'LIGHTNING', projectileColor: '#a5d8ff', description: 'Strike a small aimed area, then arc to at most two nearby foes.' },
+  sorcerer_storm_invocation: { id: 'sorcerer_storm_invocation', name: 'Storm Invocation', kind: 'AOE', damage: 22, manaCost: 16, cooldownSeconds: 7.5, windupSeconds: 0.34, activeSeconds: 0.12, recoverySeconds: 0.32, range: 9, radius: 0.72, targeting: 'AIMED_POINT', chain: { maxJumps: 2, jumpRange: 3.2, damageMultiplier: 0.45 }, element: 'LIGHTNING', projectileColor: '#a5d8ff', description: 'Strike a small aimed area, then arc to at most two additional foes.' },
   sorcerer_prophetic_veil: { id: 'sorcerer_prophetic_veil', name: 'Prophetic Veil', kind: 'AOE', damage: 0, manaCost: 10, cooldownSeconds: 10, windupSeconds: 0.12, activeSeconds: 0.08, recoverySeconds: 0.2, range: 0, radius: 0, targeting: 'SELF', utilityOnly: true, dashDistance: 1.1, selfEffect: { type: 'GUARD', durationSeconds: 2.5, magnitude: 0.22 }, element: 'ARCANE', projectileColor: '#b59ae8', description: 'Step up to 1.1 metres through open space and gain a brief defensive veil.' },
   sorcerer_omenfall: { id: 'sorcerer_omenfall', name: 'Omenfall', kind: 'AOE', damage: 26, manaCost: 18, cooldownSeconds: 8, windupSeconds: 0.32, activeSeconds: 0.12, recoverySeconds: 0.34, range: 10, radius: 1.35, targeting: 'AIMED_POINT', onHitStatus: { statusId: 'STAGGER', durationSeconds: 0.32, magnitude: 0.32 }, element: 'ARCANE', projectileColor: '#b59ae8', description: 'A precise arcane impact that staggers foes caught in its small blast.' },
   rogue_kopis_flurry: { id: 'rogue_kopis_flurry', name: 'Kopis Flurry', kind: 'MELEE', damage: 18, manaCost: 6, cooldownSeconds: 3.8, windupSeconds: 0.12, activeSeconds: 0.36, recoverySeconds: 0.22, range: 1.75, arcRadians: 0.82, meleeStyle: 'SWEEP', activeHitCount: 3, damagePerHitMultiplier: 0.35, projectileColor: '#c8d0df', description: 'Three quick cuts resolve across a short, focused active window.' },
@@ -149,7 +152,7 @@ export function abilityTooltip(ability: AbilityDefinition, overrides?: { manaCos
   const charge = ability.chargeMinSeconds ? ` · charge ${(ability.chargeMinSeconds * 1000).toFixed(0)}ms+` : '';
   const hits = ability.activeHitCount && ability.activeHitCount > 1 ? ` · timed hit windows` : '';
   const projectile = ability.kind === 'PROJECTILE' && (ability.projectileCount ?? 1) > 1
-    ? ` · ${Math.min(7, Math.floor(ability.projectileCount!))} projectiles${ability.projectileSpreadRadians ? ` · ${(ability.projectileSpreadRadians * 57.3).toFixed(0)}° fan` : ''}${ability.damagePerProjectileMultiplier ? ` · ${Math.round(ability.damagePerProjectileMultiplier * 100)}% each` : ''}` : '';
+    ? ` · ${Math.min(7, Math.floor(ability.projectileCount!))} projectiles${ability.projectileSpreadRadians ? ` · ${(ability.projectileSpreadRadians * 2 * 180 / Math.PI).toFixed(0)}° total fan` : ''}${ability.damagePerProjectileMultiplier ? ` · ${Math.round(ability.damagePerProjectileMultiplier * 100)}% each` : ''}` : '';
   const pierce = ability.pierceCount ? ` · pierces up to ${Math.min(3, Math.floor(ability.pierceCount))} additional target${ability.pierceCount === 1 ? '' : 's'}` : '';
   const selfStatuses = ability.selfStatuses?.length ? ` · self: ${ability.selfStatuses.map(formatTooltipStatus).join(', ')}` : '';
   const cleanse = ability.cleanseStatuses?.length ? ` · may cleanse: ${ability.cleanseStatuses.map(statusId => statusId.toLowerCase()).join(', ')}` : '';
@@ -160,7 +163,7 @@ export function abilityTooltip(ability: AbilityDefinition, overrides?: { manaCos
 }
 
 function formatTooltipStatus(status: StatusApplication): string {
-  const percentStatuses = new Set(['SLOW', 'WEAKNESS', 'GUARD', 'COUNTER', 'BLOOD_OATH', 'HASTE', 'PRECISION', 'CURSE']);
-  const amount = percentStatuses.has(status.statusId) ? `${Math.round(status.magnitude * 100)}%` : `${Math.round(status.magnitude)} per tick`;
-  return `${status.statusId.toLowerCase()} ${amount} · ${status.durationSeconds.toFixed(1)}s`;
+  const amount = PERCENT_TOOLTIP_STATUS_IDS.has(status.statusId) ? ` ${Math.round(status.magnitude * 100)}%`
+    : isPeriodicRealtimeStatus(status.statusId) ? ` ${Math.round(status.magnitude)} per tick` : '';
+  return `${status.statusId.toLowerCase()}${amount} · ${status.durationSeconds.toFixed(1)}s`;
 }

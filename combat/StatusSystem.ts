@@ -1,4 +1,5 @@
 import type { ActiveStatus, RealtimeStatusId, StatusApplication } from '../types';
+import { ACTION_SPEED_RULES } from './actionSpeed';
 
 export const MAX_ACTIVE_REALTIME_STATUSES = 8;
 export const DEFAULT_STATUS_TICK_SECONDS = 1;
@@ -21,7 +22,7 @@ export function applyRealtimeStatus(statuses: readonly ActiveStatus[] = [], appl
       ...existing,
       durationSeconds: Math.max(existing.durationSeconds, application.durationSeconds),
       magnitude: Math.max(existing.magnitude, application.magnitude),
-    ...(isPeriodicStatus(application.statusId) ? { tickRemainingSeconds: Math.min(existing.tickRemainingSeconds ?? tickInterval, tickInterval) } : {}),
+    ...(isPeriodicRealtimeStatus(application.statusId) ? { tickRemainingSeconds: Math.min(existing.tickRemainingSeconds ?? tickInterval, tickInterval) } : {}),
     };
     return current;
   }
@@ -31,7 +32,7 @@ export function applyRealtimeStatus(statuses: readonly ActiveStatus[] = [], appl
     statusId: application.statusId,
     durationSeconds: Math.max(0, application.durationSeconds),
     magnitude: Math.max(0, application.magnitude),
-    ...(isPeriodicStatus(application.statusId) ? { tickRemainingSeconds: tickInterval } : {}),
+    ...(isPeriodicRealtimeStatus(application.statusId) ? { tickRemainingSeconds: tickInterval } : {}),
   };
   if (current.length >= MAX_ACTIVE_REALTIME_STATUSES) {
     const replaceIndex = current.reduce((shortest, status, index) => status.durationSeconds < current[shortest].durationSeconds ? index : shortest, 0);
@@ -51,7 +52,7 @@ export function tickRealtimeStatuses(statuses: readonly ActiveStatus[] = [], del
   for (const source of statuses) {
     let status = { ...source };
     let timeLeft = dt;
-    if (isPeriodicStatus(status.statusId)) {
+    if (isPeriodicRealtimeStatus(status.statusId)) {
       const interval = DEFAULT_STATUS_TICK_SECONDS;
       let tickRemaining = status.tickRemainingSeconds ?? interval;
       let duration = status.durationSeconds;
@@ -109,7 +110,7 @@ export function movementSpeedMultiplier(statuses: readonly ActiveStatus[] = []):
 }
 
 export function actionSpeedMultiplier(statuses: readonly ActiveStatus[] = []): number {
-  return 1 + Math.min(0.35, statusMagnitude(statuses, 'HASTE'));
+  return 1 + Math.min(ACTION_SPEED_RULES.maximumHasteBonus, statusMagnitude(statuses, 'HASTE'));
 }
 
 export function outgoingDamageMultiplier(statuses: readonly ActiveStatus[] = []): number {
@@ -124,6 +125,6 @@ export function enemyDamageTakenMultiplier(statuses: readonly ActiveStatus[] = [
   return 1 + Math.min(0.5, statusMagnitude(statuses, 'CURSE'));
 }
 
-function isPeriodicStatus(statusId: string): statusId is 'BLEED' | 'POISON' | 'BURN' | 'REGEN' {
+export function isPeriodicRealtimeStatus(statusId: string): statusId is 'BLEED' | 'POISON' | 'BURN' | 'REGEN' {
   return statusId === 'BLEED' || statusId === 'POISON' || statusId === 'BURN' || statusId === 'REGEN';
 }

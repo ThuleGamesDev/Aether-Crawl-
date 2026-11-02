@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import atlasManifest from '../data/generated/mythicVfxAtlas.json';
 import { getEnemyAttackTelegraphDescriptor, getGuardianTelegraphEffect } from '../data/enemyAttackTelegraph';
 import { ENEMY_ATTACK_SETS } from '../data/enemyAttacks';
@@ -180,12 +180,22 @@ describe('R3B mythic VFX definitions and runtime', () => {
     const scene = new THREE.Scene();
     const assets = new AssetManager();
     const system = new VFXSystem(scene, assets, 3);
-    const internal = system as unknown as { slots: Array<{ mesh: THREE.Mesh; instance: VFXInstance | null }> };
+    const internal = system as unknown as {
+      slots: Array<{ mesh: THREE.Mesh; instance: VFXInstance | null }>;
+      slotSnapshots: Array<{ active: boolean; priority: string; age: number }>;
+    };
     const position = { x: 4, y: 0.7, z: 8 };
+    const snapshotArray = internal.slotSnapshots;
+    const snapshotObjects = snapshotArray.slice();
+    const slotMap = vi.spyOn(internal.slots, 'map');
 
     for (let index = 0; index < 12; index += 1) {
       system.emit('blood_hit', position, { ownerId: 'enemy-1', sourceId: 'spear' });
     }
+    expect(slotMap).not.toHaveBeenCalled();
+    expect(internal.slotSnapshots).toBe(snapshotArray);
+    expect(internal.slotSnapshots.every((snapshot, index) => snapshot === snapshotObjects[index])).toBe(true);
+    slotMap.mockRestore();
     expect(internal.slots).toHaveLength(3);
     expect(scene.children).toHaveLength(3);
     expect(internal.slots.every(slot => slot.instance?.space === 'world')).toBe(true);

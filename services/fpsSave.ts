@@ -6,6 +6,7 @@ import { CLASS_ABILITY_LOADOUT, getAbility } from '../combat/AbilityRegistry';
 import { calculateDerivedStats } from '../player/DerivedStats';
 import { getItemBase } from '../data/itemBases';
 import { getClassSkill } from '../data/classSkillKits';
+import { isValidEffectiveActionSpeedMultiplier } from '../combat/actionSpeed';
 
 export const FPS_SAVE_KEY = 'aether_crawl_fps_r1_save_v1';
 export const FPS_SAVE_VERSION = 1;
@@ -178,7 +179,7 @@ function isPlayerCombatSaveState(value: unknown): value is PlayerCombatSaveState
     && (value.action === null || isRecord(value.action) && typeof value.action.abilityId === 'string' && Boolean(getAbility(value.action.abilityId))
       && phases.includes(value.action.phase) && Number.isFinite(value.action.remainingSeconds) && value.action.remainingSeconds >= 0
       && Number.isFinite(value.action.damageMultiplier) && value.action.damageMultiplier > 0
-      && (value.action.speedMultiplier === undefined || Number.isFinite(value.action.speedMultiplier) && value.action.speedMultiplier >= 0.5 && value.action.speedMultiplier <= 1.75)
+      && (value.action.speedMultiplier === undefined || isValidEffectiveActionSpeedMultiplier(value.action.speedMultiplier))
       && (value.action.hitIndex === undefined || Number.isInteger(value.action.hitIndex) && value.action.hitIndex >= 0 && value.action.hitIndex <= 8)
       && (value.action.hitCount === undefined || Number.isInteger(value.action.hitCount) && value.action.hitCount >= 1 && value.action.hitCount <= 8)
       && (value.action.hitIndex === undefined || value.action.hitCount === undefined || value.action.hitIndex <= value.action.hitCount)

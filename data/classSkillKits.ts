@@ -64,7 +64,7 @@ export const CLASS_SKILL_KITS: Partial<Record<ClassType, ClassSkillKit>> = {
     ],
     skills: [
       { abilityId: 'sorcerer_fireburst', slot: 1, unlockLevel: 1, role: 'Fire area', description: 'Aimed fireburst that applies a bounded burn.' },
-      { abilityId: 'sorcerer_storm_invocation', slot: 2, unlockLevel: 2, role: 'Chain lightning', description: 'A small aimed strike that chains to at most three nearby foes.' },
+      { abilityId: 'sorcerer_storm_invocation', slot: 2, unlockLevel: 2, role: 'Chain lightning', description: 'A small aimed strike that chains to at most two additional foes.' },
       { abilityId: 'sorcerer_prophetic_veil', slot: 3, unlockLevel: 4, role: 'Reposition', description: 'A short collision-safe step with a brief defensive veil.' },
       { abilityId: 'sorcerer_omenfall', slot: 4, unlockLevel: 6, role: 'Arcane burst', description: 'A precise arcane impact rewards alternating spell schools.' },
     ],

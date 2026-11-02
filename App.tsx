@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { CLASSES } from './constants';
 import { abilityTooltip, CLASS_ABILITY_LOADOUT, getAbility } from './combat/AbilityRegistry';
 import FPSViewport from './components/FPSViewport';
@@ -8,6 +8,7 @@ import { LABYRINTH_THEMES } from './data/mazeContent';
 import type { ClassType } from './types';
 import type { InputSystem } from './engine/InputSystem';
 import type { VFXMode } from './presentation/vfxDefinitions';
+import { shouldReleasePointerLockForUi } from './services/uiInputPolicy';
 import InventoryPanel from './components/InventoryPanel';
 import SkillUpgradeScreen from './components/SkillUpgradeScreen';
 import { getClassSkillKit } from './data/classSkillKits';
@@ -41,11 +42,18 @@ const App: React.FC = () => {
     } catch { /* Sensitivity storage is optional. */ }
   }, []);
 
-  useEffect(() => {
-    if (!snapshot || !(snapshot.inventoryOpen || snapshot.mapOpen || snapshot.paused || snapshot.levelUpOpen || snapshot.roomOffer)) return;
-    if (document.pointerLockElement) document.exitPointerLock?.();
-    inputRef.current?.clearActiveInputs();
-  }, [snapshot?.inventoryOpen, snapshot?.mapOpen, snapshot?.paused, snapshot?.roomOffer]);
+  const freeCursorRequired = Boolean(snapshot && shouldReleasePointerLockForUi({
+    inventoryOpen: snapshot.inventoryOpen,
+    mapOpen: snapshot.mapOpen,
+    paused: snapshot.paused,
+    levelUpOpen: snapshot.levelUpOpen,
+    roomOfferOpen: Boolean(snapshot.roomOffer),
+    gameOver: snapshot.gameOver,
+  }));
+
+  useLayoutEffect(() => {
+    if (freeCursorRequired) inputRef.current?.handoffToUi();
+  }, [freeCursorRequired]);
 
   const beginRun = (classId: ClassType) => {
     const runtime = new FPSGameRuntime(classId);
