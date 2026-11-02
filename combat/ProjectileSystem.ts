@@ -24,6 +24,8 @@ export interface ProjectileUpdateResult {
   impacts: ProjectileImpact[];
 }
 
+export const MAX_PROJECTILE_PIERCE = 3;
+
 export function isVisibleProjectileImpact(impact: Pick<ProjectileImpact, 'kind'>): boolean {
   return impact.kind !== 'range';
 }
@@ -34,7 +36,7 @@ export function updateProjectiles(projectiles: WorldProjectile[], enemies: World
   const remaining: WorldProjectile[] = [];
   const impacts: ProjectileImpact[] = [];
   for (const projectile of projectiles) {
-    let current = { ...projectile, position: { ...projectile.position } };
+    let current = { ...projectile, position: { ...projectile.position }, hitEnemyIds: [...(projectile.hitEnemyIds ?? [])].slice(0, MAX_PROJECTILE_PIERCE + 1) };
     let consumed = false;
     const stepLength = Math.hypot(current.velocity.x, current.velocity.y, current.velocity.z) * dt;
     const steps = Math.max(1, Math.ceil(stepLength / 0.06));
@@ -56,17 +58,30 @@ export function updateProjectiles(projectiles: WorldProjectile[], enemies: World
         consumed = true;
         break;
       }
-      const target = current.faction !== 'ENEMY' ? nextEnemies.find(enemy => enemy.health > 0 && enemy.state !== 'DEAD' && Math.hypot(enemy.position.x - current.position.x, enemy.position.z - current.position.z) < (enemy.collisionRadius ?? 0.28) + current.radius && Math.abs(0.72 - current.position.y) < 1.0) : undefined;
+      const target = current.faction !== 'ENEMY' ? nextEnemies.find(enemy => enemy.health > 0 && enemy.state !== 'DEAD'
+        && !current.hitEnemyIds?.includes(enemy.id)
+        && Math.hypot(enemy.position.x - current.position.x, enemy.position.z - current.position.z) < (enemy.collisionRadius ?? 0.28) + current.radius
+        && Math.abs(0.72 - current.position.y) < 1.0) : undefined;
       if (target) {
         nextEnemies = nextEnemies.map(enemy => {
           if (enemy.id !== target.id) return enemy;
           let hit = applyEnemyDamage(enemy, current.damage).enemy;
-          if (current.statusEffect) hit = { ...hit, statusEffects: applyRealtimeStatus(hit.statusEffects, current.statusEffect, current.sourceAbilityId) };
+          if (current.statusEffect) {
+            const bossAdjusted = target.isBoss && (current.statusEffect.statusId === 'STAGGER' || current.statusEffect.statusId === 'CURSE')
+              ? { ...current.statusEffect, durationSeconds: current.statusEffect.durationSeconds * 0.5, magnitude: current.statusEffect.magnitude * 0.5 }
+              : current.statusEffect;
+            hit = { ...hit, statusEffects: applyRealtimeStatus(hit.statusEffects, bossAdjusted, current.sourceAbilityId) };
+          }
           return hit;
         });
         impacts.push({ kind: 'enemy', position: current.position, color: current.color, surface: getEnemyVfxSurface(target.visualId), enemyId: target.id, abilityId: current.sourceAbilityId, damage: current.damage, ownerEnemyId: current.ownerEnemyId, statusEffect: current.statusEffect, healOwnerRatio: current.healOwnerRatio });
-        consumed = true;
-        break;
+        const pierceRemaining = Math.max(0, Math.min(MAX_PROJECTILE_PIERCE, Math.floor(current.pierceRemaining ?? 0)));
+        if (pierceRemaining > 0) {
+          current = { ...current, pierceRemaining: pierceRemaining - 1, hitEnemyIds: [...(current.hitEnemyIds ?? []), target.id] };
+        } else {
+          consumed = true;
+          break;
+        }
       }
     }
     current.remainingSeconds -= dt;
