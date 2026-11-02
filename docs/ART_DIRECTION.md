@@ -19,3 +19,5 @@ The Labyrinth is an ancient Cretan structure interpreted through a deliberate fa
 Generic medieval castles, Nordic runes, Roman legionary imagery, standard fantasy orcs, softened texture filtering, and mixed high-resolution painted portraits beside coarse pixel sprites as a permanent style.
 
 The source sprite and texture sheets are generated locally by `scripts/generate-maze-assets.py`; the running game only loads static files and does not generate art or call an image service.
+
+FPS-R3A adds a deterministic 2D rig atlas for six selected enemy pilots. Its locally authored pixel parts use anatomy-specific pivots and palettes; see [the R3A rig and animation notes](FPS_R3A_CHARACTER_RIGS.md) and [contact sheet](previews/FPS_R3A_CHARACTER_CONTACT_SHEET.png). Other enemies retain their local static sprite fallback until they receive deliberately authored parts and poses.
