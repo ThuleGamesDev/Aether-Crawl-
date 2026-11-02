@@ -404,6 +404,8 @@ function itemTextureKey(drop: WorldLootDrop): string {
 }
 
 function projectileTrailEffect(abilityId: string, statusId?: string): PixelEffectId {
+  if (statusId === 'CURSE' || /necromancer_|shade_mark|death_burst|soul_drain|chthonic|underworld/i.test(abilityId)) return 'soul_ash';
+  if (/ranger_|javelin/i.test(abilityId)) return 'dory_thrust';
   if (statusId === 'POISON') return 'venom_droplets';
   if (statusId === 'BURN') return 'fire_embers';
   if (statusId === 'SLOW') return 'web_threads';
