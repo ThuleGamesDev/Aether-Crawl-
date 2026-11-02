@@ -1,6 +1,6 @@
 # Asset Pipeline
 
-R2A's active renderer loads local pixel-art PNGs from `public/assets/maze/` through the existing `AssetManager`. Static art covers six labyrinth depth themes, all registered enemy silhouettes and five unique Guardians, first-person weapon hands and the Aspis, Greek props, and pixel VFX. Canvas-generated textures remain a synchronous fallback while local images load.
+The active renderer loads local pixel-art PNGs from `public/assets/maze/` through the existing `AssetManager`. Static art covers six labyrinth depth themes, all registered enemy silhouettes and five unique Guardians, first-person weapon hands and the Aspis, Greek props, and impact effects. R2B adds compact generated combat-effect textures and pooled directional bursts for bronze slash, spear thrust, shield impact, blood, poison, web, fire, stone, chthonic magic, and Guardian death. Canvas-generated textures remain a synchronous fallback while local images load.
 
 ## Local art generation
 
@@ -15,6 +15,7 @@ This deterministic Pillow script has no network dependency and uses only local d
 - `data/assetRegistry.ts` maps stable gameplay visual IDs to local files.
 - `AssetManager` caches each `CanvasTexture` per renderer and swaps its image source to the loaded local PNG.
 - Enemy billboards use depth tests so walls occlude them; projectiles, particles, and loot use bounded pools or cached resources.
+- `VFXSystem` preallocates its particle sprites and `AssetManager` caches each effect texture by stable effect ID; combat hits do not allocate a new texture or material.
 - `WorldGeometry` owns and disposes floor-specific geometry and materials. Shared textures remain owned by `AssetManager` until renderer disposal.
 - The registered six biome keys remain save-stable implementation keys; their visible themes are authored as Labyrinth depth zones.
 

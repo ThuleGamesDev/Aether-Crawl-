@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { CLASSES } from './constants';
-import { CLASS_ABILITY_LOADOUT, getAbility } from './combat/AbilityRegistry';
+import { abilityTooltip, CLASS_ABILITY_LOADOUT, getAbility } from './combat/AbilityRegistry';
 import FPSViewport from './components/FPSViewport';
 import { FPSGameRuntime, type FPSGameSnapshot } from './engine/FPSGameRuntime';
 import { loadMazeGame } from './services/mazeSave';
@@ -149,7 +149,7 @@ const App: React.FC = () => {
           <span>Look</span><b>Mouse</b>
           <span>Primary attack</span><b>Left Mouse</b>
           <span>Secondary attack</span><b>Right Mouse · hold to charge where supported</b>
-          <span>Class skill</span><b>1</b>
+          <span>Class skills</span><b>1–4</b>
           <span>Sprint / dodge</span><b>Shift / Space</b>
           <span>Interact / inventory / map</span><b>E / I / Tab</b>
           <span>Pause</span><b>Esc</b>
@@ -172,7 +172,7 @@ const App: React.FC = () => {
   const xpPercent = Math.max(0, Math.min(100, player.stats.xp / xpNeeded * 100));
   const primary = getAbility(snapshot.primaryAbilityId)!;
   const secondary = getAbility(snapshot.secondaryAbilityId)!;
-  const skill = getAbility(snapshot.skillAbilityId)!;
+  const skills = snapshot.skillAbilityIds.map(id => id ? getAbility(id) : null);
 
   return <main className="fps-game-shell">
     <FPSViewport runtime={runtime} mouseSensitivity={mouseSensitivity} onSnapshot={setSnapshot} onInputReady={input => { inputRef.current = input; }} onFailure={setWebglError} />
@@ -207,12 +207,14 @@ const App: React.FC = () => {
 
       <footer className="fps-bottom-hud">
         <div className="fps-hud-hint">WASD MOVE · MOUSE LOOK · CLICK VIEW TO CAPTURE</div>
-        <div className="fps-action-bar">
-          <div className="fps-action-card"><kbd>LMB</kbd><strong>{primary.name}</strong><small>{player.equipment.weapon?.name ?? 'Unarmed'}</small><small className={snapshot.primaryCooldown > 0 ? 'fps-cooldown-active' : ''}>{snapshot.primaryCooldown > 0 ? snapshot.primaryCooldown.toFixed(1) + 's cooldown' : primary.kind === 'MELEE' ? 'Melee · Ready' : primary.kind === 'PROJECTILE' ? 'Projectile · Ready' : 'Area · Ready'}</small></div>
-          <div className="fps-action-card"><kbd>RMB</kbd><strong>{secondary.name}</strong><small>{snapshot.secondaryCooldown > 0 ? snapshot.secondaryCooldown.toFixed(1) + 's' : secondary.chargeMinSeconds ? 'Hold to charge' : 'Ready'}</small></div>
-          <button className="fps-action-card fps-skill-card" onClick={() => inputRef.current?.triggerSkill(1)}><kbd>1</kbd><strong>{skill.name}</strong><small>{snapshot.skillCooldown > 0 ? snapshot.skillCooldown.toFixed(1) + 's' : 'Skill'}</small></button>
+        <div className="fps-action-bar" aria-label="Combat actions">
+          <div className="fps-action-card" title={abilityTooltip(primary)}><kbd>LMB</kbd><strong>{primary.name}</strong><small>{player.equipment.weapon?.name ?? 'Unarmed'}</small><small className={snapshot.primaryCooldown > 0 ? 'fps-cooldown-active' : ''}>{snapshot.primaryCooldown > 0 ? snapshot.primaryCooldown.toFixed(1) + 's cooldown' : primary.kind === 'MELEE' ? 'Melee · Ready' : primary.kind === 'PROJECTILE' ? 'Projectile · Ready' : 'Area · Ready'}</small></div>
+          <div className={'fps-action-card' + (snapshot.guarding ? ' fps-guarding' : '')} title={abilityTooltip(secondary)}><kbd>RMB</kbd><strong>{secondary.name}</strong><small>{snapshot.guarding ? 'Aspis Guard · Active' : snapshot.secondaryCooldown > 0 ? snapshot.secondaryCooldown.toFixed(1) + 's cooldown' : secondary.chargeMinSeconds ? 'Hold to charge' : player.equipment.offhand?.type === 'SHIELD' ? 'Tap Bash · Hold Guard' : 'Ready'}</small></div>
+          {skills.map((skill, index) => skill
+            ? <button key={skill.id} className="fps-action-card fps-skill-card" title={abilityTooltip(skill)} onClick={() => inputRef.current?.triggerSkill(index + 1)}><kbd>{index + 1}</kbd><strong>{skill.name}</strong><small className={snapshot.skillCooldowns[index] > 0 ? 'fps-cooldown-active' : ''}>{snapshot.skillCooldowns[index] > 0 ? snapshot.skillCooldowns[index].toFixed(1) + 's cooldown' : skill.manaCost + ' MP · Ready'}</small></button>
+            : <div key={'empty-skill-' + index} className="fps-action-card fps-action-card-empty" title={'Skill slot ' + (index + 1) + ' is empty'}><kbd>{index + 1}</kbd><strong>Empty</strong><small>Skill slot</small></div>)}
         </div>
-        <div className="fps-bottom-stats"><span>ARMOR {player.stats.armor}</span><span>LEVEL {snapshot.world.level}</span><span>{snapshot.enemies.filter(enemy => enemy.health > 0).length} HOSTILES</span></div>
+        <div className="fps-bottom-stats"><span>ARMOR {player.stats.armor}</span><span>LEVEL {snapshot.world.level}</span><span>{snapshot.enemies.filter(enemy => enemy.health > 0).length} HOSTILES</span>{player.statusEffects.filter(status => status.durationSeconds > 0 && status.statusId !== 'prepared_damage').map(status => <span key={status.id} className="fps-status-tag">{status.statusId} {status.durationSeconds.toFixed(0)}s</span>)}</div>
       </footer>
 
       <div className="fps-mobile-hints" aria-hidden="true"><span>MOVE</span><span>LOOK</span></div>

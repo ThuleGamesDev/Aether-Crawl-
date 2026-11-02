@@ -35,12 +35,13 @@ npm test
 npm run build
 ```
 
-`npm run test:run` launches the R2A Playwright smoke runner (WebGL 2, save/continue, the Oracle combat HUD, and mobile touch) and requires an installed Chromium browser.
+`npm run test:run` launches the Playwright WebGL 2 smoke runner for class entry, the action HUD, save/continue, and mobile movement/attack. It requires an installed Chromium browser. It is a rendering/input smoke test and does not replace hands-on boss balance review.
 
 ## Project notes
 
 - [World Bible](docs/MAZE_OF_THE_MINOTAUR_WORLD_BIBLE.md) defines the setting, visual language, classes, monsters, items, depths, and Guardian hierarchy.
 - [R2A migration notes](docs/MAZE_OF_THE_MINOTAUR_R2A.md) describe the world and save migration.
+- [R2B combat audit](docs/FPS_R2B_COMBAT_AUDIT.md) records the pre-wave gaps, combat architecture, enemy roles, Guardian patterns, save compatibility, and current limits.
 - [Art direction](docs/ART_DIRECTION.md) and [asset pipeline](docs/ASSET_PIPELINE.md) document the local static pixel art.
 - [Roadmap](docs/ROADMAP.md) tracks the next waves.
 - [FPS-R1 architecture](docs/FPS_R1_ARCHITECTURE.md) and [FPS-R1 migration audit](docs/AETHER_CRAWL_FPS_R1_MIGRATION_AUDIT.md) are historical foundation documents; their former title, art direction, and R1 Guardian model are not current gameplay canon.

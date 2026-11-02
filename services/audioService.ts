@@ -241,6 +241,24 @@ class AudioService {
     this.playTone(150, 'sawtooth', 0.1, 0.05, 0.1);
   }
 
+  playCombatCue(cue: 'blade' | 'spear' | 'shield' | 'cast' | 'projectile' | 'enemyHit' | 'playerHit' | 'poison' | 'bossTelegraph' | 'bossPhase' | 'bossDeath' | 'pickup' | 'dodge' | 'heal' | 'levelUp') {
+    if (cue === 'blade') { this.playTone(235, 'sawtooth', 0.075, 0, 0.09); this.playTone(150, 'square', 0.055, 0.025, 0.065); }
+    else if (cue === 'spear') { this.playTone(315, 'triangle', 0.055, 0, 0.08); this.playTone(205, 'square', 0.06, 0.035, 0.055); }
+    else if (cue === 'shield') this.playBlock();
+    else if (cue === 'cast') { this.playTone(490, 'triangle', 0.12, 0, 0.08); this.playTone(740, 'sine', 0.18, 0.045, 0.06); }
+    else if (cue === 'projectile') { this.playTone(660, 'square', 0.065, 0, 0.07); this.playTone(280, 'triangle', 0.11, 0.03, 0.06); }
+    else if (cue === 'enemyHit') this.playEnemyHit();
+    else if (cue === 'playerHit') { this.playTone(90, 'sawtooth', 0.14, 0, 0.1); this.playTone(58, 'square', 0.1, 0.035, 0.06); }
+    else if (cue === 'poison') { this.playTone(330, 'triangle', 0.16, 0, 0.065); this.playTone(215, 'sine', 0.22, 0.07, 0.05); }
+    else if (cue === 'bossTelegraph') { this.playTone(82, 'sawtooth', 0.28, 0, 0.09); this.playTone(123, 'triangle', 0.24, 0.08, 0.07); }
+    else if (cue === 'bossPhase') this.playBossPhase();
+    else if (cue === 'bossDeath') { this.playTone(68, 'sawtooth', 0.45, 0, 0.12); this.playTone(110, 'triangle', 0.38, 0.12, 0.08); }
+    else if (cue === 'pickup') this.playItemGet();
+    else if (cue === 'dodge') { this.playTone(420, 'triangle', 0.045, 0, 0.055); this.playTone(280, 'sine', 0.07, 0.025, 0.04); }
+    else if (cue === 'heal') this.playHeal();
+    else if (cue === 'levelUp') this.playLevelUp();
+  }
+
   playCrit() { this.playTone(700, 'square', 0.07, 0, 0.12); this.playTone(1000, 'triangle', 0.12, 0.05, 0.1); }
   playBlock() { this.playTone(220, 'triangle', 0.08, 0, 0.13); this.playTone(80, 'square', 0.07, 0.03, 0.07); }
   playInterrupt() { this.playTone(900, 'sawtooth', 0.07, 0, 0.09); this.playTone(320, 'square', 0.12, 0.06, 0.09); }

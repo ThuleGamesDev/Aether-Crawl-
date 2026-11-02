@@ -4,6 +4,7 @@ import { GameLoop } from '../engine/GameLoop';
 import { InputSystem } from '../engine/InputSystem';
 import { SceneRenderer } from '../engine/SceneRenderer';
 import type { FPSGameSnapshot } from '../engine/FPSGameRuntime';
+import { audioService } from '../services/audioService';
 
 interface FPSViewportProps {
   runtime: FPSGameRuntime;
@@ -45,6 +46,7 @@ const FPSViewport: React.FC<FPSViewportProps> = ({ runtime, mouseSensitivity, on
         const deltaSeconds = lastRenderTime > 0 ? Math.min(0.05, Math.max(0, elapsedSeconds - lastRenderTime)) : 1 / 60;
         lastRenderTime = elapsedSeconds;
         const state = runtime.getRenderState();
+        for (const event of state.events) if (event.sound) audioService.playCombatCue(event.sound);
         renderer.renderFrame({ ...state, deltaSeconds, elapsedSeconds: elapsedSeconds + interpolation / 60 });
       });
       loop.start();

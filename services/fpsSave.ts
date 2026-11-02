@@ -87,7 +87,7 @@ function isPlayerCharacter(value: unknown): value is PlayerCharacter {
   const slotTypes: Record<string, string> = { weapon: 'WEAPON', armor: 'ARMOR', offhand: 'SHIELD', accessory: 'ACCESSORY' };
   if (!Object.entries(slotTypes).every(([slot, type]) => value.equipment[slot] === null || isItemInstance(value.equipment[slot]) && value.equipment[slot].type === type)) return false;
   if (!Array.isArray(value.skills) || !value.skills.every(skill => isRecord(skill) && typeof skill.abilityId === 'string' && Number.isInteger(skill.rank) && skill.rank >= 1)) return false;
-  return Array.isArray(value.statusEffects) && value.statusEffects.every(status => isRecord(status) && typeof status.id === 'string' && typeof status.statusId === 'string' && Number.isFinite(status.durationSeconds) && status.durationSeconds >= 0 && Number.isFinite(status.magnitude));
+  return Array.isArray(value.statusEffects) && value.statusEffects.length <= 8 && value.statusEffects.every(status => isRecord(status) && typeof status.id === 'string' && typeof status.statusId === 'string' && Number.isFinite(status.durationSeconds) && status.durationSeconds >= 0 && Number.isFinite(status.magnitude) && (status.tickRemainingSeconds === undefined || Number.isFinite(status.tickRemainingSeconds) && status.tickRemainingSeconds >= 0));
 }
 
 function isDungeonWorld(value: unknown): value is DungeonWorldState {
@@ -108,7 +108,7 @@ function isDungeonWorld(value: unknown): value is DungeonWorldState {
 }
 
 function isWorldEnemy(value: unknown): value is WorldEnemy {
-  const states = ['IDLE', 'AGGRO', 'APPROACH', 'ATTACK_WINDUP', 'ATTACK', 'RECOVER', 'HURT', 'DEAD'];
+  const states = ['IDLE', 'ALERT', 'AGGRO', 'APPROACH', 'CHASE', 'REPOSITION', 'RETREAT', 'ATTACK_WINDUP', 'ATTACK_ACTIVE', 'ATTACK', 'RECOVER', 'HURT', 'STAGGER', 'DEAD'];
   return isRecord(value) && typeof value.id === 'string' && typeof value.definitionId === 'string' && typeof value.name === 'string' && typeof value.visualId === 'string'
     && isRecord(value.position) && Number.isFinite(value.position.x) && Number.isFinite(value.position.y) && Number.isFinite(value.position.z)
     && Number.isFinite(value.health) && Number.isFinite(value.maxHealth) && value.maxHealth > 0 && value.health >= 0 && value.health <= value.maxHealth
@@ -116,6 +116,15 @@ function isWorldEnemy(value: unknown): value is WorldEnemy {
     && (value.collisionRadius === undefined || Number.isFinite(value.collisionRadius) && value.collisionRadius > 0)
     && states.includes(value.state) && Number.isFinite(value.stateTimer) && value.stateTimer >= 0 && Number.isFinite(value.attackCooldown) && value.attackCooldown >= 0
     && Number.isFinite(value.attackRange) && value.attackRange > 0 && Number.isFinite(value.attackTelegraphSeconds) && value.attackTelegraphSeconds >= 0
+    && (value.phase === undefined || Number.isInteger(value.phase) && value.phase >= 1 && value.phase <= 2)
+    && (value.phaseTransitioned === undefined || typeof value.phaseTransitioned === 'boolean')
+    && (value.behaviorRole === undefined || ['CHASER', 'TANK', 'SKIRMISHER', 'CONTROLLER', 'HEAVY', 'SUPPORT'].includes(value.behaviorRole))
+    && (value.statusEffects === undefined || Array.isArray(value.statusEffects) && value.statusEffects.length <= 8 && value.statusEffects.every((status: unknown) => isRecord(status) && typeof status.id === 'string' && typeof status.statusId === 'string' && Number.isFinite(status.durationSeconds) && status.durationSeconds >= 0 && Number.isFinite(status.magnitude) && (status.tickRemainingSeconds === undefined || Number.isFinite(status.tickRemainingSeconds) && status.tickRemainingSeconds >= 0)))
+    && (value.pathRefreshSeconds === undefined || Number.isFinite(value.pathRefreshSeconds) && value.pathRefreshSeconds >= 0)
+    && (value.repositionCooldownSeconds === undefined || Number.isFinite(value.repositionCooldownSeconds) && value.repositionCooldownSeconds >= 0)
+    && (value.pathTargetCell === undefined || isRecord(value.pathTargetCell) && Number.isInteger(value.pathTargetCell.x) && Number.isInteger(value.pathTargetCell.y))
+    && (value.pathStep === undefined || isRecord(value.pathStep) && Number.isInteger(value.pathStep.x) && Number.isInteger(value.pathStep.y))
+    && (value.telegraphPosition === undefined || isRecord(value.telegraphPosition) && Number.isFinite(value.telegraphPosition.x) && Number.isFinite(value.telegraphPosition.y) && Number.isFinite(value.telegraphPosition.z))
     && typeof value.rewardGranted === 'boolean' && typeof value.isBoss === 'boolean';
 }
 
