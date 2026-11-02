@@ -116,7 +116,7 @@ describe('FPS-R2A Greek rebrand and Guardian progression', () => {
   });
 
   it('spawns one canonical, reachable, floor-specific Guardian with at least two distinct attacks', () => {
-    for (let level = 1; level <= 5; level += 1) for (let seed = 0; seed < 12; seed += 1) {
+    for (let level = 1; level <= 10; level += 1) for (let seed = 0; seed < 6; seed += 1) {
       const world = createDungeonWorld(level, 32000 + level * 100 + seed);
       const guardian = getFloorGuardianDefinition(level);
       const enemies = spawnFloorEnemies(world.map, world.floor);
@@ -124,7 +124,7 @@ describe('FPS-R2A Greek rebrand and Guardian progression', () => {
       expect(world.floor.guardianId).toBe(guardian.id);
       expect(world.floor.guardianState).toBe('NOT_DISCOVERED');
       expect(matches).toHaveLength(1);
-      expect(matches[0]).toMatchObject({ name: guardian.name, visualId: guardian.visualId, isBoss: true, attackSetId: guardian.attackSetId });
+      expect(matches[0]).toMatchObject({ name: guardian.name, visualId: guardian.visualId, isBoss: true, attackSetId: guardian.attackSetId, behaviorRole: guardian.behaviorRole });
       expect(reachableCells(world.map).some(cell => cellKey(cell) === `${Math.floor(matches[0].position.x)},${Math.floor(matches[0].position.z)}`)).toBe(true);
       const bossRoom = world.floor.rooms.find(room => room.type === 'BOSS')!;
       expect(`${Math.floor(matches[0].position.x)},${Math.floor(matches[0].position.z)}`).not.toBe(cellKey(bossRoom.anchor));
