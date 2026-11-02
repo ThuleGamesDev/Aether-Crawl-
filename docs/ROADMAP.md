@@ -26,7 +26,11 @@ Merged into `main` via PR #18. Adds stable item-base and affix registries, seede
 
 ## FPS-R4B — Inventory, uniques, and character stats
 
-Implemented and validated on `codex/maze-of-the-minotaur-fps-r4b`. Adds the 10×5 bag with safe overflow, stack management, mouse/touch actions, a character-stats screen, eight capped mythic uniques, item-specific rarity-marked loot, and version-4 save migration from R4A. Guardian reward identities and the R4A derived-stat pipeline are preserved. Browser/WebGL smoke remains unverified because this environment has no Chromium binary. See [inventory, uniques, and controls](INVENTORY_AND_UNIQUES.md).
+Merged to `main` via PR #19. Adds the 10×5 bag with safe overflow, stack management, mouse/touch actions, a character-stats screen, eight capped mythic uniques, item-specific rarity-marked loot, and version-4 save migration from R4A. Guardian reward identities and the R4A derived-stat pipeline are preserved. Browser/WebGL smoke was not run because Chromium was unavailable. See [inventory, uniques, and controls](INVENTORY_AND_UNIQUES.md).
+
+## FPS-R5A — Class Buildcraft I
+
+Implemented on `codex/maze-of-the-minotaur-fps-r5a`. Adds four active skill slots and bounded class passives for Myrmidon, Hoplite, Oracle, and Trickster, plus rank 1–5 progression, retained skill-point migration, level-up choices, effective-cost UI, timed multi-hit actions, chain attacks, and collision-safe dashes. R4A derived stats, R4B item effects, and version-4 saves remain integrated. The other four classes retain their existing loadouts. See [R5A class skill documentation](CLASS_SKILLS_R5A.md).
 
 ## Later
 

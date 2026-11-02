@@ -426,6 +426,14 @@ export interface LearnedSkill {
   rank: number;
 }
 
+export type ClassPassiveId = 'war_momentum' | 'unbroken_line' | 'omen_weaving' | 'opportunist';
+export type MagicSchool = 'FIRE' | 'LIGHTNING' | 'ARCANE';
+export type ClassPassiveState =
+  | { passiveId: 'war_momentum'; stacks: number; remainingSeconds: number; cooldownRemaining: 0; charges: 0 }
+  | { passiveId: 'unbroken_line'; stacks: 0; remainingSeconds: number; cooldownRemaining: number; charges: 0 | 1 }
+  | { passiveId: 'omen_weaving'; stacks: 0; remainingSeconds: 0; cooldownRemaining: 0; charges: 0; lastSchool: MagicSchool | null }
+  | { passiveId: 'opportunist'; stacks: 0; remainingSeconds: number; cooldownRemaining: number; charges: 0 | 1 };
+
 export interface ActiveStatus {
   id: string;
   statusId: string;
@@ -435,7 +443,7 @@ export interface ActiveStatus {
   tickRemainingSeconds?: number;
 }
 
-export type RealtimeStatusId = 'BLEED' | 'POISON' | 'BURN' | 'SLOW' | 'STAGGER' | 'WEAKNESS' | 'GUARD' | 'COUNTER';
+export type RealtimeStatusId = 'BLEED' | 'POISON' | 'BURN' | 'SLOW' | 'STAGGER' | 'WEAKNESS' | 'GUARD' | 'COUNTER' | 'BLOOD_OATH';
 
 export interface StatusApplication {
   statusId: RealtimeStatusId;
@@ -464,6 +472,12 @@ export interface PlayerCharacter {
   /** Runtime timers/charges for equipped Unique rules. */
   uniqueEffectStates?: UniqueEffectState[];
   skills: LearnedSkill[];
+  /** Earned, unspent R5A skill choices; persisted so delayed choices are never lost. */
+  skillPoints?: number;
+  /** Marks migration of legacy R4B runs into the class-skill progression. */
+  skillProgressionVersion?: 1;
+  /** Bounded class-passive state is part of the solo run save. */
+  classPassiveState?: ClassPassiveState;
   statusEffects: ActiveStatus[];
 }
 

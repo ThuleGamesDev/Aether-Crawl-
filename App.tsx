@@ -9,6 +9,10 @@ import type { ClassType } from './types';
 import type { InputSystem } from './engine/InputSystem';
 import type { VFXMode } from './presentation/vfxDefinitions';
 import InventoryPanel from './components/InventoryPanel';
+import SkillUpgradeScreen from './components/SkillUpgradeScreen';
+import { getClassSkillKit } from './data/classSkillKits';
+import { classPassiveStackSummary } from './player/ClassPassives';
+import { getClassSkillUnlockLevel, getRankedAbility, getSkillRank } from './player/SkillProgression';
 
 const CLASS_IDS = Object.keys(CLASSES) as ClassType[];
 const App: React.FC = () => {
@@ -22,6 +26,7 @@ const App: React.FC = () => {
   const [webglError, setWebglError] = useState('');
   const [mouseSensitivity, setMouseSensitivity] = useState(0.0025);
   const [vfxMode, setVfxMode] = useState<VFXMode>('full');
+  const [skillDetailsIndex, setSkillDetailsIndex] = useState<number | null>(null);
 
   useEffect(() => {
     const result = loadMazeGame();
@@ -37,7 +42,7 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (!snapshot || !(snapshot.inventoryOpen || snapshot.mapOpen || snapshot.paused || snapshot.roomOffer)) return;
+    if (!snapshot || !(snapshot.inventoryOpen || snapshot.mapOpen || snapshot.paused || snapshot.levelUpOpen || snapshot.roomOffer)) return;
     if (document.pointerLockElement) document.exitPointerLock?.();
     inputRef.current?.clearActiveInputs();
   }, [snapshot?.inventoryOpen, snapshot?.mapOpen, snapshot?.paused, snapshot?.roomOffer]);
@@ -48,6 +53,7 @@ const App: React.FC = () => {
     runtimeRef.current = runtime;
     setSnapshot(runtime.getSnapshot());
     setWebglError('');
+    setSkillDetailsIndex(null);
     setMode('PLAY');
   };
 
@@ -74,6 +80,7 @@ const App: React.FC = () => {
     runtimeRef.current = runtime;
     setSnapshot(runtime.getSnapshot());
     setWebglError('');
+    setSkillDetailsIndex(null);
     setMode('PLAY');
   };
 
@@ -140,17 +147,24 @@ const App: React.FC = () => {
         <button className="fps-back-button" onClick={() => setMode('MENU')}>← Main Menu</button>
         <div className="fps-kicker">CHOOSE YOUR CLASS</div>
         <h2>One hero enters the Labyrinth.</h2>
-        <p className="fps-muted">Choose a champion of the old world. Each class begins with three working actions.</p>
+        <p className="fps-muted">Choose a champion of the old world. Each hero begins with a primary action, a secondary action and a class skill.</p>
         <div className="fps-class-grid">
           {CLASS_IDS.map(classId => {
             const definition = CLASSES[classId];
             const abilities = CLASS_ABILITY_LOADOUT[classId];
+            const kit = getClassSkillKit(classId);
             return <article className="fps-class-card" key={classId}>
               <div className="fps-class-mark">{classMark(classId)}</div>
               <h3>{definition.name}</h3>
               <p>{definition.description}</p>
               <div className="fps-class-stats">HP {definition.stats.maxHp} · MP {definition.stats.maxMp}</div>
-              <div className="fps-class-attack">{getAbility(abilities.primary)?.name} / {getAbility(abilities.skill)?.name}</div>
+              <div className="fps-class-attack">{getAbility(abilities.primary)?.name} / {getAbility(abilities.secondary)?.name}</div>
+              {kit && <div className="fps-class-kit-preview">
+                <strong>{kit.name}</strong><span>{kit.identity}</span>
+                <b>Passive · {kit.passive.name}</b><span>{kit.passive.description}</span>
+                <small>Active skills · {kit.skills.map(skill => getAbility(skill.abilityId)?.name + ' · Lv ' + skill.unlockLevel).join(' / ')}</small>
+                <small>Build paths · {kit.archetypes.map(archetype => archetype.name).join(' · ')}</small>
+              </div>}
               <button className="fps-button fps-button-primary" onClick={() => beginRun(classId)}>Enter as {definition.name}</button>
             </article>;
           })}
@@ -201,7 +215,25 @@ const App: React.FC = () => {
   const xpPercent = Math.max(0, Math.min(100, player.stats.xp / xpNeeded * 100));
   const primary = getAbility(snapshot.primaryAbilityId)!;
   const secondary = getAbility(snapshot.secondaryAbilityId)!;
-  const skills = snapshot.skillAbilityIds.map(id => id ? getAbility(id) : null);
+  const skills = snapshot.skillAbilityIds.map((id, index) => {
+    const base = id ? getAbility(id) : null;
+    if (!base || !id) return null;
+    const rank = getSkillRank(player, id);
+    const unlocked = rank > 0;
+    const unlockLevel = getClassSkillUnlockLevel(player.classId, index + 1);
+    const lockMessage = unlockLevel !== null && player.stats.level >= unlockLevel
+      ? 'Not learned · choose with a skill point at level-up.'
+      : 'Unlock at level ' + (unlockLevel ?? '?') + '.';
+    const ability = unlocked ? getRankedAbility(player, id) ?? base : base;
+    return {
+      ability, rank, unlocked, unlockLevel, lockMessage,
+      effectiveManaCost: ability.manaCost * snapshot.derivedStats.manaCostMultiplier,
+      effectiveCooldown: ability.cooldownSeconds * snapshot.derivedStats.cooldownMultiplier,
+    };
+  });
+  const kit = getClassSkillKit(player.classId);
+  const passiveSummary = classPassiveStackSummary(player.classPassiveState);
+  const selectedSkillDetails = skillDetailsIndex === null ? null : skills[skillDetailsIndex] ?? null;
 
   return <main className="fps-game-shell">
     <FPSViewport runtime={runtime} mouseSensitivity={mouseSensitivity} vfxMode={vfxMode} onSnapshot={setSnapshot} onInputReady={input => { inputRef.current = input; }} onFailure={setWebglError} />
@@ -220,6 +252,7 @@ const App: React.FC = () => {
           <button onClick={() => { runtime.mapOpen = true; runtime.inventoryOpen = false; runtime.cancelHeldActions(); refreshSnapshot(); }}>Map <kbd>Tab</kbd></button>
           <button onClick={() => { runtime.inventoryOpen = true; runtime.mapOpen = false; runtime.cancelHeldActions(); refreshSnapshot(); }}>Inventory <kbd>I</kbd></button>
           <button onClick={saveRun}>Save</button>
+          {(player.skillPoints ?? 0) > 0 && <button onClick={() => { runtime.openSkillUpgradeScreen(); refreshSnapshot(); }}>Skills <kbd>{player.skillPoints}</kbd></button>}
           <button onClick={() => { runtime.paused = true; runtime.cancelHeldActions(); refreshSnapshot(); }}>Menu <kbd>Esc</kbd></button>
         </div>
       </header>
@@ -239,11 +272,21 @@ const App: React.FC = () => {
         <div className="fps-action-bar" aria-label="Combat actions">
           <div className="fps-action-card" title={abilityTooltip(primary)}><kbd>LMB</kbd><strong>{primary.name}</strong><small>{player.equipment.weapon?.name ?? 'Unarmed'}</small><small className={snapshot.primaryCooldown > 0 ? 'fps-cooldown-active' : ''}>{snapshot.primaryCooldown > 0 ? snapshot.primaryCooldown.toFixed(1) + 's cooldown' : primary.kind === 'MELEE' ? 'Melee · Ready' : primary.kind === 'PROJECTILE' ? 'Projectile · Ready' : 'Area · Ready'}</small></div>
           <div className={'fps-action-card' + (snapshot.guarding ? ' fps-guarding' : '')} title={abilityTooltip(secondary)}><kbd>RMB</kbd><strong>{secondary.name}</strong><small>{snapshot.guarding ? 'Aspis Guard · Active' : snapshot.secondaryCooldown > 0 ? snapshot.secondaryCooldown.toFixed(1) + 's cooldown' : secondary.chargeMinSeconds ? 'Hold to charge' : player.equipment.offhand?.type === 'SHIELD' ? 'Tap Bash · Hold Guard' : 'Ready'}</small></div>
-          {skills.map((skill, index) => skill
-            ? <button key={skill.id} className="fps-action-card fps-skill-card" title={abilityTooltip(skill)} onClick={() => inputRef.current?.triggerSkill(index + 1)}><kbd>{index + 1}</kbd><strong>{skill.name}</strong><small className={snapshot.skillCooldowns[index] > 0 ? 'fps-cooldown-active' : ''}>{snapshot.skillCooldowns[index] > 0 ? snapshot.skillCooldowns[index].toFixed(1) + 's cooldown' : skill.manaCost + ' MP · Ready'}</small></button>
-            : <div key={'empty-skill-' + index} className="fps-action-card fps-action-card-empty" title={'Skill slot ' + (index + 1) + ' is empty'}><kbd>{index + 1}</kbd><strong>Empty</strong><small>Skill slot</small></div>)}
+          {skills.map((skill, index) => {
+            if (!skill) return <div key={'empty-skill-' + index} className="fps-action-card fps-action-card-empty" title={'Skill slot ' + (index + 1) + ' is empty'}><kbd>{index + 1}</kbd><strong>Empty</strong><small>Skill slot</small></div>;
+            const tooltip = skill.unlocked
+              ? abilityTooltip(skill.ability, { manaCost: skill.effectiveManaCost, cooldownSeconds: skill.effectiveCooldown }) + ` Rank ${skill.rank}.`
+              : abilityTooltip(skill.ability) + ` ${skill.lockMessage}`;
+            const slotLabel = skill.unlocked ? 'Rank ' + skill.rank
+              : player.stats.level >= (skill.unlockLevel ?? 1) ? 'Choose · skill point'
+                : 'Unlock · Lv ' + (skill.unlockLevel ?? '?');
+            const availability = !skill.unlocked ? 'Locked'
+              : snapshot.skillCooldowns[index] > 0 ? snapshot.skillCooldowns[index].toFixed(1) + 's cooldown'
+                : skill.effectiveManaCost.toFixed(skill.effectiveManaCost % 1 ? 1 : 0) + ' MP · Ready';
+            return <button key={skill.ability.id} className={'fps-action-card fps-skill-card' + (!skill.unlocked ? ' fps-skill-locked' : '')} title={tooltip} disabled={!skill.unlocked} onMouseEnter={() => setSkillDetailsIndex(index)} onFocus={() => setSkillDetailsIndex(index)} onClick={() => { setSkillDetailsIndex(index); inputRef.current?.triggerSkill(index + 1); }}><kbd>{index + 1}</kbd><strong>{skill.ability.name}</strong><small>{slotLabel}</small><small className={snapshot.skillCooldowns[index] > 0 ? 'fps-cooldown-active' : ''}>{availability}</small></button>;
+          })}
         </div>
-        <div className="fps-bottom-stats"><span>ARMOR {Math.round(snapshot.derivedStats.armor)}</span><span>LEVEL {snapshot.world.level}</span><span>{snapshot.enemies.filter(enemy => enemy.health > 0).length} HOSTILES</span>{player.statusEffects.filter(status => status.durationSeconds > 0 && status.statusId !== 'prepared_damage').map(status => <span key={status.id} className="fps-status-tag">{status.statusId} {status.durationSeconds.toFixed(0)}s</span>)}</div>
+        <div className="fps-bottom-stats"><span>ARMOR {Math.round(snapshot.derivedStats.armor)}</span><span>LEVEL {snapshot.world.level}</span><span>{snapshot.enemies.filter(enemy => enemy.health > 0).length} HOSTILES</span>{kit && <span className="fps-passive-hud" title={kit.passive.description}>{kit.passive.name}{passiveSummary ? ' · ' + passiveSummary : ''}</span>}{player.statusEffects.filter(status => status.durationSeconds > 0 && status.statusId !== 'prepared_damage').map(status => <span key={status.id} className="fps-status-tag">{status.statusId} {status.durationSeconds.toFixed(0)}s</span>)}</div>
       </footer>
 
       <div className="fps-mobile-hints" aria-hidden="true"><span>MOVE</span><span>LOOK</span></div>
@@ -253,12 +296,23 @@ const App: React.FC = () => {
         <button aria-label="Dodge" onPointerDown={event => { event.preventDefault(); inputRef.current?.triggerDodge(); }}>DODGE</button>
         <button className="fps-mobile-primary" aria-label="Primary Attack" onPointerDown={event => { event.preventDefault(); inputRef.current?.triggerPrimary(); }}>ATTACK</button>
         <button aria-label="Secondary Attack" onPointerDown={event => { event.preventDefault(); inputRef.current?.beginSecondary(); }} onPointerUp={event => { event.preventDefault(); inputRef.current?.endSecondary(); }} onPointerCancel={() => inputRef.current?.endSecondary()}>RMB</button>
-        <button className="fps-mobile-skill" aria-label="Class Skill" onPointerDown={event => { event.preventDefault(); inputRef.current?.triggerSkill(1); }}>SKILL</button>
+        {skills.map((skill, index) => skill && <button key={'touch-skill-' + index} className="fps-mobile-skill-slot" aria-label={skill.unlocked ? skill.ability.name + ', rank ' + skill.rank : skill.ability.name + ', ' + skill.lockMessage} title={skill.unlocked ? abilityTooltip(skill.ability, { manaCost: skill.effectiveManaCost, cooldownSeconds: skill.effectiveCooldown }) + ` Rank ${skill.rank}.` : skill.lockMessage} disabled={!skill.unlocked} onPointerDown={event => { event.preventDefault(); setSkillDetailsIndex(index); inputRef.current?.triggerSkill(index + 1); }}>{index + 1}</button>)}
       </div>
+
+      {selectedSkillDetails && <aside className="fps-skill-details" role="status" aria-live="polite">
+        <button aria-label="Close skill details" onClick={() => setSkillDetailsIndex(null)}>×</button>
+        <strong>{selectedSkillDetails.ability.name} · {selectedSkillDetails.unlocked ? 'Rank ' + selectedSkillDetails.rank : selectedSkillDetails.lockMessage}</strong>
+        <span>{selectedSkillDetails.ability.description}</span>
+        <small>{abilityTooltip(selectedSkillDetails.ability, { manaCost: selectedSkillDetails.effectiveManaCost, cooldownSeconds: selectedSkillDetails.effectiveCooldown }).replace(selectedSkillDetails.ability.name + ' — ', '')}</small>
+      </aside>}
 
       {snapshot.paused && !snapshot.gameOver && <Overlay title="Paused" onClose={closeOverlay}>
         <p className="fps-overlay-copy">The simulation is paused. Your Labyrinth position and cooldowns are held until you resume.</p>
         <div className="fps-overlay-actions"><button className="fps-button fps-button-primary" onClick={closeOverlay}>Resume</button><button className="fps-button" onClick={saveRun}>Save Run</button><button className="fps-button" onClick={returnToMenu}>Save & Main Menu</button></div>
+      </Overlay>}
+
+      {snapshot.levelUpOpen && <Overlay title="Class Skill Progression" onClose={() => { runtime.deferSkillUpgrade(); refreshSnapshot(); }}>
+        <SkillUpgradeScreen player={player} options={snapshot.skillUpgradeChoices} onChoose={abilityId => { runtime.chooseSkillUpgrade(abilityId); refreshSnapshot(); }} onLater={() => { runtime.deferSkillUpgrade(); refreshSnapshot(); }} />
       </Overlay>}
 
       {snapshot.inventoryOpen && <Overlay title="Inventory & Equipment" onClose={closeOverlay} className="fps-overlay-panel-wide">

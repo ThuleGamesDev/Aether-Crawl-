@@ -1,10 +1,11 @@
-import type { FloorState, ItemInstance, PlayerCharacter, WorldEnemy, WorldLootDrop } from '../types';
+import type { ClassPassiveState, FloorState, ItemInstance, PlayerCharacter, WorldEnemy, WorldLootDrop } from '../types';
 import type { DungeonWorldState } from '../world/DungeonWorld';
 import { isWorldSolid } from '../world/CollisionWorld';
 import type { PlayerCombatSaveState } from '../player/PlayerCombat';
-import { getAbility } from '../combat/AbilityRegistry';
+import { CLASS_ABILITY_LOADOUT, getAbility } from '../combat/AbilityRegistry';
 import { calculateDerivedStats } from '../player/DerivedStats';
 import { getItemBase } from '../data/itemBases';
+import { getClassSkill } from '../data/classSkillKits';
 
 export const FPS_SAVE_KEY = 'aether_crawl_fps_r1_save_v1';
 export const FPS_SAVE_VERSION = 1;
@@ -88,7 +89,16 @@ function isPlayerCharacter(value: unknown, allowDerivedCaps = false, requireBase
   if (!isRecord(value.equipment)) return false;
   const slotTypes: Record<string, string> = { weapon: 'WEAPON', armor: 'ARMOR', offhand: 'SHIELD', accessory: 'ACCESSORY' };
   if (!Object.entries(slotTypes).every(([slot, type]) => value.equipment[slot] === null || isItemInstance(value.equipment[slot], requireBaseId) && value.equipment[slot].type === type)) return false;
-  if (!Array.isArray(value.skills) || !value.skills.every(skill => isRecord(skill) && typeof skill.abilityId === 'string' && Number.isInteger(skill.rank) && skill.rank >= 1)) return false;
+  const classId = value.classId as PlayerCharacter['classId'];
+  const allowedSkills = new Set(CLASS_ABILITY_LOADOUT[classId].skillSlots.filter((id): id is string => Boolean(id)));
+  if (!Array.isArray(value.skills) || value.skills.length > 4
+    || !value.skills.every(skill => isRecord(skill) && typeof skill.abilityId === 'string' && allowedSkills.has(skill.abilityId)
+      && Number.isInteger(skill.rank) && skill.rank >= 1 && skill.rank <= 5 && Boolean(getAbility(skill.abilityId))
+      && (getClassSkill(classId, skill.abilityId)?.unlockLevel ?? 1) <= value.stats.level)
+    || new Set(value.skills.map((skill: { abilityId: string }) => skill.abilityId)).size !== value.skills.length) return false;
+  if (value.skillPoints !== undefined && (!Number.isInteger(value.skillPoints) || value.skillPoints < 0 || value.skillPoints > 1000)) return false;
+  if (value.skillProgressionVersion !== undefined && value.skillProgressionVersion !== 1) return false;
+  if (value.classPassiveState !== undefined && !isClassPassiveState(value.classPassiveState, classId)) return false;
   if (!Array.isArray(value.statusEffects) || value.statusEffects.length > 8 || !value.statusEffects.every(status => isRecord(status) && typeof status.id === 'string' && typeof status.statusId === 'string' && Number.isFinite(status.durationSeconds) && status.durationSeconds >= 0 && Number.isFinite(status.magnitude) && (status.tickRemainingSeconds === undefined || Number.isFinite(status.tickRemainingSeconds) && status.tickRemainingSeconds >= 0))) return false;
   if (allowDerivedCaps) {
     if (![value.stats.baseMaxHp, value.stats.baseMaxMp, value.stats.baseArmor].every(Number.isFinite) || value.stats.baseMaxHp <= 0 || value.stats.baseMaxMp < 0 || value.stats.baseArmor < 0) return false;
@@ -168,7 +178,31 @@ function isPlayerCombatSaveState(value: unknown): value is PlayerCombatSaveState
     && (value.action === null || isRecord(value.action) && typeof value.action.abilityId === 'string' && Boolean(getAbility(value.action.abilityId))
       && phases.includes(value.action.phase) && Number.isFinite(value.action.remainingSeconds) && value.action.remainingSeconds >= 0
       && Number.isFinite(value.action.damageMultiplier) && value.action.damageMultiplier > 0
-      && (value.action.speedMultiplier === undefined || Number.isFinite(value.action.speedMultiplier) && value.action.speedMultiplier >= 0.5 && value.action.speedMultiplier <= 1.75));
+      && (value.action.speedMultiplier === undefined || Number.isFinite(value.action.speedMultiplier) && value.action.speedMultiplier >= 0.5 && value.action.speedMultiplier <= 1.75)
+      && (value.action.hitIndex === undefined || Number.isInteger(value.action.hitIndex) && value.action.hitIndex >= 0 && value.action.hitIndex <= 8)
+      && (value.action.hitCount === undefined || Number.isInteger(value.action.hitCount) && value.action.hitCount >= 1 && value.action.hitCount <= 8)
+      && (value.action.hitIndex === undefined || value.action.hitCount === undefined || value.action.hitIndex <= value.action.hitCount)
+      && (value.action.nextHitSeconds === undefined || Number.isFinite(value.action.nextHitSeconds) && value.action.nextHitSeconds >= 0 && value.action.nextHitSeconds <= 2)
+      && (value.action.classPassiveResolved === undefined || typeof value.action.classPassiveResolved === 'boolean')
+      && (value.action.classPassiveMultiplier === undefined || Number.isFinite(value.action.classPassiveMultiplier) && value.action.classPassiveMultiplier >= 0.25 && value.action.classPassiveMultiplier <= 2.5)
+      && (value.action.classMeleeRecorded === undefined || typeof value.action.classMeleeRecorded === 'boolean'));
+}
+
+function isClassPassiveState(value: unknown, classId: PlayerCharacter['classId']): value is ClassPassiveState {
+  if (!isRecord(value) || !Number.isInteger(value.stacks) || !Number.isFinite(value.remainingSeconds)
+    || !Number.isFinite(value.cooldownRemaining) || !Number.isInteger(value.charges)) return false;
+  if (classId === 'BARBARIAN') return value.passiveId === 'war_momentum' && value.stacks >= 0 && value.stacks <= 5
+    && value.remainingSeconds >= 0 && value.remainingSeconds <= 3 && value.cooldownRemaining === 0 && value.charges === 0;
+  if (classId === 'PALADIN') return value.passiveId === 'unbroken_line' && value.stacks === 0
+    && value.remainingSeconds >= 0 && value.remainingSeconds <= 3 && value.cooldownRemaining >= 0 && value.cooldownRemaining <= 4
+    && (value.charges === 0 || value.charges === 1) && (value.charges === 0 || value.remainingSeconds > 0);
+  if (classId === 'SORCERER') return value.passiveId === 'omen_weaving' && value.stacks === 0 && value.remainingSeconds === 0
+    && value.cooldownRemaining === 0 && value.charges === 0
+    && (value.lastSchool === null || value.lastSchool === 'FIRE' || value.lastSchool === 'LIGHTNING' || value.lastSchool === 'ARCANE');
+  if (classId === 'ROGUE') return value.passiveId === 'opportunist' && value.stacks === 0
+    && value.remainingSeconds >= 0 && value.remainingSeconds <= 2.5 && value.cooldownRemaining >= 0 && value.cooldownRemaining <= 2
+    && (value.charges === 0 || value.charges === 1) && (value.charges === 0 || value.remainingSeconds > 0);
+  return false;
 }
 
 function isTwoHanded(item: ItemInstance | null | undefined): boolean {

@@ -13,6 +13,7 @@ export interface ProjectileImpact {
   playerHit?: boolean;
   ownerEnemyId?: string;
   abilityId: string;
+  damage?: number;
   statusEffect?: StatusApplication;
   healOwnerRatio?: number;
 }
@@ -63,7 +64,7 @@ export function updateProjectiles(projectiles: WorldProjectile[], enemies: World
           if (current.statusEffect) hit = { ...hit, statusEffects: applyRealtimeStatus(hit.statusEffects, current.statusEffect, current.sourceAbilityId) };
           return hit;
         });
-        impacts.push({ kind: 'enemy', position: current.position, color: current.color, surface: getEnemyVfxSurface(target.visualId), enemyId: target.id, abilityId: current.sourceAbilityId, ownerEnemyId: current.ownerEnemyId, statusEffect: current.statusEffect, healOwnerRatio: current.healOwnerRatio });
+        impacts.push({ kind: 'enemy', position: current.position, color: current.color, surface: getEnemyVfxSurface(target.visualId), enemyId: target.id, abilityId: current.sourceAbilityId, damage: current.damage, ownerEnemyId: current.ownerEnemyId, statusEffect: current.statusEffect, healOwnerRatio: current.healOwnerRatio });
         consumed = true;
         break;
       }
