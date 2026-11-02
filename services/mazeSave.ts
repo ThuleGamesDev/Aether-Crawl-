@@ -10,7 +10,7 @@ import { normalizeLegacyItem } from './itemization';
 import { refreshPlayerDerivedCaps } from '../player/PlayerProgression';
 import { getItemBase } from '../data/itemBases';
 import { consumableStackKey, normalizeInventoryGrid, normalizeInventoryStacks, syncInventoryGrid, validateInventoryGrid, MAX_CONSUMABLE_STACK } from './inventoryGrid';
-import { isUniqueEffectId } from '../data/uniqueItems';
+import { getUniqueItem, isUniqueEffectId, MAX_UNIQUE_EFFECT_STATE_COUNT } from '../data/uniqueItems';
 
 export const MAZE_SAVE_KEY = 'maze_of_the_minotaur_fps_r2a_save_v2';
 export const MAZE_SAVE_VERSION = 4;
@@ -332,13 +332,19 @@ function normalizePlayerItems(source: PlayerCharacter): PlayerCharacter {
 }
 
 function isUniqueEffectStateList(value: unknown): boolean {
-  return Array.isArray(value) && value.length <= 8 && value.every(state => isRecord(state)
-    && typeof state.effectId === 'string' && isUniqueEffectId(state.effectId)
-    && Number.isFinite(state.cooldownRemaining) && state.cooldownRemaining >= 0 && state.cooldownRemaining <= 12
-    && Number.isFinite(state.durationRemaining) && state.durationRemaining >= 0 && state.durationRemaining <= 8
-    && Number.isInteger(state.charges) && state.charges >= 0 && state.charges <= 1
-    && (state.charges === 0 || state.durationRemaining > 0))
-    && new Set(value.map(state => (state as Record<string, unknown>).effectId)).size === value.length;
+  if (!Array.isArray(value) || value.length > MAX_UNIQUE_EFFECT_STATE_COUNT) return false;
+  const seen = new Set<string>();
+  for (const state of value) {
+    if (!isRecord(state) || typeof state.effectId !== 'string' || !isUniqueEffectId(state.effectId) || seen.has(state.effectId)) return false;
+    const definition = getUniqueItem(state.effectId);
+    if (!definition
+      || !Number.isFinite(state.cooldownRemaining) || state.cooldownRemaining < 0 || state.cooldownRemaining > definition.stateBounds.cooldownSeconds
+      || !Number.isFinite(state.durationRemaining) || state.durationRemaining < 0 || state.durationRemaining > definition.stateBounds.durationSeconds
+      || !Number.isInteger(state.charges) || state.charges < 0 || state.charges > definition.stateBounds.charges
+      || (state.charges > 0 && state.durationRemaining <= 0)) return false;
+    seen.add(state.effectId);
+  }
+  return true;
 }
 function hasValidStackQuantities(inventory: ItemInstance[], equipment: ItemInstance[]): boolean {
   return inventory.every(item => Number.isInteger(item.quantity) && item.quantity >= 1

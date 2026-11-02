@@ -49,6 +49,7 @@ npm run build
 - [Art direction](docs/ART_DIRECTION.md) and [asset pipeline](docs/ASSET_PIPELINE.md) document the local static pixel art.
 - [Roadmap](docs/ROADMAP.md) tracks the next waves.
 - [Class skill kits, passives, and R5B integration](docs/CLASS_SKILLS_R5B.md) records the eight class builds, effect formulas, save compatibility, and validation status.
+- [R5C Copilot review resolution](docs/COPILOT_REVIEW_RESOLUTION.md) and [R5C implementation notes](docs/R5C_IMPLEMENTATION.md) record the save, input, tooltip, and rendering hardening findings.
 - [FPS-R1 architecture](docs/FPS_R1_ARCHITECTURE.md) and [FPS-R1 migration audit](docs/AETHER_CRAWL_FPS_R1_MIGRATION_AUDIT.md) are historical foundation documents; their former title, art direction, and R1 Guardian model are not current gameplay canon.
 
 The former party and initiative-based game path remains as inactive historical source with isolated tests. The active application imports the solo FPS runtime only.

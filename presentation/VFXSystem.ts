@@ -10,6 +10,7 @@ import {
   type VFXLayerDefinition,
   type VFXMode,
   type VFXPriority,
+  type VFXSlotSnapshot,
 } from './vfxDefinitions';
 
 export type { PixelEffectId, VFXInstance, VFXMode, VFXPriority } from './vfxDefinitions';
@@ -33,6 +34,7 @@ export interface VFXEmitOptions {
 
 export class VFXSystem {
   private readonly slots: ParticleSlot[] = [];
+  private readonly slotSnapshots: VFXSlotSnapshot[] = [];
   private readonly geometry = new THREE.PlaneGeometry(1, 1);
   private readonly trailTimes = new Map<number, number>();
   private mode: VFXMode = 'full';
@@ -61,6 +63,7 @@ export class VFXSystem {
       mesh.name = 'PooledWorldVFX_' + index;
       this.scene.add(mesh);
       this.slots.push({ mesh, velocity: new THREE.Vector3(), instance: null, age: 0, seed: index });
+      this.slotSnapshots.push({ active: false, priority: 'ambience', age: 0 });
     }
   }
 
@@ -175,6 +178,11 @@ export class VFXSystem {
       slot.instance = null;
       slot.velocity.set(0, 0, 0);
     }
+    for (const snapshot of this.slotSnapshots) {
+      snapshot.active = false;
+      snapshot.priority = 'ambience';
+      snapshot.age = 0;
+    }
     this.trailTimes.clear();
   }
 
@@ -185,6 +193,7 @@ export class VFXSystem {
       slot.mesh.material.dispose();
     }
     this.slots.length = 0;
+    this.slotSnapshots.length = 0;
     this.geometry.dispose();
   }
 
@@ -198,11 +207,14 @@ export class VFXSystem {
     count: number,
   ): void {
     if (!isValidVfxLayerTiming(layer.lifetimeSeconds, layer.size)) return;
-    const slotIndex = chooseVfxSlot(this.slots.map(slot => ({
-      active: slot.instance !== null,
-      priority: slot.instance?.priority ?? 'ambience',
-      age: slot.age,
-    })), priority);
+    for (let slotIndex = 0; slotIndex < this.slots.length; slotIndex += 1) {
+      const slot = this.slots[slotIndex];
+      const snapshot = this.slotSnapshots[slotIndex];
+      snapshot.active = slot.instance !== null;
+      snapshot.priority = slot.instance?.priority ?? 'ambience';
+      snapshot.age = slot.age;
+    }
+    const slotIndex = chooseVfxSlot(this.slotSnapshots, priority);
     if (slotIndex < 0) return;
     const slot = this.slots[slotIndex];
     const normalizedDirection = normalizeDirection(options.direction);

@@ -217,8 +217,7 @@ export interface VFXSlotSnapshot {
 
 /** Returns an available slot, or the oldest slot at the lowest replaceable priority. */
 export function chooseVfxSlot(slots: readonly VFXSlotSnapshot[], incoming: VFXPriority): number {
-  const free = slots.findIndex(slot => !slot.active);
-  if (free >= 0) return free;
+  for (let index = 0; index < slots.length; index += 1) if (!slots[index].active) return index;
   let candidate = -1;
   let lowestRank = Infinity;
   let oldestAge = -Infinity;

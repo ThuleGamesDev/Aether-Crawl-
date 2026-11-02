@@ -33,7 +33,6 @@ export interface FPSGameSnapshot {
   world: DungeonWorldState;
   enemies: WorldEnemy[];
   loot: WorldLootDrop[];
-  targetLoot: WorldLootDrop | null;
   action: ActivePlayerAction | null;
   primaryAbilityId: string;
   secondaryAbilityId: string;
@@ -834,7 +833,7 @@ export class FPSGameRuntime {
       return rewarded;
     });
     if (guardianDefeated) this.addToast('The Guardian falls. Descent unlocked; the rest of the floor remains open.');
-    else if (dropCount > 0) this.addToast(dropCount === 1 ? 'Loot dropped. Press E to collect.' : 'Loot dropped. Press E to collect it.');
+    else if (dropCount > 0) this.addToast(formatLootDropToast(dropCount));
     else if (changed) this.addToast('Enemy defeated.');
   }
 
@@ -1169,7 +1168,6 @@ export class FPSGameRuntime {
       world: this.world,
       enemies: this.enemies,
       loot: this.loot,
-      targetLoot: this.getLookedAtLoot(),
       action: this.combat.action,
       primaryAbilityId: loadout.primary,
       secondaryAbilityId: loadout.secondary,
@@ -1284,4 +1282,9 @@ function abilityVfxEffect(abilityId: string, statusId?: string): PixelEffectId |
   if (/sorcerer_|oracle|spark|lightning|charged_bolt/i.test(abilityId)) return 'oracle_spark';
   if (/web|snare/i.test(abilityId)) return 'web_snare';
   return undefined;
+}
+
+
+export function formatLootDropToast(dropCount: number): string {
+  return `Loot dropped. Press E to collect ${dropCount === 1 ? 'it' : 'them'}.`;
 }

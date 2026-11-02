@@ -2,6 +2,7 @@ import { getItemBase } from '../data/itemBases';
 import { getItemAffix } from '../data/itemAffixes';
 import type { DerivedCharacterStats, ItemAffixStat, ItemInstance, ItemTag, PlayerCharacter } from '../types';
 import { getUniqueStatBonuses } from './UniqueEffects';
+import { ACTION_SPEED_RULES } from '../combat/actionSpeed';
 
 const MAX_STAT = 100_000;
 
@@ -40,9 +41,9 @@ export function calculateDerivedStats(player: PlayerCharacter): DerivedCharacter
       else if (item.statBonus === 'MP') maxManaFlat += value;
     }
 
+    const tags = itemTags(item);
     for (const affix of item.affixes ?? []) {
       const definition = getItemAffix(affix.id);
-      const tags = itemTags(item);
       if (!definition || !Number.isFinite(affix.value) || affix.value < definition.minValue || affix.value > definition.maxValue) continue;
       if (affix.tier !== undefined && affix.tier !== definition.tier) continue;
       if (!definition.validItemTags.some(tag => tags.has(tag))) continue;
@@ -82,8 +83,8 @@ export function calculateDerivedStats(player: PlayerCharacter): DerivedCharacter
     physicalDamageMultiplier: multiplier(values.physicalDamagePercent ?? 0, 0.5, 2),
     spellDamageFlat: bounded(values.spellDamageFlat ?? 0, -50, 100),
     spellDamageMultiplier: multiplier(values.spellDamagePercent ?? 0, 0.5, 2),
-    attackSpeedMultiplier: multiplier(values.attackSpeedPercent ?? 0, 0.5, 1.75),
-    castSpeedMultiplier: multiplier(values.castSpeedPercent ?? 0, 0.5, 1.75),
+    attackSpeedMultiplier: multiplier(values.attackSpeedPercent ?? 0, ACTION_SPEED_RULES.derivedMinimum, ACTION_SPEED_RULES.derivedMaximum),
+    castSpeedMultiplier: multiplier(values.castSpeedPercent ?? 0, ACTION_SPEED_RULES.derivedMinimum, ACTION_SPEED_RULES.derivedMaximum),
     criticalChance: clamp(0.05 + (values.criticalChancePercent ?? 0) / 100, 0, 0.65),
     criticalDamageMultiplier: clamp(1.5 + (values.criticalDamagePercent ?? 0) / 100, 1.5, 3),
     movementSpeedMultiplier: clamp(multiplier(values.movementSpeedPercent ?? 0, 0.6, 1.5) * (1 - Math.min(0.2, armorMovementPenalty)), 0.6, 1.5),

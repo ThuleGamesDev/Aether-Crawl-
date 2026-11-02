@@ -2,6 +2,7 @@ import type { PlayerCharacter } from '../types';
 import { CLASS_ABILITY_LOADOUT, getAbility, getAbilityDamageType, type AbilityDefinition } from '../combat/AbilityRegistry';
 import { calculateDerivedStats } from './DerivedStats';
 import { actionSpeedMultiplier } from '../combat/StatusSystem';
+import { combineActionSpeedMultipliers } from '../combat/actionSpeed';
 
 export type PlayerActionPhase = 'WINDUP' | 'ACTIVE' | 'RECOVERY';
 
@@ -72,7 +73,7 @@ export class PlayerCombat {
     const manaCost = ability.manaCost * derived.manaCostMultiplier;
     if (player.stats.mp < manaCost) return { player, ability: null, error: 'Not enough mana.' };
     const baseSpeedMultiplier = getAbilityDamageType(ability) === 'SPELL' ? derived.castSpeedMultiplier : derived.attackSpeedMultiplier;
-    const speedMultiplier = baseSpeedMultiplier * actionSpeedMultiplier(player.statusEffects);
+    const speedMultiplier = combineActionSpeedMultipliers(baseSpeedMultiplier, actionSpeedMultiplier(player.statusEffects));
     const chargeScale = ability.chargeMinSeconds
       ? 1 + Math.max(0, Math.min(0.65, (chargeSeconds - ability.chargeMinSeconds) * 0.45))
       : 1;

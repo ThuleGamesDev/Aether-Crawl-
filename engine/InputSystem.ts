@@ -235,6 +235,12 @@ export class InputSystem {
   beginSecondary(): void { this.keys.add('MouseSecondary'); this.pressed.add('secondary'); }
   endSecondary(): void { if (this.keys.delete('MouseSecondary')) this.pressed.add('secondaryReleased'); }
 
+  /** Releases pointer capture and clears held gameplay input before handing control to a UI overlay. */
+  handoffToUi(): void {
+    if (document.pointerLockElement === this.canvas) document.exitPointerLock?.();
+    this.clearActiveInputs();
+  }
+
   lockPointer(): void { this.canvas.requestPointerLock?.(); }
 
   dispose(): void {

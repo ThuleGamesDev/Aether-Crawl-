@@ -36,19 +36,17 @@ export function resolveUniqueTrigger(
   const state = player.uniqueEffectStates?.find(candidate => candidate.effectId === effectId);
   if ((state?.cooldownRemaining ?? 0) > 0) return { player, activated: false, magnitude: 0 };
 
-  let cooldown = 0;
-  let duration = 0;
-  let charges = 0;
+  const { cooldownSeconds: cooldown, durationSeconds: duration, charges } = definition.stateBounds;
   let magnitude = 0;
   switch (effectId) {
-    case 'ariadnes_thread': cooldown = 8; duration = 2.25; magnitude = 1.25; break;
-    case 'aspis_bronze_gate': cooldown = 4; magnitude = Math.max(1, Math.min(12, Math.round(Math.max(0, sourceMagnitude) * 0.35))); break;
-    case 'serpent_queen_fang': cooldown = 5; magnitude = 1.35; break;
-    case 'promethean_ember': cooldown = 8; duration = 8; charges = 1; magnitude = 1.25; break;
-    case 'stygian_seal': cooldown = 10; duration = 2.5; magnitude = 0.2; break;
-    case 'artemis_mark': cooldown = 3; duration = 6; charges = 1; magnitude = 1.2; break;
-    case 'cyclopean_mallet': cooldown = 10; magnitude = 0.45; break;
-    case 'laurel_asclepius': cooldown = 12; duration = 3; magnitude = 0.25; break;
+    case 'ariadnes_thread': magnitude = 1.25; break;
+    case 'aspis_bronze_gate': magnitude = Math.max(1, Math.min(12, Math.round(Math.max(0, sourceMagnitude) * 0.35))); break;
+    case 'serpent_queen_fang': magnitude = 1.35; break;
+    case 'promethean_ember': magnitude = 1.25; break;
+    case 'stygian_seal': magnitude = 0.2; break;
+    case 'artemis_mark': magnitude = 1.2; break;
+    case 'cyclopean_mallet': magnitude = 0.45; break;
+    case 'laurel_asclepius': magnitude = 0.25; break;
   }
   const nextState: UniqueEffectState = { effectId, cooldownRemaining: cooldown, durationRemaining: duration, charges };
   return {

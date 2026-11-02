@@ -36,6 +36,10 @@ Merged to `main` via PR #20. Adds four active skill slots and bounded class pass
 
 Implements four rankable skills and bounded passives for Hunter, Asclepiad, Pankratiast, and Shadebinder, completing all eight class kits. The implementation reuses R5A progression, effective-cost UI, and save validation, and adds capped projectile pierce/fans, healing and cleanse rules, timed combo and counter windows, and a curse-to-burst interaction. See [R5B class skill documentation](CLASS_SKILLS_R5B.md).
 
+## FPS-R5C — Copilot review, save, and input hardening
+
+Implemented as a focused maintenance wave on the post-R5B `main`. Resolves confirmed review findings across PRs #16–#21, preserves version-4 saves, and adds no gameplay systems. See [review resolutions](COPILOT_REVIEW_RESOLUTION.md) and [implementation notes](R5C_IMPLEMENTATION.md).
+
 ## FPS-R6 — Floors 1–5 Action-RPG Vertical Slice & Quality Pass
 
 Next: validate a coherent playable run across movement, enemy telegraphs, loot, class progression, room events, save/load, and the first five floor Guardians. Keep content expansion bounded until the full progression loop is integrated.
