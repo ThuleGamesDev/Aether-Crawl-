@@ -86,6 +86,74 @@ export const CLASS_SKILL_KITS: Partial<Record<ClassType, ClassSkillKit>> = {
       { abilityId: 'rogue_shadow_lunge', slot: 4, unlockLevel: 6, role: 'Gap close', description: 'A short, collision-safe lunge followed by a focused cut.' },
     ],
   },
+  RANGER: {
+    classId: 'RANGER',
+    name: 'Hunter',
+    identity: 'An Artemis-inspired archer who controls a lane with deliberate shots, snares, and short repositioning bursts.',
+    passive: { id: 'marked_prey', name: 'Marked Prey', description: 'Directly hitting your aimed target with a projectile builds up to 3 focus stacks for 4 seconds. Your next projectile at that same target gains 6% damage per stack and consumes the focus.' },
+    archetypes: [
+      { name: 'Piercing Crit', description: 'Build focus with Artemis’ Arrow and spend it on Piercing Hunt against a clear target line.' },
+      { name: 'Trapper', description: 'Control a short lane with Hunter’s Snare, then place the Javelin Volley through the slowed group.' },
+      { name: 'Mobile Hunter', description: 'Use Moonlit Pursuit to reposition, then maintain pressure with a focused bow shot.' },
+    ],
+    skills: [
+      { abilityId: 'ranger_volley', slot: 1, unlockLevel: 1, role: 'Javelin fan', description: 'Three deliberate javelins in a narrow fan; 62% damage per spear.' },
+      { abilityId: 'ranger_piercing_hunt', slot: 2, unlockLevel: 2, role: 'Piercing shot', description: 'A precise arrow that can hit its first target plus two more.' },
+      { abilityId: 'ranger_hunters_snare', slot: 3, unlockLevel: 4, role: 'Trap / slow', description: 'A small aimed trap slows caught foes by 28% for 3 seconds.' },
+      { abilityId: 'ranger_moonlit_pursuit', slot: 4, unlockLevel: 6, role: 'Mobility / precision', description: 'Step up to 0.8m and gain 18% move/action speed plus 15% projectile damage.' },
+    ],
+  },
+  CLERIC: {
+    classId: 'CLERIC',
+    name: 'Asclepiad',
+    identity: 'A self-reliant healer-warrior who spends mana on measured recovery and short defensive rites.',
+    passive: { id: 'measured_remedy', name: 'Measured Remedy', description: 'Healing that crosses you from below to at least 50% health grants 22% guard for 2.25 seconds. It can trigger once every 10 seconds.' },
+    archetypes: [
+      { name: 'Sustain Fighter', description: 'Use Serpent’s Renewal between attacks and reserve Asclepius’ Grace for a larger recovery.' },
+      { name: 'Protective Priest', description: 'Prevent a dangerous hit with Sacred Aegis; use Purifying Rite for one lingering affliction.' },
+      { name: 'Sacred Damage', description: 'Use Temple Light to pressure safely while keeping a costly heal for emergencies.' },
+    ],
+    skills: [
+      { abilityId: 'cleric_restoration', slot: 1, unlockLevel: 1, role: 'Self heal', description: 'Restore up to 30% of maximum health, with an 8-second cooldown and 10 mana cost.' },
+      { abilityId: 'cleric_serpents_renewal', slot: 2, unlockLevel: 2, role: 'Regeneration', description: 'Restore 5 health once per second for 5 seconds; this effect refreshes instead of stacking.' },
+      { abilityId: 'cleric_purifying_rite', slot: 3, unlockLevel: 4, role: 'Cleanse', description: 'Remove one poison, burn, bleed, slow, or weakness effect.' },
+      { abilityId: 'cleric_sacred_aegis', slot: 4, unlockLevel: 6, role: 'Protection', description: 'Reduce incoming damage by 35% for 4 seconds.' },
+    ],
+  },
+  MONK: {
+    classId: 'MONK',
+    name: 'Pankratiast',
+    identity: 'A fast, unarmed arena fighter who rewards a steady close-range rhythm and well-timed counters.',
+    passive: { id: 'flow_state', name: 'Flow State', description: 'A successful physical melee action builds one stack, up to five. Each stack adds 3% physical damage for 1.6 seconds; timed hits within one action only build once.' },
+    archetypes: [
+      { name: 'Fast Combo', description: 'Keep Flow State alive with Pankration Strike and spend the window on Twin Palm.' },
+      { name: 'Counter Fighter', description: 'Use Grappler’s Counter during an enemy windup or dodge window, then answer with a melee strike.' },
+      { name: 'Mobility', description: 'Use Olympian Kick to close a short gap and Champion’s Rush to sustain a brief speed window.' },
+    ],
+    skills: [
+      { abilityId: 'monk_flying_kick', slot: 1, unlockLevel: 1, role: 'Lunge / knockback', description: 'Advance up to 0.55m and kick one foe back up to 0.65m.' },
+      { abilityId: 'monk_twin_palm', slot: 2, unlockLevel: 2, role: 'Timed combo', description: 'Two separate palm-hit windows, each dealing 56% damage.' },
+      { abilityId: 'monk_grapplers_counter', slot: 3, unlockLevel: 4, role: 'Reactive counter', description: 'Use during a dodge window or a nearby enemy windup for guard and one empowered melee counter.' },
+      { abilityId: 'monk_champions_rush', slot: 4, unlockLevel: 6, role: 'Mobility / speed', description: 'Gain 20% movement and action speed for 4 seconds.' },
+    ],
+  },
+  NECROMANCER: {
+    classId: 'NECROMANCER',
+    name: 'Shadebinder',
+    identity: 'A chthonic spellcaster who marks a single foe, converts measured kills into one burst, and wards against retaliation.',
+    passive: { id: 'soul_tribute', name: 'Soul Tribute', description: 'Every 3 rewarded kills grant one charge for 4 seconds. Your next spell gains 20% damage; charges are limited to one and the passive has a 10-second cooldown.' },
+    archetypes: [
+      { name: 'Curse Burst', description: 'Apply Shade Mark, then detonate Death Burst for 35% extra damage to cursed foes.' },
+      { name: 'Drain Sustain', description: 'Use Hades’ Grasp to recover up to 5 health on a hit and keep the capped unique heal hook relevant.' },
+      { name: 'Soul Ward', description: 'Use Soul Ward to blunt a telegraphed threat while keeping the kill-earned charge for a spell.' },
+    ],
+    skills: [
+      { abilityId: 'necromancer_corpse_burst', slot: 1, unlockLevel: 1, role: 'Chthonic area', description: 'Detonate an aimed blast with Underworld VFX.' },
+      { abilityId: 'necromancer_shade_mark', slot: 2, unlockLevel: 2, role: 'Curse', description: 'Cause a marked foe to take 20% more damage for 5 seconds; bosses resist half.' },
+      { abilityId: 'necromancer_death_burst', slot: 3, unlockLevel: 4, role: 'Curse burst', description: 'An aimed blast deals 35% extra damage to cursed targets.' },
+      { abilityId: 'necromancer_soul_ward', slot: 4, unlockLevel: 6, role: 'Defense', description: 'Reduce incoming damage by 28% for 3 seconds.' },
+    ],
+  },
 };
 
 export function getClassSkillKit(classId: ClassType): ClassSkillKit | undefined {
