@@ -1,14 +1,27 @@
 import * as THREE from 'three';
 import type { BiomeId, WeaponVisualType } from '../types';
 import { createCombatEffectTexture, createEnemyTexture, createPixelTexture, createWeaponTexture } from './PixelArtRenderer';
-import { biomeVisuals, enemyVisuals, propVisuals, shieldVisual, vfxVisuals, weaponVisuals } from '../data/assetRegistry';
+import { biomeVisuals, enemyVisuals, mythicVfxAtlasPath, propVisuals, shieldVisual, weaponVisuals } from '../data/assetRegistry';
 import { CHARACTER_RIG_MANIFEST } from '../data/characterRigs';
-import type { PixelEffectId } from './VFXSystem';
+import { VFX_DEFINITIONS, type PixelEffectId } from './vfxDefinitions';
+import vfxAtlasManifest from '../data/generated/mythicVfxAtlas.json';
 
-const proceduralVfx = new Set<PixelEffectId>(['bronze_slash', 'spear_thrust', 'shield_impact', 'blood_hit', 'poison_splash', 'web_impact', 'fire_burst', 'stone_shockwave', 'chthonic_bolt', 'boss_death_burst']);
+interface VFXAtlasManifest {
+  atlasPath: string;
+  width: number;
+  height: number;
+  frames: Record<string, { x: number; y: number; width: number; height: number }>;
+}
+
+const MYTHIC_VFX_ATLAS = vfxAtlasManifest as unknown as VFXAtlasManifest;
 
 export class AssetManager {
   private readonly textures = new Map<string, THREE.CanvasTexture>();
+  private readonly vfxFallbacks = new Map<PixelEffectId, THREE.Texture>();
+  private readonly vfxAtlasViews = new Map<PixelEffectId, THREE.Texture>();
+  private vfxAtlasTexture: THREE.Texture | null = null;
+  private vfxAtlasImage: HTMLImageElement | null = null;
+  private vfxAtlasLoadStarted = false;
   private characterRigTexture: THREE.Texture | null = null;
   private characterRigImage: HTMLImageElement | null = null;
   private characterRigLoadStarted = false;
@@ -50,20 +63,69 @@ export class AssetManager {
     return texture;
   }
 
-  vfxTexture(effectId: PixelEffectId): THREE.CanvasTexture {
-    const key = 'vfx:' + effectId;
-    let texture = this.textures.get(key);
-    if (!texture) {
-      texture = proceduralVfx.has(effectId) ? createCombatEffectTexture(effectId) : createPixelTexture('loot', 'dungeon');
-      this.textures.set(key, texture);
-      const vfxId: Partial<Record<PixelEffectId, keyof typeof vfxVisuals>> = {
-        bronze_impact: 'DAMAGE', laurel_light: 'HEAL', promethean_flame: 'FIREBALL',
-        soul_ash: 'ENEMY_DEATH', cistern_splash: 'ICE', oracle_spark: 'LIGHTNING', serpent_venom: 'POISON',
-      };
-      const fallback = vfxId[effectId];
-      if (fallback) this.loadLocal(texture, vfxVisuals[fallback]);
+  vfxTexture(effectId: PixelEffectId): THREE.Texture {
+    this.loadVfxAtlas();
+    const atlasView = this.vfxAtlasViews.get(effectId);
+    if (atlasView) return atlasView;
+    let fallback = this.vfxFallbacks.get(effectId);
+    if (!fallback) {
+      fallback = typeof document !== 'undefined' ? createCombatEffectTexture(effectId) : new THREE.Texture();
+      fallback.colorSpace = THREE.SRGBColorSpace;
+      fallback.magFilter = THREE.NearestFilter;
+      fallback.minFilter = THREE.NearestFilter;
+      fallback.generateMipmaps = false;
+      this.vfxFallbacks.set(effectId, fallback);
     }
-    return texture;
+    return fallback;
+  }
+
+  private loadVfxAtlas(): void {
+    if (this.vfxAtlasLoadStarted) return;
+    this.vfxAtlasLoadStarted = true;
+    if (typeof Image === 'undefined') return;
+    const texture = new THREE.Texture();
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.magFilter = THREE.NearestFilter;
+    texture.minFilter = THREE.NearestFilter;
+    texture.generateMipmaps = false;
+    texture.wrapS = THREE.ClampToEdgeWrapping;
+    texture.wrapT = THREE.ClampToEdgeWrapping;
+    const image = new Image();
+    image.onload = () => {
+      if (this.vfxAtlasTexture !== texture) return;
+      texture.image = image;
+      texture.needsUpdate = true;
+      this.vfxAtlasImage = null;
+      this.createVfxAtlasViews(texture);
+    };
+    image.onerror = () => {
+      if (this.vfxAtlasTexture !== texture) return;
+      this.vfxAtlasTexture = null;
+      this.vfxAtlasImage = null;
+    };
+    this.vfxAtlasTexture = texture;
+    this.vfxAtlasImage = image;
+    image.src = mythicVfxAtlasPath;
+  }
+
+  private createVfxAtlasViews(atlas: THREE.Texture): void {
+    for (const effectId of Object.keys(VFX_DEFINITIONS) as PixelEffectId[]) {
+      const cell = MYTHIC_VFX_ATLAS.frames[effectId];
+      if (!cell) continue;
+      const view = atlas.clone();
+      view.offset.set(cell.x / MYTHIC_VFX_ATLAS.width, 1 - (cell.y + cell.height) / MYTHIC_VFX_ATLAS.height);
+      view.repeat.set(cell.width / MYTHIC_VFX_ATLAS.width, cell.height / MYTHIC_VFX_ATLAS.height);
+      view.wrapS = THREE.ClampToEdgeWrapping;
+      view.wrapT = THREE.ClampToEdgeWrapping;
+      view.magFilter = THREE.NearestFilter;
+      view.minFilter = THREE.NearestFilter;
+      view.generateMipmaps = false;
+      view.colorSpace = THREE.SRGBColorSpace;
+      view.needsUpdate = true;
+      this.vfxAtlasViews.set(effectId, view);
+    }
+    this.vfxFallbacks.forEach(texture => texture.dispose());
+    this.vfxFallbacks.clear();
   }
 
   shieldTexture(): THREE.CanvasTexture {
@@ -125,6 +187,17 @@ export class AssetManager {
     this.characterRigTexture?.dispose();
     this.characterRigTexture = null;
     this.characterRigReady = false;
+    if (this.vfxAtlasImage) {
+      this.vfxAtlasImage.onload = null;
+      this.vfxAtlasImage.onerror = null;
+      this.vfxAtlasImage = null;
+    }
+    this.vfxAtlasTexture?.dispose();
+    this.vfxAtlasTexture = null;
+    this.vfxAtlasViews.forEach(texture => texture.dispose());
+    this.vfxAtlasViews.clear();
+    this.vfxFallbacks.forEach(texture => texture.dispose());
+    this.vfxFallbacks.clear();
     this.textures.forEach(texture => texture.dispose());
     this.textures.clear();
   }

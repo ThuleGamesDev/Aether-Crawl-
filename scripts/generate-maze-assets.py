@@ -4,6 +4,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw
 import hashlib
 from character_rig_authoring import generate_character_rig_assets
+from mythic_vfx_atlas import generate_mythic_vfx_atlas
 
 ROOT = Path(__file__).resolve().parents[1] / 'public/assets/maze'
 THEMES = {
@@ -242,4 +243,5 @@ def vfx(name):
     im.save(ROOT/'vfx'/f'{name}.png',optimize=True)
 for n in ['bronze_impact','laurel_light','promethean_flame','soul_ash','cistern_splash','oracle_spark','serpent_venom']: vfx(n)
 generate_character_rig_assets(ROOT)
+generate_mythic_vfx_atlas(Path(__file__).resolve().parents[1])
 print('Generated static Maze of the Minotaur pixel art:', sum(1 for p in ROOT.rglob('*.png')), 'PNG files at', ROOT)

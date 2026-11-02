@@ -1,4 +1,6 @@
 
+import { combatAudioCategory, getWorldCuePitchScale, shouldPlayCombatCue, type CombatAudioCategory, type CombatCue } from './combatAudioPolicy';
+
 class AudioService {
   private ctx: AudioContext | null = null;
   private gainNode: GainNode | null = null;
@@ -6,6 +8,7 @@ class AudioService {
   private musicInterval: number | null = null;
   private currentSong: any = null;
   private step = 0;
+  private readonly lastCombatCueByCategory = new Map<CombatAudioCategory, number>();
   
   public musicEnabled = true;
   public sfxEnabled = true;
@@ -241,22 +244,34 @@ class AudioService {
     this.playTone(150, 'sawtooth', 0.1, 0.05, 0.1);
   }
 
-  playCombatCue(cue: 'blade' | 'spear' | 'shield' | 'cast' | 'projectile' | 'enemyHit' | 'playerHit' | 'poison' | 'bossTelegraph' | 'bossPhase' | 'bossDeath' | 'pickup' | 'dodge' | 'heal' | 'levelUp') {
-    if (cue === 'blade') { this.playTone(235, 'sawtooth', 0.075, 0, 0.09); this.playTone(150, 'square', 0.055, 0.025, 0.065); }
-    else if (cue === 'spear') { this.playTone(315, 'triangle', 0.055, 0, 0.08); this.playTone(205, 'square', 0.06, 0.035, 0.055); }
-    else if (cue === 'shield') this.playBlock();
-    else if (cue === 'cast') { this.playTone(490, 'triangle', 0.12, 0, 0.08); this.playTone(740, 'sine', 0.18, 0.045, 0.06); }
-    else if (cue === 'projectile') { this.playTone(660, 'square', 0.065, 0, 0.07); this.playTone(280, 'triangle', 0.11, 0.03, 0.06); }
-    else if (cue === 'enemyHit') this.playEnemyHit();
-    else if (cue === 'playerHit') { this.playTone(90, 'sawtooth', 0.14, 0, 0.1); this.playTone(58, 'square', 0.1, 0.035, 0.06); }
-    else if (cue === 'poison') { this.playTone(330, 'triangle', 0.16, 0, 0.065); this.playTone(215, 'sine', 0.22, 0.07, 0.05); }
-    else if (cue === 'bossTelegraph') { this.playTone(82, 'sawtooth', 0.28, 0, 0.09); this.playTone(123, 'triangle', 0.24, 0.08, 0.07); }
-    else if (cue === 'bossPhase') this.playBossPhase();
-    else if (cue === 'bossDeath') { this.playTone(68, 'sawtooth', 0.45, 0, 0.12); this.playTone(110, 'triangle', 0.38, 0.12, 0.08); }
-    else if (cue === 'pickup') this.playItemGet();
-    else if (cue === 'dodge') { this.playTone(420, 'triangle', 0.045, 0, 0.055); this.playTone(280, 'sine', 0.07, 0.025, 0.04); }
-    else if (cue === 'heal') this.playHeal();
-    else if (cue === 'levelUp') this.playLevelUp();
+  playCombatCue(cue: CombatCue, position?: { x: number; y: number; z: number }) {
+    if (!this.ctx || !this.sfxEnabled) return;
+    const audioTime = this.ctx.currentTime;
+    if (!shouldPlayCombatCue(cue, audioTime, this.lastCombatCueByCategory)) return;
+    this.lastCombatCueByCategory.set(combatAudioCategory(cue), audioTime);
+    this.ensureContext();
+    const pitchScale = getWorldCuePitchScale(position);
+    const tone = (frequency: number, type: OscillatorType, duration: number, delay = 0, volume = 0.1) =>
+      this.playTone(frequency * pitchScale, type, duration, delay, volume);
+    if (cue === 'blade') { tone(235, 'sawtooth', 0.075, 0, 0.075); tone(150, 'square', 0.055, 0.025, 0.055); }
+    else if (cue === 'spear') { tone(315, 'triangle', 0.055, 0, 0.07); tone(205, 'square', 0.06, 0.035, 0.045); }
+    else if (cue === 'shield') { tone(220, 'triangle', 0.08, 0, 0.1); tone(80, 'square', 0.07, 0.03, 0.055); }
+    else if (cue === 'cast') { tone(490, 'triangle', 0.12, 0, 0.065); tone(740, 'sine', 0.18, 0.045, 0.05); }
+    else if (cue === 'projectile') { tone(660, 'square', 0.065, 0, 0.06); tone(280, 'triangle', 0.11, 0.03, 0.05); }
+    else if (cue === 'enemyHit') { tone(400, 'square', 0.05, 0, 0.075); tone(300, 'sawtooth', 0.1, 0.05, 0.075); }
+    else if (cue === 'playerHit') { tone(90, 'sawtooth', 0.14, 0, 0.085); tone(58, 'square', 0.1, 0.035, 0.05); }
+    else if (cue === 'poison') { tone(330, 'triangle', 0.16, 0, 0.055); tone(215, 'sine', 0.22, 0.07, 0.04); }
+    else if (cue === 'bossTelegraph') { tone(82, 'sawtooth', 0.28, 0, 0.075); tone(123, 'triangle', 0.24, 0.08, 0.06); }
+    else if (cue === 'bossPhase') { tone(65, 'sawtooth', 0.4, 0, 0.1); tone(130, 'triangle', 0.45, 0.1, 0.08); }
+    else if (cue === 'bossDeath') { tone(68, 'sawtooth', 0.45, 0, 0.1); tone(110, 'triangle', 0.38, 0.12, 0.065); }
+    else if (cue === 'pickup') { tone(1046, 'sine', 0.1, 0, 0.075); tone(1318, 'sine', 0.2, 0.1, 0.075); }
+    else if (cue === 'dodge') { tone(420, 'triangle', 0.045, 0, 0.045); tone(280, 'sine', 0.07, 0.025, 0.035); }
+    else if (cue === 'heal') { tone(400, 'sine', 0.2, 0, 0.075); tone(600, 'sine', 0.3, 0.1, 0.065); }
+    else if (cue === 'levelUp') { tone(440, 'square', 0.1, 0, 0.075); tone(554, 'square', 0.1, 0.1, 0.075); tone(659, 'square', 0.4, 0.2, 0.075); }
+    else if (cue === 'stoneImpact') { tone(94, 'triangle', 0.12, 0, 0.075); tone(138, 'sine', 0.07, 0.02, 0.04); }
+    else if (cue === 'bronzeImpact') { tone(335, 'triangle', 0.09, 0, 0.065); tone(510, 'sine', 0.065, 0.025, 0.045); }
+    else if (cue === 'waterImpact') { tone(265, 'sine', 0.12, 0, 0.05); tone(440, 'triangle', 0.08, 0.04, 0.035); }
+    else if (cue === 'magicImpact') { tone(590, 'sine', 0.14, 0, 0.06); tone(390, 'triangle', 0.16, 0.045, 0.045); }
   }
 
   playCrit() { this.playTone(700, 'square', 0.07, 0, 0.12); this.playTone(1000, 'triangle', 0.12, 0.05, 0.1); }

@@ -2,10 +2,13 @@ import type { StatusApplication, Vector3Like, WorldEnemy, WorldProjectile } from
 import { applyEnemyDamage } from './DamageSystem';
 import { isWorldSolid } from '../world/CollisionWorld';
 import { applyRealtimeStatus } from './StatusSystem';
+import { getEnemyVfxSurface, getTileVfxSurface, type VFXSurface } from '../presentation/vfxDefinitions';
 
 export interface ProjectileImpact {
+  kind: 'enemy' | 'player' | 'world' | 'range';
   position: { x: number; y: number; z: number };
   color: string;
+  surface?: VFXSurface;
   enemyId?: string;
   playerHit?: boolean;
   ownerEnemyId?: string;
@@ -18,6 +21,10 @@ export interface ProjectileUpdateResult {
   projectiles: WorldProjectile[];
   enemies: WorldEnemy[];
   impacts: ProjectileImpact[];
+}
+
+export function isVisibleProjectileImpact(impact: Pick<ProjectileImpact, 'kind'>): boolean {
+  return impact.kind !== 'range';
 }
 
 export function updateProjectiles(projectiles: WorldProjectile[], enemies: WorldEnemy[], map: number[][], deltaSeconds: number, playerPosition?: Vector3Like): ProjectileUpdateResult {
@@ -39,12 +46,12 @@ export function updateProjectiles(projectiles: WorldProjectile[], enemies: World
       };
       const cellX = Math.floor(current.position.x), cellZ = Math.floor(current.position.z);
       if (isWorldSolid(map[cellZ]?.[cellX])) {
-        impacts.push({ position: current.position, color: current.color, abilityId: current.sourceAbilityId, ownerEnemyId: current.ownerEnemyId });
+        impacts.push({ kind: 'world', position: current.position, color: current.color, surface: getTileVfxSurface(map[cellZ]?.[cellX]), abilityId: current.sourceAbilityId, ownerEnemyId: current.ownerEnemyId });
         consumed = true;
         break;
       }
       if (current.faction === 'ENEMY' && playerPosition && Math.hypot(playerPosition.x - current.position.x, playerPosition.z - current.position.z) < 0.34 + current.radius && Math.abs(1.15 - current.position.y) < 0.78) {
-        impacts.push({ position: current.position, color: current.color, abilityId: current.sourceAbilityId, playerHit: true, ownerEnemyId: current.ownerEnemyId, statusEffect: current.statusEffect, healOwnerRatio: current.healOwnerRatio });
+        impacts.push({ kind: 'player', position: current.position, color: current.color, surface: 'organic', abilityId: current.sourceAbilityId, playerHit: true, ownerEnemyId: current.ownerEnemyId, statusEffect: current.statusEffect, healOwnerRatio: current.healOwnerRatio });
         consumed = true;
         break;
       }
@@ -56,14 +63,14 @@ export function updateProjectiles(projectiles: WorldProjectile[], enemies: World
           if (current.statusEffect) hit = { ...hit, statusEffects: applyRealtimeStatus(hit.statusEffects, current.statusEffect, current.sourceAbilityId) };
           return hit;
         });
-        impacts.push({ position: current.position, color: current.color, enemyId: target.id, abilityId: current.sourceAbilityId, ownerEnemyId: current.ownerEnemyId, statusEffect: current.statusEffect, healOwnerRatio: current.healOwnerRatio });
+        impacts.push({ kind: 'enemy', position: current.position, color: current.color, surface: getEnemyVfxSurface(target.visualId), enemyId: target.id, abilityId: current.sourceAbilityId, ownerEnemyId: current.ownerEnemyId, statusEffect: current.statusEffect, healOwnerRatio: current.healOwnerRatio });
         consumed = true;
         break;
       }
     }
     current.remainingSeconds -= dt;
     if (!consumed && current.remainingSeconds > 0) remaining.push(current);
-    else if (!consumed) impacts.push({ position: current.position, color: current.color, abilityId: current.sourceAbilityId, ownerEnemyId: current.ownerEnemyId });
+    else if (!consumed) impacts.push({ kind: 'range', position: current.position, color: current.color, abilityId: current.sourceAbilityId, ownerEnemyId: current.ownerEnemyId });
   }
   return { projectiles: remaining, enemies: nextEnemies, impacts };
 }

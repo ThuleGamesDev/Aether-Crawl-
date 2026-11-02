@@ -14,17 +14,18 @@ Implemented in the R2B branch. Adds timed role-based enemy patterns, line-of-sig
 
 ## FPS-R3A — Modular pixel character rigs and animation
 
-Implemented on `codex/maze-of-the-minotaur-fps-r3a`; pending review and merge. Adds six local pixel-rig pilots, combat-state-driven poses, and weapon-specific first-person actions. See [R3A rig documentation](FPS_R3A_CHARACTER_RIGS.md) and [contact sheet](previews/FPS_R3A_CHARACTER_CONTACT_SHEET.png).
+Merged into `main`. Adds six local pixel-rig pilots, combat-state-driven poses, and weapon-specific first-person actions. See [R3A rig documentation](FPS_R3A_CHARACTER_RIGS.md) and [contact sheet](previews/FPS_R3A_CHARACTER_CONTACT_SHEET.png).
 
-## FPS-R3B — Mythic pixel animation and VFX
+## FPS-R3B — Mythic VFX and world combat feedback
 
-- Expand authored animation content selectively for enemies with distinct source art.
-- Produce the broader mythic VFX wave, keeping world effects tied to simulation positions and player weapons camera-relative.
+Implemented on `codex/maze-of-the-minotaur-fps-r3b`; awaiting review. Adds authored local pixel VFX, gameplay-timed world effects, material-specific impacts, Guardian threat markers, audio cue gating, and Full/Reduced/Off presentation settings. See [R3B VFX documentation](FPS_R3B_MYTHIC_VFX.md) and [gallery](previews/FPS_R3B_MYTHIC_VFX_GALLERY.png).
 
 ## FPS-R4 — ARPG itemization and builds
 
 - Add affixes, unique effects, and deeper equipment choices to the instance-based item model.
 - Expand class skill kits and build progression.
+- Keep new item and skill VFX attached to existing stable ability IDs and simulation events; do not introduce a separate visual damage path or a new save field for cosmetic settings.
+- Extend the local atlas and effect definitions only when an item or skill has a distinct visual cue; preserve the shared pool limits and reduced-mode readability.
 
 ## Later
 

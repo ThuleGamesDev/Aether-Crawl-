@@ -1,0 +1,149 @@
+{
+  "schemaVersion": 1,
+  "atlasPath": "/assets/maze/vfx/mythic_vfx_atlas.png",
+  "previewPath": "/previews/FPS_R3B_MYTHIC_VFX_GALLERY.png",
+  "width": 192,
+  "height": 128,
+  "cellSize": 32,
+  "columns": 6,
+  "frames": {
+    "bronze_slash": {
+      "x": 0,
+      "y": 0,
+      "width": 32,
+      "height": 32
+    },
+    "spear_thrust": {
+      "x": 32,
+      "y": 0,
+      "width": 32,
+      "height": 32
+    },
+    "shield_impact": {
+      "x": 64,
+      "y": 0,
+      "width": 32,
+      "height": 32
+    },
+    "metal_sparks": {
+      "x": 96,
+      "y": 0,
+      "width": 32,
+      "height": 32
+    },
+    "blood_hit": {
+      "x": 128,
+      "y": 0,
+      "width": 32,
+      "height": 32
+    },
+    "poison_splash": {
+      "x": 160,
+      "y": 0,
+      "width": 32,
+      "height": 32
+    },
+    "venom_droplets": {
+      "x": 0,
+      "y": 32,
+      "width": 32,
+      "height": 32
+    },
+    "web_impact": {
+      "x": 32,
+      "y": 32,
+      "width": 32,
+      "height": 32
+    },
+    "web_threads": {
+      "x": 64,
+      "y": 32,
+      "width": 32,
+      "height": 32
+    },
+    "fire_burst": {
+      "x": 96,
+      "y": 32,
+      "width": 32,
+      "height": 32
+    },
+    "flame_core": {
+      "x": 128,
+      "y": 32,
+      "width": 32,
+      "height": 32
+    },
+    "fire_embers": {
+      "x": 160,
+      "y": 32,
+      "width": 32,
+      "height": 32
+    },
+    "stone_shockwave": {
+      "x": 0,
+      "y": 64,
+      "width": 32,
+      "height": 32
+    },
+    "stone_dust": {
+      "x": 32,
+      "y": 64,
+      "width": 32,
+      "height": 32
+    },
+    "stone_chips": {
+      "x": 64,
+      "y": 64,
+      "width": 32,
+      "height": 32
+    },
+    "oracle_spark": {
+      "x": 96,
+      "y": 64,
+      "width": 32,
+      "height": 32
+    },
+    "chthonic_bolt": {
+      "x": 128,
+      "y": 64,
+      "width": 32,
+      "height": 32
+    },
+    "soul_ash": {
+      "x": 160,
+      "y": 64,
+      "width": 32,
+      "height": 32
+    },
+    "boss_death_burst": {
+      "x": 0,
+      "y": 96,
+      "width": 32,
+      "height": 32
+    },
+    "laurel_light": {
+      "x": 32,
+      "y": 96,
+      "width": 32,
+      "height": 32
+    },
+    "water_splash": {
+      "x": 64,
+      "y": 96,
+      "width": 32,
+      "height": 32
+    },
+    "bronze_impact": {
+      "x": 96,
+      "y": 96,
+      "width": 32,
+      "height": 32
+    },
+    "guardian_sigil": {
+      "x": 128,
+      "y": 96,
+      "width": 32,
+      "height": 32
+    }
+  }
+}

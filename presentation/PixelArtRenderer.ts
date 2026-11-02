@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { BiomeId, WeaponVisualType } from '../types';
-import type { PixelEffectId } from './VFXSystem';
+import type { PixelEffectId } from './vfxDefinitions';
 
 interface Palette { wall: string; wallLight: string; floor: string; floorLight: string; accent: string; }
 
@@ -111,33 +111,44 @@ export function createCombatEffectTexture(effectId: PixelEffectId): THREE.Canvas
   };
   if (effectId === 'bronze_slash') {
     blockLine(7, 24, 20, 9, '#9b482f', 5); blockLine(9, 22, 22, 7, '#e7a553', 3); blockLine(11, 20, 23, 6, '#fff0bf', 1);
-  } else if (effectId === 'spear_thrust') {
+  } else if (effectId === 'spear_thrust' || effectId === 'dory_thrust') {
     context.fillStyle = '#f2dfad'; context.fillRect(5, 15, 21, 2); context.fillRect(9, 13, 15, 1);
     context.fillStyle = '#bd8750'; context.fillRect(4, 16, 17, 1); context.fillStyle = '#fff0c2'; context.fillRect(24, 14, 4, 4); context.fillRect(28, 15, 2, 2);
-  } else if (effectId === 'shield_impact') {
+  } else if (effectId === 'shield_impact' || effectId === 'aspis_impact') {
     pixelRing(16, 16, 6, '#f6d17d', 3); pixelRing(16, 16, 12, '#a66e42', 2);
     blockLine(4, 14, 9, 11, '#fff1bc', 2); blockLine(22, 20, 27, 17, '#fff1bc', 2);
   } else if (effectId === 'blood_hit') {
     context.fillStyle = '#371d25'; context.fillRect(14, 10, 5, 13); context.fillStyle = '#b44747'; context.fillRect(11, 12, 11, 8);
     context.fillStyle = '#ee8b63'; context.fillRect(13, 14, 6, 4); context.fillRect(4, 8, 3, 3); context.fillRect(25, 7, 2, 3); context.fillRect(8, 25, 3, 2); context.fillRect(23, 25, 4, 3);
-  } else if (effectId === 'poison_splash') {
+  } else if (effectId === 'poison_splash' || effectId === 'arachne_venom' || effectId === 'serpent_venom' || effectId === 'venom_droplets') {
     context.fillStyle = '#506a36'; context.fillRect(12, 11, 8, 10); context.fillStyle = '#9db84f'; context.fillRect(8, 14, 16, 6); context.fillRect(14, 7, 4, 18);
     context.fillStyle = '#d3dc7c'; context.fillRect(6, 9, 3, 3); context.fillRect(24, 12, 3, 3); context.fillRect(9, 23, 3, 3); context.fillRect(22, 23, 2, 2);
-  } else if (effectId === 'web_impact') {
+  } else if (effectId === 'web_impact' || effectId === 'web_snare' || effectId === 'web_threads') {
     for (let spoke = 0; spoke < 8; spoke += 1) {
       const angle = spoke * Math.PI / 4;
       blockLine(16, 16, Math.round(16 + Math.cos(angle) * 13), Math.round(16 + Math.sin(angle) * 13), '#dae0be', 1);
     }
     pixelRing(16, 16, 6, '#a9b896', 1); pixelRing(16, 16, 11, '#c8d2b7', 1);
-  } else if (effectId === 'fire_burst') {
+  } else if (effectId === 'fire_burst' || effectId === 'promethean_flame' || effectId === 'flame_core' || effectId === 'fire_embers') {
     context.fillStyle = '#7a282d'; context.fillRect(8, 17, 16, 10); context.fillStyle = '#df5633'; context.fillRect(10, 11, 12, 14); context.fillRect(6, 17, 5, 7); context.fillRect(21, 16, 5, 8);
     context.fillStyle = '#ffb64d'; context.fillRect(13, 6, 6, 17); context.fillRect(8, 12, 4, 8); context.fillStyle = '#fff1a8'; context.fillRect(14, 10, 4, 10);
-  } else if (effectId === 'stone_shockwave') {
+  } else if (effectId === 'stone_shockwave' || effectId === 'stone_chips' || effectId === 'stone_dust') {
     pixelRing(16, 18, 6, '#d9b07a', 2); pixelRing(16, 18, 12, '#a26a4b', 2); pixelRing(16, 18, 15, '#e2c18d', 1);
     context.fillStyle = '#f4d29c'; context.fillRect(14, 4, 4, 3); context.fillRect(4, 16, 3, 3); context.fillRect(25, 16, 3, 3);
   } else if (effectId === 'chthonic_bolt') {
     blockLine(16, 3, 11, 11, '#4e273e', 6); blockLine(11, 11, 19, 15, '#87405e', 5); blockLine(19, 15, 12, 24, '#c56d80', 4); blockLine(12, 24, 15, 30, '#f2bd8d', 2);
-  } else if (effectId === 'boss_death_burst') {
+  } else if (effectId === 'oracle_spark') {
+    blockLine(16, 2, 10, 12, '#559eac', 5); blockLine(10, 12, 18, 15, '#8edce0', 4); blockLine(18, 15, 11, 27, '#d1f3df', 3);
+    context.fillStyle = '#fff0c2'; context.fillRect(22, 7, 4, 4);
+  } else if (effectId === 'metal_sparks') {
+    blockLine(16, 16, 16, 2, '#fff0c2', 2); blockLine(16, 16, 28, 6, '#e7b961', 2);
+    blockLine(16, 16, 30, 16, '#fff0c2', 2); blockLine(16, 16, 25, 27, '#e7b961', 2);
+  } else if (effectId === 'water_splash' || effectId === 'cistern_splash') {
+    pixelRing(16, 20, 8, '#79c4c9', 2); context.fillStyle = '#bde9e2'; context.fillRect(8, 9, 3, 4); context.fillRect(22, 5, 3, 4); context.fillRect(15, 2, 2, 4);
+  } else if (effectId === 'guardian_sigil' || effectId === 'warden_delayed_sigil' || effectId === 'serpent_cone') {
+    pixelRing(16, 16, 13, '#de685d', 2); pixelRing(16, 16, 8, '#f1bc73', 1);
+    blockLine(16, 4, 16, 28, '#e96d60', 2); blockLine(4, 16, 28, 16, '#e96d60', 2);
+  } else if (effectId === 'boss_death_burst' || effectId === 'guardian_death') {
     pixelRing(16, 16, 7, '#e3a052', 3); pixelRing(16, 16, 13, '#913b42', 2); context.fillStyle = '#171417'; context.fillRect(11, 10, 10, 12);
     context.fillStyle = '#d5be91'; context.fillRect(13, 12, 2, 2); context.fillRect(18, 12, 2, 2); context.fillRect(14, 18, 4, 2);
     blockLine(16, 0, 16, 6, '#f4c16d', 2); blockLine(2, 16, 7, 16, '#f4c16d', 2); blockLine(25, 16, 30, 16, '#f4c16d', 2);

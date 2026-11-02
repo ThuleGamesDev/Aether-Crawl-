@@ -7,9 +7,13 @@ import { animateEnemySprite, createEnemySprite } from '../presentation/SpriteAni
 import { CharacterRigAnimator } from '../presentation/CharacterRigAnimator';
 import { CHARACTER_RIG_MANIFEST, getCharacterRigDefinition } from '../data/characterRigs';
 import { WeaponPresenter } from '../presentation/WeaponPresenter';
-import { VFXSystem, type PixelEffectId } from '../presentation/VFXSystem';
+import { VFXSystem, type PixelEffectId, type VFXMode, type VFXPriority } from '../presentation/VFXSystem';
 import { WorldGeometry } from '../world/WorldGeometry';
 import { getEnemyAttackDefinition } from '../data/enemyAttacks';
+import { getEnemyAttackTelegraphDescriptor } from '../data/enemyAttackTelegraph';
+import { getVfxPoolCapacity, resolveSurfaceEffect } from '../presentation/vfxDefinitions';
+import type { VFXSurface } from '../presentation/vfxDefinitions';
+import type { CombatCue } from '../services/combatAudioPolicy';
 
 type EnemyVisualInstance =
   | { kind: 'legacy'; sprite: THREE.Sprite }
@@ -27,13 +31,17 @@ export function getPixelRenderSize(viewportWidth: number, viewportHeight: number
 }
 
 export interface VisualEvent {
-  kind: 'audio' | 'telegraph' | 'impact' | 'melee' | 'area' | 'enemyHit' | 'enemyDeath' | 'pickup' | 'dodge' | 'bossPhase';
+  kind: 'audio' | 'telegraph' | 'impact' | 'melee' | 'area' | 'cast' | 'enemyHit' | 'enemyDeath' | 'pickup' | 'dodge' | 'bossPhase';
   position: { x: number; y: number; z: number };
   color?: string;
   scale?: number;
   effectId?: PixelEffectId;
   direction?: { x: number; z: number };
-  sound?: 'blade' | 'spear' | 'shield' | 'cast' | 'projectile' | 'enemyHit' | 'playerHit' | 'poison' | 'bossTelegraph' | 'bossPhase' | 'bossDeath' | 'pickup' | 'dodge' | 'heal' | 'levelUp';
+  priority?: VFXPriority;
+  surface?: VFXSurface;
+  sourceId?: string;
+  ownerId?: string;
+  sound?: CombatCue;
 }
 
 export class SceneRenderer {
@@ -48,7 +56,12 @@ export class SceneRenderer {
   private readonly availableProjectiles: THREE.Mesh[] = [];
   private readonly projectileGeometry = new THREE.SphereGeometry(0.09, 6, 6);
   private readonly projectileMaterials = new Map<string, THREE.MeshBasicMaterial>();
-  private readonly enemyTelegraphs = new Map<string, { mesh: THREE.Mesh<THREE.CircleGeometry, THREE.MeshBasicMaterial>; attackId: string }>();
+  private readonly enemyTelegraphs = new Map<string, {
+    mesh: THREE.Mesh<THREE.CircleGeometry, THREE.MeshBasicMaterial>;
+    rim: THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial>;
+    trace?: THREE.Line<THREE.BufferGeometry, THREE.LineBasicMaterial>;
+    attackId: string;
+  }>();
   private readonly vfx: VFXSystem;
   private readonly weapon: WeaponPresenter;
   private geometry: WorldGeometry;
@@ -73,7 +86,7 @@ export class SceneRenderer {
     this.scene.add(this.geometry.group);
     this.worldRevision = world.worldRevision;
     this.assets.characterRigAtlas();
-    this.vfx = new VFXSystem(this.scene, this.assets, window.matchMedia?.('(max-width: 767px)').matches ? 24 : 48);
+    this.vfx = new VFXSystem(this.scene, this.assets, getVfxPoolCapacity(window.matchMedia?.('(max-width: 767px)').matches ?? false));
     const defaultProjectileMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.96 });
     this.projectileMaterials.set('__default', defaultProjectileMaterial);
     for (let index = 0; index < 64; index += 1) {
@@ -95,6 +108,10 @@ export class SceneRenderer {
   }
 
   private readonly onDisposeResize: () => void;
+
+  setVfxMode(mode: VFXMode): void {
+    this.vfx.setMode(mode);
+  }
 
   private resize(canvas: HTMLCanvasElement): void {
     const bounds = canvas.getBoundingClientRect();
@@ -118,16 +135,18 @@ export class SceneRenderer {
     action: ActivePlayerAction | null;
     isMoving: boolean;
     guarding: boolean;
+    paused: boolean;
     cameraBob: number;
     deltaSeconds: number;
     elapsedSeconds: number;
     events: VisualEvent[];
   }): void {
-    const { world, player, enemies, projectiles, loot, action, isMoving, guarding, cameraBob, deltaSeconds, elapsedSeconds, events } = args;
+    const { world, player, enemies, projectiles, loot, action, isMoving, guarding, paused, cameraBob, deltaSeconds, elapsedSeconds, events } = args;
     this.elapsedSeconds = elapsedSeconds;
     if (world.worldRevision !== this.worldRevision) {
       this.clearEnemyVisuals();
       this.clearEnemyTelegraphs();
+      this.vfx.clear();
       this.scene.remove(this.geometry.group);
       this.geometry.dispose();
       this.geometry = new WorldGeometry(world, this.assets);
@@ -141,13 +160,20 @@ export class SceneRenderer {
     this.syncProjectiles(projectiles);
     this.syncLoot(loot, world);
     for (const event of events) {
-      if (event.kind === 'audio' || event.kind === 'telegraph') continue;
-      const tint = event.color ?? (event.kind === 'enemyDeath' ? '#ffbd68' : '#fff0ad');
-      const count = event.kind === 'area' || event.kind === 'bossPhase' ? 16 : event.kind === 'enemyDeath' ? 12 : 6;
-      const effect: PixelEffectId = event.effectId ?? (event.kind === 'enemyDeath' ? 'soul_ash' : event.kind === 'pickup' ? 'laurel_light' : event.kind === 'area' ? 'promethean_flame' : event.kind === 'dodge' ? 'cistern_splash' : 'bronze_impact');
-      this.vfx.burst(event.position, tint, count, event.scale ?? 1, effect, event.direction);
+      if (event.kind === 'audio') continue;
+      const effect: PixelEffectId = event.effectId
+        ?? (event.surface ? resolveSurfaceEffect(event.surface) : event.kind === 'enemyDeath' ? 'guardian_death' : event.kind === 'pickup' ? 'laurel_light' : event.kind === 'area' ? 'promethean_flame' : event.kind === 'dodge' ? 'cistern_splash' : 'generic_impact');
+      const priority = event.priority ?? (event.kind === 'enemyDeath' || event.kind === 'bossPhase' ? 'critical_hit' : 'ordinary_hit');
+      this.vfx.emit(effect, event.position, {
+        color: event.color,
+        scale: event.scale,
+        direction: event.direction,
+        priority,
+        sourceId: event.sourceId,
+        ownerId: event.ownerId,
+      });
     }
-    this.vfx.update(deltaSeconds);
+    this.vfx.update(deltaSeconds, this.camera.rotation.y, paused);
     this.renderer.render(this.scene, this.camera);
   }
 
@@ -157,7 +183,7 @@ export class SceneRenderer {
       if (!ids.has(id)) { this.disposeEnemyVisual(visual); this.enemyVisuals.delete(id); }
     }
     for (const [id, warning] of this.enemyTelegraphs) {
-      if (!ids.has(id)) { this.scene.remove(warning.mesh); warning.mesh.geometry.dispose(); warning.mesh.material.dispose(); this.enemyTelegraphs.delete(id); }
+      if (!ids.has(id)) { this.disposeTelegraph(warning); this.enemyTelegraphs.delete(id); }
     }
     const atlas = this.assets.characterRigAtlas();
     for (const enemy of enemies) {
@@ -187,40 +213,75 @@ export class SceneRenderer {
       let warning = warningEntry?.mesh;
       const attack = enemy.state === 'ATTACK_WINDUP' ? getEnemyAttackDefinition(enemy.attackSetId, enemy.activeAttackId, enemy.phase ?? 1) : undefined;
       if (!attack) {
-        if (warning) warning.visible = false;
+        if (warningEntry) {
+          warningEntry.mesh.visible = false;
+          warningEntry.rim.visible = false;
+          if (warningEntry.trace) warningEntry.trace.visible = false;
+        }
         continue;
       }
-      if (warning && warningEntry?.attackId !== attack.id) {
-        this.scene.remove(warning);
-        warning.geometry.dispose();
-        warning.material.dispose();
+      if (warning && warningEntry && warningEntry.attackId !== attack.id) {
+        this.disposeTelegraph(warningEntry);
         this.enemyTelegraphs.delete(enemy.id);
         warning = undefined;
       }
       if (!warning) {
-        const radius = attack.shape === 'SIGIL' ? attack.radius ?? 1.6 : attack.shape === 'BUFF' ? 1.25 : attack.radius ?? attack.range;
-        const arc = attack.shape === 'CONE' || attack.shape === 'CHARGE' ? attack.arcRadians ?? 1.15 : attack.shape === 'PROJECTILE' || attack.shape === 'DRAIN' ? 0.11 : Math.PI * 2;
-        const geometry = new THREE.CircleGeometry(1, 28, -arc / 2, arc);
-        const material = new THREE.MeshBasicMaterial({ color: attack.telegraphColor, transparent: true, opacity: 0.24, depthWrite: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1 });
+        const descriptor = getEnemyAttackTelegraphDescriptor(attack);
+        const geometry = new THREE.CircleGeometry(1, 32, -descriptor.arcRadians / 2, descriptor.arcRadians);
+        const material = new THREE.MeshBasicMaterial({ color: attack.telegraphColor, transparent: true, opacity: 0.12, depthTest: true, depthWrite: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1 });
         warning = new THREE.Mesh(geometry, material);
         warning.rotation.x = -Math.PI / 2;
         warning.renderOrder = 2;
         warning.name = 'AttackTelegraph_' + enemy.id;
-        warningEntry = { mesh: warning, attackId: attack.id };
+        const rimGeometry = new THREE.RingGeometry(0.955, 1, 32, 1, -descriptor.arcRadians / 2, descriptor.arcRadians);
+        const rimMaterial = new THREE.MeshBasicMaterial({ color: attack.telegraphColor, transparent: true, opacity: 0.76, depthTest: true, depthWrite: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2 });
+        const rim = new THREE.Mesh(rimGeometry, rimMaterial);
+        rim.rotation.x = -Math.PI / 2;
+        rim.renderOrder = 3;
+        rim.name = 'AttackTelegraphRim_' + enemy.id;
+        let trace: THREE.Line<THREE.BufferGeometry, THREE.LineBasicMaterial> | undefined;
+        if (descriptor.kind !== 'circle') {
+          const traceGeometry = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(1, 0, 0)]);
+          const traceMaterial = new THREE.LineBasicMaterial({ color: attack.telegraphColor, transparent: true, opacity: 0.72, depthTest: true, depthWrite: false });
+          trace = new THREE.Line(traceGeometry, traceMaterial);
+          trace.renderOrder = 4;
+          trace.name = 'AttackTelegraphTrace_' + enemy.id;
+        }
+        warningEntry = { mesh: warning, rim, trace, attackId: attack.id };
         this.enemyTelegraphs.set(enemy.id, warningEntry);
         this.scene.add(warning);
-        warning.scale.setScalar(radius);
+        this.scene.add(rim);
+        if (trace) this.scene.add(trace);
+        warning.scale.setScalar(descriptor.radius);
+        rim.scale.setScalar(descriptor.radius);
       }
       warning.visible = true;
-      const warningPosition = attack.shape === 'SIGIL' ? enemy.telegraphPosition ?? enemy.position : enemy.position;
+      const descriptor = getEnemyAttackTelegraphDescriptor(attack);
+      const warningPosition = descriptor.center === 'target' ? enemy.telegraphPosition ?? enemy.position : enemy.position;
       warning.position.set(warningPosition.x, 0.028, warningPosition.z);
-      warning.rotation.set(-Math.PI / 2, -(enemy.facingYaw ?? 0), 0);
-      warning.material.opacity = 0.15 + Math.sin(this.elapsedSeconds * 10) * 0.035;
+      warning.scale.setScalar(descriptor.radius);
+      warning.rotation.set(-Math.PI / 2, descriptor.kind === 'circle' ? 0 : -(enemy.facingYaw ?? 0), 0);
+      warning.material.opacity = 0.09 + Math.sin(this.elapsedSeconds * 10) * 0.025;
+      const rim = warningEntry!.rim;
+      rim.visible = true;
+      rim.position.copy(warning.position);
+      rim.rotation.copy(warning.rotation);
+      rim.scale.setScalar(descriptor.radius);
+      rim.material.opacity = (enemy.isBoss ? 0.78 : 0.56) + Math.sin(this.elapsedSeconds * 10) * 0.1;
+      if (warningEntry!.trace) {
+        const trace = warningEntry!.trace;
+        trace.visible = true;
+        trace.position.set(warningPosition.x, 0.042, warningPosition.z);
+        trace.rotation.copy(warning.rotation);
+        trace.scale.set(descriptor.radius, 1, 1);
+        trace.material.opacity = (enemy.isBoss ? 0.88 : 0.68) + Math.sin(this.elapsedSeconds * 10) * 0.08;
+      }
     }
   }
 
   private syncProjectiles(projectiles: WorldProjectile[]): void {
     const active = new Set(projectiles.map(projectile => projectile.id));
+    this.vfx.retainProjectileTrails(active);
     for (const [id, mesh] of this.projectileMeshes) {
       if (!active.has(id)) {
         mesh.visible = false;
@@ -246,7 +307,7 @@ export class SceneRenderer {
       const size = projectile.radius * 1.8;
       mesh.scale.setScalar(size);
       mesh.visible = true;
-      this.vfx.trail(projectile.position, projectile.color);
+      this.vfx.trail(projectile.id, projectile.position, projectile.color, projectileTrailEffect(projectile.sourceAbilityId, projectile.statusEffect?.statusId), projectile.sourceAbilityId);
     }
   }
 
@@ -285,12 +346,23 @@ export class SceneRenderer {
   }
 
   private clearEnemyTelegraphs(): void {
-    for (const warning of this.enemyTelegraphs.values()) {
-      this.scene.remove(warning.mesh);
-      warning.mesh.geometry.dispose();
-      warning.mesh.material.dispose();
-    }
+    for (const warning of this.enemyTelegraphs.values()) this.disposeTelegraph(warning);
     this.enemyTelegraphs.clear();
+  }
+
+  private disposeTelegraph(warning: {
+    mesh: THREE.Mesh<THREE.CircleGeometry, THREE.MeshBasicMaterial>;
+    rim: THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial>;
+    trace?: THREE.Line<THREE.BufferGeometry, THREE.LineBasicMaterial>;
+  }): void {
+    this.scene.remove(warning.mesh, warning.rim);
+    if (warning.trace) this.scene.remove(warning.trace);
+    warning.mesh.geometry.dispose();
+    warning.mesh.material.dispose();
+    warning.rim.geometry.dispose();
+    warning.rim.material.dispose();
+    warning.trace?.geometry.dispose();
+    warning.trace?.material.dispose();
   }
 
   dispose(): void {
@@ -314,4 +386,13 @@ export class SceneRenderer {
     this.assets.dispose();
     this.renderer.dispose();
   }
+}
+
+function projectileTrailEffect(abilityId: string, statusId?: string): PixelEffectId {
+  if (statusId === 'POISON') return 'venom_droplets';
+  if (statusId === 'BURN') return 'fire_embers';
+  if (statusId === 'SLOW') return 'web_threads';
+  if (/boulder/i.test(abilityId)) return 'stone_chips';
+  if (statusId === 'WEAKNESS' || /chthonic|underworld|warden|curse|grasp/i.test(abilityId)) return 'soul_ash';
+  return 'oracle_spark';
 }

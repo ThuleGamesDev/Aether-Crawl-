@@ -56,6 +56,7 @@ export const weaponVisuals: Record<WeaponVisualType, string> = {
 
 export const shieldVisual = asset('maze/hands/aspis.png');
 export const characterRigAtlasPath = CHARACTER_RIG_MANIFEST.atlasPath;
+export const mythicVfxAtlasPath = asset('maze/vfx/mythic_vfx_atlas.png');
 
 export const vfxVisuals: Record<VFXType, string> = {
   DAMAGE: asset('maze/vfx/bronze_impact.png'),
@@ -123,7 +124,7 @@ export const getLevelAssetPaths = (level: number): string[] => {
     ...getBiomeAssetPaths(getBiomeIdForLevel(level)),
     ...activeEnemies.map(enemy => enemyVisuals[enemy.fpsVisualId]?.sprite).filter((path): path is string => Boolean(path)),
     enemyVisuals[boss.visualId].sprite,
-    ...Object.values(weaponVisuals), shieldVisual,
+    ...Object.values(weaponVisuals), shieldVisual, mythicVfxAtlasPath,
     characterRigAtlasPath,
     ...Object.values(vfxVisuals),
   ])];
@@ -133,6 +134,7 @@ export const collectAssetPaths = (): string[] => [...new Set([
   ...Object.keys(biomeVisuals).flatMap(biomeId => getBiomeAssetPaths(biomeId as BiomeId)),
   ...Object.values(enemyVisuals).map(visual => visual.sprite),
   ...Object.values(weaponVisuals), shieldVisual,
+  mythicVfxAtlasPath,
   characterRigAtlasPath,
   ...Object.values(vfxVisuals),
   ...Object.values(propVisuals),
