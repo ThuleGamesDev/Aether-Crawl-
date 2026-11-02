@@ -11,6 +11,14 @@ export interface ActivePlayerAction {
   damageMultiplier: number;
   /** Captured when the action starts so equipment changes cannot alter a live animation. */
   speedMultiplier?: number;
+  /** Active-window progress is persisted so a save cannot replay a multi-hit pulse. */
+  hitIndex?: number;
+  hitCount?: number;
+  nextHitSeconds?: number;
+  /** A class passive is resolved once per action and reused by every pulse. */
+  classPassiveResolved?: boolean;
+  classPassiveMultiplier?: number;
+  classMeleeRecorded?: boolean;
 }
 
 export interface PlayerActionStart {
@@ -38,7 +46,18 @@ export class PlayerCombat {
     this.reset();
     if (!state) return;
     for (const [id, cooldown] of Object.entries(state.cooldowns)) if (cooldown > 0) this.cooldowns.set(id, cooldown);
-    this.activeAction = state.action ? { speedMultiplier: 1, ...state.action } : null;
+    if (!state.action) return;
+    const actionAlreadyStarted = state.action.phase !== 'WINDUP';
+    this.activeAction = {
+      hitIndex: actionAlreadyStarted ? 1 : 0,
+      hitCount: 1,
+      nextHitSeconds: 0,
+      speedMultiplier: 1,
+      classPassiveResolved: false,
+      classPassiveMultiplier: 1,
+      classMeleeRecorded: false,
+      ...state.action,
+    };
   }
 
   getCooldown(abilityId: string): number { return Math.max(0, this.cooldowns.get(abilityId) ?? 0); }
@@ -56,39 +75,71 @@ export class PlayerCombat {
       ? 1 + Math.max(0, Math.min(0.65, (chargeSeconds - ability.chargeMinSeconds) * 0.45))
       : 1;
     this.cooldowns.set(abilityId, ability.cooldownSeconds * derived.cooldownMultiplier);
-    this.activeAction = { abilityId, phase: 'WINDUP', remainingSeconds: ability.windupSeconds / speedMultiplier, damageMultiplier: chargeScale, speedMultiplier };
+    this.activeAction = {
+      abilityId, phase: 'WINDUP', remainingSeconds: ability.windupSeconds / speedMultiplier,
+      damageMultiplier: chargeScale, speedMultiplier,
+      hitIndex: 0, hitCount: Math.max(1, Math.min(8, Math.floor(ability.activeHitCount ?? 1))), nextHitSeconds: 0,
+      classPassiveResolved: false, classPassiveMultiplier: 1,
+      classMeleeRecorded: false,
+    };
     return { player: { ...player, stats: { ...player.stats, mp: player.stats.mp - manaCost } }, ability };
   }
 
-  update(deltaSeconds: number): { activeStarted: boolean; completed: boolean; action: ActivePlayerAction | null } {
+  update(deltaSeconds: number): { activeStarted: boolean; activeHitIndices: number[]; completed: boolean; action: ActivePlayerAction | null } {
     const dt = Math.max(0, Math.min(0.05, deltaSeconds));
     for (const [id, cooldown] of this.cooldowns) {
       const next = Math.max(0, cooldown - dt);
       if (next === 0) this.cooldowns.delete(id);
       else this.cooldowns.set(id, next);
     }
-    if (!this.activeAction) return { activeStarted: false, completed: false, action: null };
+    if (!this.activeAction) return { activeStarted: false, activeHitIndices: [], completed: false, action: null };
     this.activeAction.remainingSeconds = Math.max(0, this.activeAction.remainingSeconds - dt);
-    if (this.activeAction.remainingSeconds > 0) return { activeStarted: false, completed: false, action: this.action };
     if (this.activeAction.phase === 'WINDUP') {
+      if (this.activeAction.remainingSeconds > 0) return { activeStarted: false, activeHitIndices: [], completed: false, action: this.action };
       const ability = getAbility(this.activeAction.abilityId)!;
       this.activeAction.phase = 'ACTIVE';
       this.activeAction.remainingSeconds = ability.activeSeconds / (this.activeAction.speedMultiplier ?? 1);
-      return { activeStarted: true, completed: false, action: this.action };
+      this.activeAction.hitCount = Math.max(1, Math.min(8, Math.floor(ability.activeHitCount ?? 1)));
+      this.activeAction.hitIndex = 1;
+      this.activeAction.nextHitSeconds = this.activeAction.remainingSeconds / this.activeAction.hitCount;
+      return { activeStarted: true, activeHitIndices: [0], completed: false, action: this.action };
     }
     if (this.activeAction.phase === 'ACTIVE') {
       const ability = getAbility(this.activeAction.abilityId)!;
-      this.activeAction.phase = 'RECOVERY';
-      this.activeAction.remainingSeconds = ability.recoverySeconds / (this.activeAction.speedMultiplier ?? 1);
-      return { activeStarted: false, completed: false, action: this.action };
+      const hitCount = Math.max(1, this.activeAction.hitCount ?? ability.activeHitCount ?? 1);
+      const activeDuration = ability.activeSeconds / (this.activeAction.speedMultiplier ?? 1);
+      const activeHitIndices: number[] = [];
+      this.activeAction.nextHitSeconds = (this.activeAction.nextHitSeconds ?? activeDuration) - dt;
+      while ((this.activeAction.hitIndex ?? 1) < hitCount && (this.activeAction.nextHitSeconds ?? 0) <= 0.000001) {
+        activeHitIndices.push(this.activeAction.hitIndex ?? 1);
+        this.activeAction.hitIndex = (this.activeAction.hitIndex ?? 1) + 1;
+        this.activeAction.nextHitSeconds = (this.activeAction.nextHitSeconds ?? 0) + activeDuration / hitCount;
+      }
+      if (this.activeAction.remainingSeconds <= 0) {
+        this.activeAction.phase = 'RECOVERY';
+        this.activeAction.remainingSeconds = ability.recoverySeconds / (this.activeAction.speedMultiplier ?? 1);
+        this.activeAction.nextHitSeconds = 0;
+      }
+      return { activeStarted: activeHitIndices.length > 0, activeHitIndices, completed: false, action: this.action };
     }
+    if (this.activeAction.remainingSeconds > 0) return { activeStarted: false, activeHitIndices: [], completed: false, action: this.action };
     this.activeAction = null;
-    return { activeStarted: false, completed: true, action: null };
+    return { activeStarted: false, activeHitIndices: [], completed: true, action: null };
   }
 
   reset(): void {
     this.cooldowns.clear();
     this.activeAction = null;
+  }
+
+  setClassPassiveResult(multiplier: number): void {
+    if (!this.activeAction || this.activeAction.phase !== 'ACTIVE') return;
+    this.activeAction.classPassiveResolved = true;
+    this.activeAction.classPassiveMultiplier = Number.isFinite(multiplier) ? Math.max(0.25, Math.min(2.5, multiplier)) : 1;
+  }
+
+  markClassMeleeRecorded(): void {
+    if (this.activeAction?.phase === 'ACTIVE') this.activeAction.classMeleeRecorded = true;
   }
 }
 

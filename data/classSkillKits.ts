@@ -1,0 +1,97 @@
+import type { ClassPassiveId, ClassType } from '../types';
+
+export interface ClassSkillDefinition {
+  abilityId: string;
+  slot: 1 | 2 | 3 | 4;
+  unlockLevel: number;
+  role: string;
+  description: string;
+}
+
+export interface ClassSkillKit {
+  classId: ClassType;
+  name: string;
+  identity: string;
+  passive: { id: ClassPassiveId; name: string; description: string };
+  archetypes: Array<{ name: string; description: string }>;
+  skills: [ClassSkillDefinition, ClassSkillDefinition, ClassSkillDefinition, ClassSkillDefinition];
+}
+
+export const CLASS_SKILL_KITS: Partial<Record<ClassType, ClassSkillKit>> = {
+  BARBARIAN: {
+    classId: 'BARBARIAN',
+    name: 'Myrmidon',
+    identity: 'A relentless bronze-age warrior who trades safety for decisive close-range pressure.',
+    passive: { id: 'war_momentum', name: 'War Momentum', description: 'A successful melee action builds one stack, up to five. Each stack adds 4% physical damage for 3 seconds; misses and repeated hit events do not build stacks.' },
+    archetypes: [
+      { name: 'Heavy Bruiser', description: 'Use Ares’ Quake to control space, then finish a durable target.' },
+      { name: 'Combo Berserker', description: 'Keep War Momentum alive with deliberate, reliable melee hits.' },
+      { name: 'Blood Warrior', description: 'Trade a short-lived defensive penalty for a capped damage surge.' },
+    ],
+    skills: [
+      { abilityId: 'barbarian_ground_slam', slot: 1, unlockLevel: 1, role: 'Control', description: 'A close shockwave that staggers nearby foes.' },
+      { abilityId: 'barbarian_bronze_cyclone', slot: 2, unlockLevel: 2, role: 'Sweep', description: 'Three measured sweeps cover a full circle during a short active window.' },
+      { abilityId: 'barbarian_blood_oath', slot: 3, unlockLevel: 4, role: 'Risk / reward', description: 'Gain physical damage while taking increased incoming damage.' },
+      { abilityId: 'barbarian_heroic_execution', slot: 4, unlockLevel: 6, role: 'Finisher', description: 'Deals increased damage to enemies already below the health threshold.' },
+    ],
+  },
+  PALADIN: {
+    classId: 'PALADIN',
+    name: 'Hoplite',
+    identity: 'A disciplined spear-and-shield fighter whose defense creates short, earned attack windows.',
+    passive: { id: 'unbroken_line', name: 'Unbroken Line', description: 'A successful shield block grants one 18% melee counter window for 3 seconds, at most once every 4 seconds.' },
+    archetypes: [
+      { name: 'Defensive Counter', description: 'Block deliberately and spend the resulting counter on a confirmed melee action.' },
+      { name: 'Reach Spear', description: 'Punish approaching enemies from the spear’s narrow long reach.' },
+      { name: 'Guard-Heavy Tank', description: 'Layer Phalanx Stand and Reprisal without needing a shield every second.' },
+    ],
+    skills: [
+      { abilityId: 'paladin_consecration', slot: 1, unlockLevel: 1, role: 'Guard', description: 'A self-centered stance that reduces incoming damage for a short time.' },
+      { abilityId: 'paladin_dory_impale', slot: 2, unlockLevel: 2, role: 'Reach', description: 'A narrow, long-reaching spear thrust with line of sight.' },
+      { abilityId: 'paladin_bronze_reprisal', slot: 3, unlockLevel: 4, role: 'Counter', description: 'Create a brief guard and a capped next-hit counter window.' },
+      { abilityId: 'paladin_aspis_charge', slot: 4, unlockLevel: 6, role: 'Engage', description: 'Advance a short, collision-safe distance and bash at the end.' },
+    ],
+  },
+  SORCERER: {
+    classId: 'SORCERER',
+    name: 'Oracle',
+    identity: 'An elemental caster who alternates schools to earn a small, non-stacking burst.',
+    passive: { id: 'omen_weaving', name: 'Omen Weaving', description: 'Alternating Fire, Lightning, and Arcane casts empowers the next eligible cast by 18%. Repeating one school does not refresh or stack the bonus.' },
+    archetypes: [
+      { name: 'Fire Explosion', description: 'Ignite groups with Promethean Flame and capitalize on the burn window.' },
+      { name: 'Chain Lightning', description: 'Lead with Storm Invocation and let bounded arcs seek nearby targets.' },
+      { name: 'Burst Cast / Defense', description: 'Alternate spell schools and use Prophetic Veil to reposition safely.' },
+    ],
+    skills: [
+      { abilityId: 'sorcerer_fireburst', slot: 1, unlockLevel: 1, role: 'Fire area', description: 'Aimed fireburst that applies a bounded burn.' },
+      { abilityId: 'sorcerer_storm_invocation', slot: 2, unlockLevel: 2, role: 'Chain lightning', description: 'A small aimed strike that chains to at most three nearby foes.' },
+      { abilityId: 'sorcerer_prophetic_veil', slot: 3, unlockLevel: 4, role: 'Reposition', description: 'A short collision-safe step with a brief defensive veil.' },
+      { abilityId: 'sorcerer_omenfall', slot: 4, unlockLevel: 6, role: 'Arcane burst', description: 'A precise arcane impact rewards alternating spell schools.' },
+    ],
+  },
+  ROGUE: {
+    classId: 'ROGUE',
+    name: 'Trickster',
+    identity: 'A mobile knife fighter who converts a dodge, stagger, or flank into one precise opportunity.',
+    passive: { id: 'opportunist', name: 'Opportunist', description: 'A successful dodge primes one hit for 22% extra damage. A melee hit against a staggered or flanked target can also qualify; one action consumes at most one opportunity.' },
+    archetypes: [
+      { name: 'Poison', description: 'Build a poison window with Venomous Cut, then disengage.' },
+      { name: 'Mobility Crit', description: 'Create openings with dodges and Shadow Lunge before committing.' },
+      { name: 'Fast Combo', description: 'Use Kopis Flurry’s short active window to keep pressure on one lane.' },
+    ],
+    skills: [
+      { abilityId: 'rogue_knife_fan', slot: 1, unlockLevel: 1, role: 'Ranged knife', description: 'A quick aimed knife keeps pressure while repositioning.' },
+      { abilityId: 'rogue_kopis_flurry', slot: 2, unlockLevel: 2, role: 'Combo', description: 'Three close-range cuts resolve across a short active window.' },
+      { abilityId: 'rogue_venomous_cut', slot: 3, unlockLevel: 4, role: 'Poison', description: 'A quick thrust applies a bounded poison effect.' },
+      { abilityId: 'rogue_shadow_lunge', slot: 4, unlockLevel: 6, role: 'Gap close', description: 'A short, collision-safe lunge followed by a focused cut.' },
+    ],
+  },
+};
+
+export function getClassSkillKit(classId: ClassType): ClassSkillKit | undefined {
+  return CLASS_SKILL_KITS[classId];
+}
+
+export function getClassSkill(classId: ClassType, abilityId: string): ClassSkillDefinition | undefined {
+  return getClassSkillKit(classId)?.skills.find(skill => skill.abilityId === abilityId);
+}

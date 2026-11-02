@@ -2,7 +2,9 @@ import { CLASSES } from '../constants';
 import { getItemBase, LEGACY_ITEM_BASE_IDS } from '../data/itemBases';
 import type { CharacterTemplate, ClassType, EquipmentSlot, Item, ItemInstance, ItemRarity, PlayerCharacter, SoloCharacterStats, WorldEnemy } from '../types';
 import { CLASS_ABILITY_LOADOUT } from '../combat/AbilityRegistry';
+import { getClassSkillKit } from '../data/classSkillKits';
 import { calculateDerivedStats } from './DerivedStats';
+import { createClassPassiveState } from './ClassPassives';
 import { consumableEffect, createEnemyDrop, createLootInstance, legacyBaseId, normalizeLegacyItem, type RandomSource } from '../services/itemization';
 import { consumableStackKey, MAX_CONSUMABLE_STACK, moveInventoryGridItem, normalizeInventoryGrid, syncInventoryGrid } from '../services/inventoryGrid';
 
@@ -70,6 +72,9 @@ export function createPlayerCharacter(classId: ClassType, spawn = { x: 1.5, y: 0
     inventoryGrid: syncInventoryGrid(inventory),
     uniqueEffectStates: [],
     skills: [{ abilityId: CLASS_ABILITY_LOADOUT[classId].skill, rank: 1 }],
+    skillPoints: 0,
+    skillProgressionVersion: 1,
+    classPassiveState: createClassPassiveState(classId),
     statusEffects: [],
   });
 }
@@ -95,6 +100,7 @@ export function grantExperience(player: PlayerCharacter, amount: number): { play
     next.stats[primary] += 1;
     threshold = xpToNextLevel(next.stats.level);
   }
+  if (getClassSkillKit(player.classId) && levelsGained > 0) next.skillPoints = (next.skillPoints ?? 0) + levelsGained;
   return { player: refreshPlayerDerivedCaps(next), levelsGained };
 }
 

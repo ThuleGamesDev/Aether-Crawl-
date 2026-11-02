@@ -138,6 +138,10 @@ canvas {
 .fps-class-card p { min-height: 28px; margin: 0 0 8px; color: #9e978d; font: 10px ui-monospace, monospace; }
 .fps-class-stats { color: #c9b38f; font: 10px ui-monospace, monospace; }
 .fps-class-attack { min-height: 28px; margin: 8px 0 12px; color: #c07e4b; font: 10px ui-monospace, monospace; }
+.fps-class-kit-preview { position: relative; display: grid; gap: 4px; margin: -2px 0 12px; padding: 8px; border-left: 2px solid rgba(194,143,80,.58); background: rgba(8,8,10,.48); color: #a99f90; font-size: 8px; line-height: 1.45; }
+.fps-class-kit-preview strong { color: #e4c28d; font: bold 10px Georgia, serif; }
+.fps-class-kit-preview b { color: #c99b5c; font-size: 8px; }
+.fps-class-kit-preview small { color: #898073; font-size: 7px; }
 .fps-class-card .fps-button { margin-top: auto; padding-inline: 7px; font-size: 9px; }
 
 .fps-controls-card { width: min(100%, 680px); }
@@ -206,10 +210,18 @@ canvas {
 .fps-action-card .fps-cooldown-active { color: #e7aa68; }
 .fps-skill-card { cursor: pointer; }
 .fps-skill-card:hover { border-color: #c18b56; }
+.fps-skill-card:disabled { border-color: rgba(206,183,145,.18); cursor: not-allowed; opacity: .58; }
+.fps-skill-card:disabled:hover { border-color: rgba(206,183,145,.18); }
 .fps-action-card-empty { opacity: .48; }
 .fps-guarding { border-color: rgba(233,203,122,.8); box-shadow: 0 0 14px rgba(214,171,94,.2); }
 .fps-status-tag { color: #c8d69a; }
 .fps-bottom-stats { display: flex; gap: 18px; color: rgba(220,210,192,.64); font: 8px ui-monospace, monospace; text-shadow: 0 1px 3px #000; }
+.fps-passive-hud { color: #dfbd80; }
+.fps-skill-details { position: absolute; z-index: 12; right: 14px; bottom: 118px; display: grid; gap: 7px; width: min(380px, calc(100vw - 28px)); border: 1px solid rgba(193,151,88,.56); background: rgba(15,13,13,.96); padding: 12px 38px 12px 13px; box-shadow: 0 10px 30px rgba(0,0,0,.58); color: #d8cebd; }
+.fps-skill-details > button { position: absolute; top: 6px; right: 6px; width: 26px; height: 26px; border: 1px solid rgba(255,255,255,.18); background: #211d1b; color: #e0d3bf; font-size: 16px; }
+.fps-skill-details strong { color: #f0d39d; font: bold 12px Georgia, serif; }
+.fps-skill-details span { font: 10px ui-monospace, monospace; line-height: 1.5; }
+.fps-skill-details small { color: #958b7d; font: 8px ui-monospace, monospace; line-height: 1.4; }
 .fps-mobile-hints, .fps-mobile-actions { display: none; }
 
 .fps-overlay-backdrop { position: absolute; z-index: 20; inset: 0; display: grid; place-items: center; padding: max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom)); background: rgba(2, 2, 4, .76); backdrop-filter: blur(3px); }
@@ -221,6 +233,22 @@ canvas {
 .fps-overlay-content { overflow: auto; padding: 20px 22px 24px; }
 .fps-overlay-copy { margin: 0 0 20px; color: #c3b9a9; font-size: 12px; line-height: 1.65; }
 .fps-overlay-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.fps-skill-upgrade { color: #e5ddcf; }
+.fps-skill-upgrade .fps-overlay-copy { margin-bottom: 12px; }
+.fps-passive-note { display: grid; gap: 4px; margin: 0 0 15px; padding: 10px 12px; border: 1px solid rgba(192,145,80,.28); background: rgba(16,14,13,.76); }
+.fps-passive-note b { color: #e3bd7d; font: bold 11px Georgia, serif; }
+.fps-passive-note span { color: #a69c8b; font-size: 10px; line-height: 1.5; }
+.fps-skill-choice-grid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; }
+.fps-skill-choice { display: grid; align-content: start; gap: 7px; min-width: 0; min-height: 180px; border: 1px solid #554534; background: linear-gradient(155deg, rgba(44,36,28,.92), rgba(15,14,16,.97)); padding: 13px; color: #e9e0d2; text-align: left; cursor: pointer; }
+.fps-skill-choice:hover { border-color: #d3a462; background: linear-gradient(155deg, rgba(62,47,33,.96), rgba(18,16,17,.98)); }
+.fps-skill-choice-role { color: #c69c60; font: bold 8px ui-monospace, monospace; letter-spacing: .12em; }
+.fps-skill-choice strong { color: #f1e4ce; font: bold 17px Georgia, serif; }
+.fps-skill-choice-rank { color: #b8a58b; font: 9px ui-monospace, monospace; }
+.fps-skill-choice-copy { color: #a79e91; font: 10px ui-monospace, monospace; line-height: 1.5; }
+.fps-skill-choice-preview { margin-top: auto; color: #9fd5c7; font: 9px ui-monospace, monospace; }
+.fps-skill-choice-cost { color: #8c8579; font: 8px ui-monospace, monospace; }
+.fps-skill-mastered { margin: 16px 0; color: #d5ba84; font-size: 11px; line-height: 1.6; }
+.fps-skill-later { margin-top: 14px; }
 .fps-inventory-root { color: #e4dacb; }
 .fps-inventory-tabs { position: sticky; z-index: 5; top: -20px; display: flex; gap: 6px; margin: -20px -22px 16px; border-bottom: 1px solid #443a31; background: rgba(15,14,16,.98); padding: 10px 22px 0; }
 .fps-inventory-tabs button { min-height: 38px; border: 1px solid transparent; border-bottom: 0; background: transparent; color: #a99b87; padding: 0 14px; font: 10px ui-monospace, monospace; cursor: pointer; touch-action: manipulation; }
@@ -363,12 +391,15 @@ canvas {
   .fps-action-card { min-width: 92px; flex-basis: 92px; padding: 6px 7px; }
   .fps-action-card strong { font-size: 10px; }
   .fps-mobile-hints { position: absolute; inset: auto 0 12%; display: flex; justify-content: space-between; padding: 0 6%; color: rgba(231,224,210,.3); font: 8px ui-monospace, monospace; letter-spacing: .14em; pointer-events: none; }
-  .fps-mobile-actions { position: absolute; z-index: 6; right: max(10px, env(safe-area-inset-right)); bottom: max(14px, env(safe-area-inset-bottom)); display: grid; grid-template-columns: repeat(2, 54px); gap: 6px; pointer-events: auto; }
-  .fps-mobile-actions button { min-width: 54px; min-height: 48px; border: 1px solid rgba(226,209,178,.4); background: rgba(23,18,18,.75); color: #f0e3d0; font: bold 9px ui-monospace, monospace; touch-action: none; }
+  .fps-mobile-actions { position: absolute; z-index: 6; right: max(10px, env(safe-area-inset-right)); bottom: max(14px, env(safe-area-inset-bottom)); display: grid; grid-template-columns: repeat(3, 48px); gap: 6px; pointer-events: auto; }
+  .fps-mobile-actions button { min-width: 48px; min-height: 44px; border: 1px solid rgba(226,209,178,.4); background: rgba(23,18,18,.75); color: #f0e3d0; font: bold 9px ui-monospace, monospace; touch-action: none; }
   .fps-mobile-actions .fps-mobile-primary { grid-column: 1 / -1; min-height: 56px; background: rgba(101,54,36,.9); border-color: #c08457; font-size: 11px; }
-  .fps-mobile-actions .fps-mobile-skill { grid-column: 1 / -1; min-height: 44px; border-color: rgba(107,173,197,.6); }
+  .fps-mobile-actions .fps-mobile-skill-slot { border-color: rgba(107,173,197,.6); color: #cce5e9; }
+  .fps-mobile-actions .fps-mobile-skill-slot:disabled { opacity: .45; }
+  .fps-mobile-actions button:disabled { cursor: not-allowed; }
   .fps-interact-prompt { bottom: 30%; max-width: 80vw; white-space: normal; }
   .fps-toast { top: 25%; max-width: 80vw; }
+  .fps-skill-details { bottom: 210px; right: 8px; width: min(330px, calc(100vw - 16px)); }
 }
 
 @media (max-width: 560px) {
@@ -412,6 +443,8 @@ canvas {
   .fps-item-actions { grid-column: 2; display: flex; }
   .fps-control-list { grid-template-columns: 1fr; }
   .fps-control-list b { text-align: left; padding-top: 0; border-bottom: 1px solid #302c29; }
+  .fps-skill-choice-grid { grid-template-columns: 1fr; }
+  .fps-skill-choice { min-height: 144px; }
 }
 
 @media (min-width: 801px) and (max-width: 1120px) {
