@@ -14,6 +14,8 @@ import SkillUpgradeScreen from './components/SkillUpgradeScreen';
 import { getClassSkillKit } from './data/classSkillKits';
 import { classPassiveStackSummary } from './player/ClassPassives';
 import { getClassSkillUnlockLevel, getRankedAbility, getSkillRank } from './player/SkillProgression';
+import { isDualWieldLoadout, isShieldItem } from './services/equipmentRules';
+import { abilityStaminaCost } from './combat/CombatMastery';
 
 const CLASS_IDS = Object.keys(CLASSES) as ClassType[];
 const App: React.FC = () => {
@@ -196,6 +198,7 @@ const App: React.FC = () => {
           <span>Secondary attack</span><b>Right Mouse · hold to charge where supported</b>
           <span>Class skills</span><b>1–4</b>
           <span>Sprint / dodge</span><b>Shift / Space</b>
+          <span>Shield parry</span><b>Q · shield required</b>
           <span>Interact / inventory / map</span><b>E / I / Tab</b>
           <span>Pause</span><b>Esc</b>
         </div>
@@ -210,7 +213,7 @@ const App: React.FC = () => {
           </select>
         </label>
         <p className="fps-muted">Reduced lowers ordinary particle count and brightness. Off hides combat effects. Guardian attack warnings remain visible in every mode.</p>
-        <p className="fps-muted">On touch screens, drag the left side of the view to move and the right side to look. Use the buttons in the lower-right corner for attacks and dodge.</p>
+        <p className="fps-muted">On touch screens, drag the left side of the view to move and the right side to look. Use the buttons in the lower-right corner for attacks, dodge, and shield parry.</p>
       </section>
     </main>
   );
@@ -219,8 +222,33 @@ const App: React.FC = () => {
   if (!runtime || !snapshot) return null;
   const player = snapshot.player;
   const target = snapshot.targetEnemy;
+  const hasShield = isShieldItem(player.equipment.offHand);
   const hpPercent = Math.max(0, Math.min(100, player.stats.hp / snapshot.derivedStats.maxHealth * 100));
   const mpPercent = snapshot.derivedStats.maxMana > 0 ? Math.max(0, Math.min(100, player.stats.mp / snapshot.derivedStats.maxMana * 100)) : 0;
+  const staminaPercent = Math.max(0, Math.min(100, (player.stats.stamina ?? snapshot.derivedStats.maxStamina) / snapshot.derivedStats.maxStamina * 100));
+  const defenseLabel = snapshot.parryWindowSeconds > 0 ? 'PARRY OPEN · ' + snapshot.parryWindowSeconds.toFixed(1) + 's'
+    : snapshot.parryRecoverySeconds > 0 ? 'PARRY RECOVERY · ' + snapshot.parryRecoverySeconds.toFixed(1) + 's'
+      : snapshot.guarding ? 'ASPIS GUARDING · 9 STAMINA/S'
+        : hasShield ? 'GUARD RMB · PARRY Q · 18 STAMINA' : 'DODGE SPACE · 22 STAMINA';
+  const classSkillIds = new Set(CLASS_ABILITY_LOADOUT[player.classId].skillSlots);
+  const actionStaminaCost = (ability: NonNullable<ReturnType<typeof getAbility>>): number | string => {
+    if (classSkillIds.has(ability.id)) return 0;
+    const mainHand = abilityStaminaCost(ability, player, 'mainHand');
+    if (!mainHand) return 0;
+    if (ability.kind === 'MELEE' && isDualWieldLoadout(player.equipment)) {
+      const offHand = abilityStaminaCost(ability, player, 'offHand');
+      if (offHand !== mainHand) {
+        const format = (value: number) => Number.isInteger(value) ? String(value) : value.toFixed(1);
+        return format(Math.min(mainHand, offHand)) + '–' + format(Math.max(mainHand, offHand));
+      }
+    }
+    return mainHand;
+  };
+  const staminaCostLabel = (ability: NonNullable<ReturnType<typeof getAbility>>) => {
+    const cost = actionStaminaCost(ability);
+    if (!cost) return 'No stamina cost';
+    return (typeof cost === 'number' ? Number.isInteger(cost) ? String(cost) : cost.toFixed(1) : cost) + ' STA';
+  };
   const xpNeeded = 20 + player.stats.level * 20;
   const xpPercent = Math.max(0, Math.min(100, player.stats.xp / xpNeeded * 100));
   const primary = getAbility(snapshot.primaryAbilityId)!;
@@ -254,6 +282,8 @@ const App: React.FC = () => {
           <div className="fps-player-title"><span className="fps-player-glyph">{classMark(player.classId)}</span><span>{player.name}</span><small>LV {player.stats.level}</small></div>
           <div className="fps-resource-row"><span>HP</span><div className="fps-bar"><i className="fps-health-bar" style={{ width: hpPercent + '%' }} /></div><b>{Math.ceil(player.stats.hp)}/{Math.ceil(snapshot.derivedStats.maxHealth)}</b></div>
           <div className="fps-resource-row"><span>MP</span><div className="fps-bar"><i className="fps-mana-bar" style={{ width: mpPercent + '%' }} /></div><b>{Math.floor(player.stats.mp)}/{Math.floor(snapshot.derivedStats.maxMana)}</b></div>
+          <div className="fps-resource-row"><span>STA</span><div className="fps-bar"><i className="fps-stamina-bar" style={{ width: staminaPercent + '%' }} /></div><b>{Math.floor(player.stats.stamina ?? snapshot.derivedStats.maxStamina)}/{Math.floor(snapshot.derivedStats.maxStamina)}</b></div>
+          <div className="fps-defense-hint">{defenseLabel}</div>
           <div className="fps-resource-row fps-xp-row"><span>XP</span><div className="fps-bar"><i className="fps-xp-bar" style={{ width: xpPercent + '%' }} /></div><b>{player.stats.xp}/{xpNeeded}</b></div>
         </div>
         <div className="fps-floor-label">FLOOR {snapshot.world.level}<span>{biomeName(snapshot.world.biome)}</span></div>
@@ -271,6 +301,10 @@ const App: React.FC = () => {
       {target && <div className="fps-target-panel">
         <div><span>{target.isBoss ? 'GUARDIAN' : 'HOSTILE'}</span><strong>{target.name}</strong></div>
         <div className="fps-target-health"><i style={{ width: Math.max(0, target.health / target.maxHealth * 100) + '%' }} /></div>
+        {target.maxPoise !== undefined && target.maxPoise > 0 && <><div className="fps-target-meter-label"><span>POISE</span><b>{Math.ceil(target.poise ?? target.maxPoise)}/{Math.ceil(target.maxPoise)}</b></div><div className="fps-target-poise"><i style={{ width: Math.max(0, Math.min(100, (target.poise ?? target.maxPoise) / target.maxPoise * 100)) + '%' }} /></div></>}
+      </div>}
+      {snapshot.incomingAttacks.length > 0 && <div className="fps-attack-read" role="status" aria-label="Incoming attacks">
+        {snapshot.incomingAttacks.map(attack => <div key={attack.id} className={attack.parryable ? 'fps-attack-parryable' : 'fps-attack-unparryable'}><b>{attack.direction}</b><strong>{attack.name}</strong><span>{attack.parryable ? 'Q PARRY' : 'DODGE / BLOCK'} · {attack.seconds.toFixed(1)}s</span></div>)}
       </div>}
       {snapshot.prompt && <div className="fps-interact-prompt">{snapshot.prompt}</div>}
       {snapshot.toast && <div className="fps-toast" role="status">{snapshot.toast}</div>}
@@ -280,8 +314,9 @@ const App: React.FC = () => {
       <footer className="fps-bottom-hud">
         <div className="fps-hud-hint">WASD MOVE · MOUSE LOOK · CLICK VIEW TO CAPTURE</div>
         <div className="fps-action-bar" aria-label="Combat actions">
-          <div className="fps-action-card" title={abilityTooltip(primary)}><kbd>LMB</kbd><strong>{primary.name}</strong><small>{player.equipment.mainHand?.name ?? 'Unarmed'}</small><small className={snapshot.primaryCooldown > 0 ? 'fps-cooldown-active' : ''}>{snapshot.primaryCooldown > 0 ? snapshot.primaryCooldown.toFixed(1) + 's cooldown' : primary.kind === 'MELEE' ? 'Melee · Ready' : primary.kind === 'PROJECTILE' ? 'Projectile · Ready' : 'Area · Ready'}</small></div>
-          <div className={'fps-action-card' + (snapshot.guarding ? ' fps-guarding' : '')} title={abilityTooltip(secondary)}><kbd>RMB</kbd><strong>{secondary.name}</strong><small>{snapshot.guarding ? 'Aspis Guard · Active' : snapshot.secondaryCooldown > 0 ? snapshot.secondaryCooldown.toFixed(1) + 's cooldown' : secondary.chargeMinSeconds ? 'Hold to charge' : player.equipment.offHand?.type === 'SHIELD' ? 'Tap Bash · Hold Guard' : 'Ready'}</small></div>
+          <div className="fps-action-card" title={abilityTooltip(primary, { staminaCost: actionStaminaCost(primary) })}><kbd>LMB</kbd><strong>{primary.name}</strong><small>{player.equipment.mainHand?.name ?? 'Unarmed'}</small><small>{staminaCostLabel(primary)}</small><small className={snapshot.primaryCooldown > 0 ? 'fps-cooldown-active' : ''}>{snapshot.primaryCooldown > 0 ? snapshot.primaryCooldown.toFixed(1) + 's cooldown' : primary.kind === 'MELEE' ? 'Melee · Ready' : primary.kind === 'PROJECTILE' ? 'Projectile · Ready' : 'Area · Ready'}</small></div>
+          <div className={'fps-action-card' + (snapshot.guarding ? ' fps-guarding' : '')} title={abilityTooltip(secondary, { staminaCost: actionStaminaCost(secondary) })}><kbd>RMB</kbd><strong>{secondary.name}</strong><small>{staminaCostLabel(secondary)}</small><small>{snapshot.guarding ? 'Aspis Guard · Active' : snapshot.secondaryCooldown > 0 ? snapshot.secondaryCooldown.toFixed(1) + 's cooldown' : secondary.chargeMinSeconds ? 'Hold to charge' : hasShield ? 'Tap Bash · Hold Guard' : 'Ready'}</small></div>
+          {hasShield && <div className={'fps-action-card fps-parry-card' + (snapshot.parryWindowSeconds > 0 ? ' fps-parry-open' : '')} title="Timed shield parry. Costs 18 stamina; only marked attacks can be parried."><kbd>Q</kbd><strong>Parry</strong><small>{snapshot.parryWindowSeconds > 0 ? 'Window open' : snapshot.parryRecoverySeconds > 0 ? 'Recovery' : '18 stamina · Ready'}</small></div>}
           {skills.map((skill, index) => {
             if (!skill) return <div key={'empty-skill-' + index} className="fps-action-card fps-action-card-empty" title={'Skill slot ' + (index + 1) + ' is empty'}><kbd>{index + 1}</kbd><strong>Empty</strong><small>Skill slot</small></div>;
             const tooltip = skill.unlocked
@@ -292,7 +327,8 @@ const App: React.FC = () => {
                 : 'Unlock · Lv ' + (skill.unlockLevel ?? '?');
             const availability = !skill.unlocked ? 'Locked'
               : snapshot.skillCooldowns[index] > 0 ? snapshot.skillCooldowns[index].toFixed(1) + 's cooldown'
-                : skill.effectiveManaCost.toFixed(skill.effectiveManaCost % 1 ? 1 : 0) + ' MP · Ready';
+                : skill.ability.staminaCost ? skill.ability.staminaCost + ' STA · ' + skill.effectiveManaCost.toFixed(skill.effectiveManaCost % 1 ? 1 : 0) + ' MP'
+                  : skill.effectiveManaCost.toFixed(skill.effectiveManaCost % 1 ? 1 : 0) + ' MP · Ready';
             return <button key={skill.ability.id} className={'fps-action-card fps-skill-card' + (!skill.unlocked ? ' fps-skill-locked' : '')} title={tooltip} disabled={!skill.unlocked} onMouseEnter={() => setSkillDetailsIndex(index)} onFocus={() => setSkillDetailsIndex(index)} onClick={() => { setSkillDetailsIndex(index); inputRef.current?.triggerSkill(index + 1); }}><kbd>{index + 1}</kbd><strong>{skill.ability.name}</strong><small>{slotLabel}</small><small className={snapshot.skillCooldowns[index] > 0 ? 'fps-cooldown-active' : ''}>{availability}</small></button>;
           })}
         </div>
@@ -304,6 +340,7 @@ const App: React.FC = () => {
         <button aria-label="Open inventory" onPointerDown={event => { event.preventDefault(); inputRef.current?.triggerInventory(); }}>BAG</button>
         <button aria-label="Interact" onPointerDown={event => { event.preventDefault(); inputRef.current?.triggerInteract(); }}>E</button>
         <button aria-label="Dodge" onPointerDown={event => { event.preventDefault(); inputRef.current?.triggerDodge(); }}>DODGE</button>
+        {hasShield && <button aria-label="Shield parry" onPointerDown={event => { event.preventDefault(); inputRef.current?.triggerParry(); }}>PARRY</button>}
         <button className="fps-mobile-primary" aria-label="Primary Attack" onPointerDown={event => { event.preventDefault(); inputRef.current?.triggerPrimary(); }}>ATTACK</button>
         <button aria-label="Secondary Attack" onPointerDown={event => { event.preventDefault(); inputRef.current?.beginSecondary(); }} onPointerUp={event => { event.preventDefault(); inputRef.current?.endSecondary(); }} onPointerCancel={() => inputRef.current?.endSecondary()}>RMB</button>
         {skills.map((skill, index) => skill && <button key={'touch-skill-' + index} className="fps-mobile-skill-slot" aria-label={skill.unlocked ? skill.ability.name + ', rank ' + skill.rank : skill.ability.name + ', ' + skill.lockMessage} title={skill.unlocked ? abilityTooltip(skill.ability, { manaCost: skill.effectiveManaCost, cooldownSeconds: skill.effectiveCooldown }) + ` Rank ${skill.rank}.` : skill.lockMessage} disabled={!skill.unlocked} onPointerDown={event => { event.preventDefault(); setSkillDetailsIndex(index); inputRef.current?.triggerSkill(index + 1); }}>{index + 1}</button>)}

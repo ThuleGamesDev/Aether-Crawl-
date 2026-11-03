@@ -6,7 +6,7 @@ import { updateEnemyBrains } from '../enemies/EnemyBrain';
 import { isVisibleProjectileImpact, MAX_PROJECTILE_PIERCE, updateProjectiles, type ProjectileImpact } from '../combat/ProjectileSystem';
 import { applyEnemyDamage, calculateIncomingDamage, calculatePlayerDamage, getAreaTargetIds, getMeleeTargetIds, projectileDirection, resolveAreaAttack, resolveChainAttack, resolveMeleeAttack } from '../combat/DamageSystem';
 import { CLASS_ABILITY_LOADOUT, getAbility, getSkillAbilityId } from '../combat/AbilityRegistry';
-import { getEnemyAttackDefinition } from '../data/enemyAttacks';
+import { getEnemyAttackDefinition, isEnemyAttackParryable } from '../data/enemyAttacks';
 import { getEnemyAttackTelegraphDescriptor, getGuardianTelegraphEffect } from '../data/enemyAttackTelegraph';
 import { getFloorGuardianDefinition } from '../data/mazeContent';
 import { createPlayerControllerState, updatePlayerController, type PlayerControllerState } from '../player/PlayerController';
@@ -27,6 +27,8 @@ import { consumeUniqueCharge, resolveUniqueTrigger, tickUniqueEffects } from '..
 import { applySkillUpgrade, getClassSkillUnlockLevel, getRankedAbility, getSkillRank, getSkillUpgradeChoices, isClassSkillSlotUnlocked, normalizeSkillProgression, type SkillUpgradeOption } from '../player/SkillProgression';
 import { normalizeClassPassiveState, recordClassBlock, recordClassDodge, recordClassHealing, recordClassKill, recordClassMeleeAction, recordMarkedPreyHit, resolveClassPassiveAction, tickClassPassiveState } from '../player/ClassPassives';
 import type { EquipmentTransactionResult } from '../services/equipmentRules';
+import { isShieldItem } from '../services/equipmentRules';
+import { abilityPoiseDamage, applyEnemyPoiseDamage, enemyAttackContainsPoint, getEnemyPoiseProfile, initializeEnemyPoise, STAMINA_RULES, tickEnemyPoise } from '../combat/CombatMastery';
 
 export interface FPSGameSnapshot {
   player: PlayerCharacter;
@@ -55,6 +57,9 @@ export interface FPSGameSnapshot {
   roomOffer: RoomOffer | null;
   prompt: string | null;
   targetEnemy: WorldEnemy | null;
+  incomingAttacks: Array<{ id: string; name: string; seconds: number; parryable: boolean; direction: 'FRONT' | 'LEFT' | 'RIGHT' | 'BEHIND' }>;
+  parryWindowSeconds: number;
+  parryRecoverySeconds: number;
   toast: string;
   log: string[];
 }
@@ -109,7 +114,7 @@ export class FPSGameRuntime {
       this.player = refreshPlayerDerivedCaps(normalizeSkillProgression(clonePlayer(save.player)));
       this.player = { ...this.player, classPassiveState: normalizeClassPassiveState(this.player.classId, this.player.classPassiveState) };
       this.world = cloneWorld(save.world);
-      this.enemies = save.enemies.map(enemy => ({ ...enemy, position: { ...enemy.position } }));
+      this.enemies = save.enemies.map(enemy => initializeEnemyPoise({ ...enemy, position: { ...enemy.position } }));
       this.loot = save.loot.map(drop => ({ ...drop, position: { ...drop.position }, item: { ...drop.item, affixes: [...drop.item.affixes] } }));
       this.combat.restore(save.combat);
     } else {
@@ -117,7 +122,7 @@ export class FPSGameRuntime {
       const yaw = spawnFacingAngle(this.world.map, { x: 1, y: 1 });
       this.player = createPlayerCharacter(classId, { x: 1.5, y: 0, z: 1.5 });
       this.player.rotation.yaw = yaw;
-      this.enemies = createFloorEnemies(this.world);
+      this.enemies = createFloorEnemies(this.world).map(initializeEnemyPoise);
       this.addLog('Enter the Labyrinth beneath Knossos. A guardian seals every descent.');
     }
     this.random = floorRandom(this.world.seed ^ 0xA37E2);
@@ -167,6 +172,14 @@ export class FPSGameRuntime {
     this.controllerState = movement.state;
     this.isMoving = movement.isMoving;
     this.cameraBob = movement.cameraBob;
+    if (movement.dodgeFailed) this.addToast(this.player.stats.stamina! < STAMINA_RULES.dodgeCost ? 'Not enough stamina to dodge.' : 'The dodge path is blocked.');
+    if (movement.parryFailure === 'NO_SHIELD') this.addToast('A shield is required to parry.');
+    else if (movement.parryFailure === 'NO_STAMINA') this.addToast('Not enough stamina to parry.');
+    else if (movement.parryFailure === 'RECOVERY') this.addToast('Parry is recovering.');
+    if (movement.parryStarted) {
+      this.addToast('Parry window open.');
+      this.visualEvents.push({ kind: 'impact', effectId: 'shield_impact', position: { x: this.player.position.x, y: 0.7, z: this.player.position.z }, color: '#70d7c6', scale: 0.52, sound: 'shield', surface: 'metal', sourceId: 'shield_parry' });
+    }
     if (movement.dodgeStarted) {
       this.setViewmodelEvent('DODGE', 0.22);
       this.player = recordClassDodge(this.player);
@@ -192,6 +205,7 @@ export class FPSGameRuntime {
       }
     }
 
+    this.enemies = this.enemies.map(enemy => tickEnemyPoise(enemy, dt));
     const enemyUpdate = updateEnemyBrains(this.enemies, this.world.map, this.player, dt);
     this.enemies = enemyUpdate.enemies;
     for (const enemyId of enemyUpdate.telegraphs) {
@@ -368,6 +382,11 @@ export class FPSGameRuntime {
       const counterIds = new Set(counterTargets.map(enemy => enemy.id));
       if (counterIds.size) this.enemies = this.enemies.map(enemy => {
         if (!counterIds.has(enemy.id)) return enemy;
+        const profile = getEnemyPoiseProfile(enemy);
+        if (profile) {
+          const maximum = enemy.maxPoise ?? profile.maximum;
+          return applyEnemyPoiseDamage(enemy, maximum / (enemy.isBoss ? profile.bossResistance : 1) + 1).enemy;
+        }
         const seconds = enemy.isBoss ? 0.2 : 0.42;
         const effect = { statusId: 'STAGGER' as const, durationSeconds: seconds, magnitude: seconds };
         return { ...enemy, state: 'STAGGER', stateTimer: seconds, activeAttackId: undefined, telegraphPosition: undefined, statusEffects: applyRealtimeStatus(enemy.statusEffects, effect, ability.id) };
@@ -381,7 +400,7 @@ export class FPSGameRuntime {
     if (ability.kind === 'MELEE') {
       const result = resolveMeleeAttack(this.world.map, this.player, this.enemies, ability, damage);
       this.enemies = result.enemies;
-      this.applyPlayerOnHitEffects(result.hitEnemyIds, ability, damage);
+      this.applyPlayerOnHitEffects(result.hitEnemyIds, ability, damage, action.weaponSlot ?? 'mainHand');
       if (ability.knockbackDistance && result.hitEnemyIds.length) this.knockbackEnemies(result.hitEnemyIds, ability.knockbackDistance);
       if (result.hitEnemyIds.length && !action.classMeleeRecorded) {
         this.player = recordClassMeleeAction(this.player, ability);
@@ -460,13 +479,13 @@ export class FPSGameRuntime {
     const radius = ability.radius ?? 1.6;
     const result = resolveAreaAttack(this.world.map, center.x, center.z, radius, this.enemies, damage, ability.statusDamageBonus);
     this.enemies = result.enemies;
-    this.applyPlayerOnHitEffects(result.hitEnemyIds, ability, damage);
+    this.applyPlayerOnHitEffects(result.hitEnemyIds, ability, damage, action.weaponSlot ?? 'mainHand');
     let chainedHitCount = 0;
     if (ability.chain && result.hitEnemyIds.length) {
       const chain = resolveChainAttack(this.world.map, this.enemies, result.hitEnemyIds, ability.chain.maxJumps, ability.chain.jumpRange, Math.max(1, Math.round(damage * ability.chain.damageMultiplier)));
       this.enemies = chain.enemies;
       chainedHitCount = chain.hitEnemyIds.length;
-      this.applyPlayerOnHitEffects(chain.hitEnemyIds, ability, Math.max(1, Math.round(damage * ability.chain.damageMultiplier)));
+      this.applyPlayerOnHitEffects(chain.hitEnemyIds, ability, Math.max(1, Math.round(damage * ability.chain.damageMultiplier)), action.weaponSlot ?? 'mainHand');
       for (const link of chain.links) {
         const from = this.enemies.find(enemy => enemy.id === link.fromId);
         const to = this.enemies.find(enemy => enemy.id === link.toId);
@@ -534,7 +553,7 @@ export class FPSGameRuntime {
     });
   }
 
-  private applyPlayerOnHitEffects(enemyIds: readonly string[], ability: NonNullable<ReturnType<typeof getAbility>>, hitDamage = ability.damage): void {
+  private applyPlayerOnHitEffects(enemyIds: readonly string[], ability: NonNullable<ReturnType<typeof getAbility>>, hitDamage = ability.damage, weaponSlot: Extract<EquipmentSlot, 'mainHand' | 'offHand'> = 'mainHand'): void {
     const status = ability.onHitStatus ?? (ability.staggerSeconds ? { statusId: 'STAGGER' as const, durationSeconds: ability.staggerSeconds, magnitude: ability.staggerSeconds } : undefined);
     if (!enemyIds.length) return;
     const derived = calculateDerivedStats(this.player);
@@ -545,10 +564,16 @@ export class FPSGameRuntime {
     const aimedTargetId = ability.kind === 'PROJECTILE' ? this.getTargetEnemy()?.id : undefined;
     if (aimedTargetId && enemyIds.includes(aimedTargetId) && ability.id.startsWith('ranger_')) this.player = recordMarkedPreyHit(this.player, aimedTargetId);
     const hitIds = new Set(enemyIds);
+    const poiseDamage = abilityPoiseDamage(ability, this.player, weaponSlot);
+    const broken: WorldEnemy[] = [];
     this.enemies = this.enemies.map(enemy => {
       if (!hitIds.has(enemy.id) || enemy.health <= 0) return enemy;
+      const pilot = Boolean(getEnemyPoiseProfile(enemy));
+      const statusPoiseDamage = status?.statusId === 'STAGGER' ? Math.max(8, status.magnitude * 36) : 0;
+      const poise = pilot ? applyEnemyPoiseDamage(enemy, Math.max(poiseDamage, statusPoiseDamage)) : null;
+      if (poise?.broken) broken.push(poise.enemy);
       let statuses = enemy.statusEffects ?? [];
-      if (status) {
+      if (status && !(pilot && status.statusId === 'STAGGER')) {
         const powered = this.applyUniqueStatusPower(status, derived);
         const tuned = enemy.isBoss && status.statusId === 'STAGGER'
           ? { ...powered, durationSeconds: powered.durationSeconds * 0.62, magnitude: powered.magnitude * 0.62 }
@@ -563,8 +588,12 @@ export class FPSGameRuntime {
         const powered = this.applyUniqueStatusPower({ statusId: proc.statusId, durationSeconds: proc.durationSeconds, magnitude }, derived);
         statuses = applyRealtimeStatus(statuses, powered, 'item_affix');
       }
-      return { ...enemy, statusEffects: statuses };
+      return { ...(poise?.enemy ?? enemy), statusEffects: statuses };
     });
+    for (const enemy of broken) {
+      this.visualEvents.push({ kind: 'impact', effectId: 'stone_shockwave', position: { x: enemy.position.x, y: 0.28, z: enemy.position.z }, color: '#f0d27c', scale: 0.72, sound: 'bronzeImpact', surface: 'metal', sourceId: 'poise_break', ownerId: enemy.id, priority: enemy.isBoss ? 'critical_hit' : 'ordinary_hit' });
+      this.addLog(enemy.name + ' is staggered.');
+    }
   }
 
   private applyPlayerHealing(amount: number, source: string, triggerLaurel = false): number {
@@ -607,10 +636,15 @@ export class FPSGameRuntime {
     for (const impact of impacts) {
       if (!isVisibleProjectileImpact(impact)) continue;
       const owner = impact.playerHit ? this.enemies.find(enemy => enemy.id === impact.ownerEnemyId) : undefined;
+      const enemyAttack = owner ? getEnemyAttackDefinition(owner.attackSetId, impact.abilityId, owner.phase ?? 1) : undefined;
+      const parried = Boolean(impact.playerHit && owner && enemyAttack
+        && isEnemyAttackParryable(owner.attackSetId, impact.abilityId, owner.phase ?? 1)
+        && this.tryResolveShieldParry(owner, enemyAttack));
+      if (parried) continue;
       const dodged = Boolean(impact.playerHit && this.controllerState.invulnerabilitySeconds > 0);
       const blocked = Boolean(impact.playerHit && owner && this.controllerState.guarding && this.isFacingAttacker(owner));
       if (impact.playerHit) {
-        if (dodged) { this.addToast('Attack dodged.'); this.primeMyrmidonCounter(); continue; }
+        if (dodged) { this.addToast('Attack dodged.'); this.consumePerfectDodgeCounter(); continue; }
         if (blocked) {
           this.visualEvents.push({ kind: 'impact', effectId: 'shield_impact', position: { x: this.player.position.x, y: 0.82, z: this.player.position.z }, color: '#e2c074', scale: 0.9, sound: 'shield', surface: 'metal', sourceId: impact.abilityId, ownerId: owner?.id, priority: 'critical_hit' });
         } else {
@@ -660,6 +694,8 @@ export class FPSGameRuntime {
     if (!enemy) return;
     const attack = getEnemyAttackDefinition(enemy.attackSetId, enemy.activeAttackId, enemy.phase ?? 1);
     if (!attack) return;
+    const attackOrigin = { ...enemy.position };
+    const attackYaw = enemy.facingYaw ?? Math.atan2(this.player.position.z - enemy.position.z, this.player.position.x - enemy.position.x);
     if (attack.motion === 'RETREAT') {
       const away = Math.atan2(enemy.position.z - this.player.position.z, enemy.position.x - this.player.position.x);
       const moved = moveWithWallSlide(this.world.map, enemy.position.x, enemy.position.z, Math.cos(away) * (attack.motionSpeed ?? 2.8) * 0.42, Math.sin(away) * (attack.motionSpeed ?? 2.8) * 0.42, enemy.collisionRadius ?? 0.3);
@@ -708,25 +744,15 @@ export class FPSGameRuntime {
     }
 
     const target = attack.shape === 'SIGIL' && enemy.telegraphPosition ? enemy.telegraphPosition : this.player.position;
-    const telegraph = getEnemyAttackTelegraphDescriptor(attack);
-    const dx = target.x - enemy.position.x, dz = target.z - enemy.position.z;
-    const distance = Math.hypot(dx, dz);
-    const hasSight = hasLineOfSight(this.world.map, attack.shape === 'SIGIL' ? target.x : enemy.position.x, attack.shape === 'SIGIL' ? target.z : enemy.position.z, this.player.position.x, this.player.position.z, 0.15);
-    const yaw = enemy.facingYaw ?? Math.atan2(dz, dx);
-    const toPlayer = Math.atan2(this.player.position.z - enemy.position.z, this.player.position.x - enemy.position.x);
-    const deltaAngle = Math.atan2(Math.sin(toPlayer - yaw), Math.cos(toPlayer - yaw));
-    const inRange = distance <= telegraph.radius;
-    const inShape = attack.shape === 'MELEE' || attack.shape === 'CHARGE' || attack.shape === 'CONE'
-      ? inRange && (attack.shape !== 'CONE' && attack.shape !== 'CHARGE' || Math.abs(deltaAngle) <= telegraph.arcRadians / 2)
-      : attack.shape === 'SLAM' || attack.shape === 'RITUAL' ? Math.hypot(this.player.position.x - enemy.position.x, this.player.position.z - enemy.position.z) <= telegraph.radius
-      : attack.shape === 'SIGIL' ? Math.hypot(this.player.position.x - target.x, this.player.position.z - target.z) <= telegraph.radius
-      : attack.shape === 'CURSE' ? distance <= telegraph.radius
-      : false;
+    const lineOrigin = attack.shape === 'SIGIL' ? target : attackOrigin;
+    const hasSight = hasLineOfSight(this.world.map, lineOrigin.x, lineOrigin.z, this.player.position.x, this.player.position.z, 0.15);
+    const inShape = enemyAttackContainsPoint(attack, attackOrigin, attackYaw, this.player.position, target);
     if (!hasSight || !inShape) return;
+    if (this.tryResolveShieldParry(enemy, attack)) return;
     if (this.controllerState.invulnerabilitySeconds > 0) {
       this.visualEvents.push({ kind: 'dodge', position: { x: this.player.position.x, y: 0.35, z: this.player.position.z }, color: '#a2e8ff', scale: 1, sound: 'dodge' });
       this.addToast('Attack dodged.');
-      this.primeMyrmidonCounter();
+      this.consumePerfectDodgeCounter();
       return;
     }
     const blocked = this.controllerState.guarding && this.isFacingAttacker(enemy);
@@ -764,6 +790,31 @@ export class FPSGameRuntime {
     return Math.abs(delta) <= 1.18;
   }
 
+  private tryResolveShieldParry(enemy: WorldEnemy, attack: NonNullable<ReturnType<typeof getEnemyAttackDefinition>>): boolean {
+    if (attack.parryable !== true || !isShieldItem(this.player.equipment.offHand)
+      || this.controllerState.parryWindowSeconds <= 0 || !this.isFacingAttacker(enemy)) return false;
+    this.controllerState = { ...this.controllerState, parryWindowSeconds: 0, guarding: false };
+    const derived = calculateDerivedStats(this.player);
+    this.player = { ...this.player, stats: {
+      ...this.player.stats,
+      stamina: Math.min(derived.maxStamina, (this.player.stats.stamina ?? derived.maxStamina) + 6),
+      staminaRegenDelaySeconds: 0.35,
+    } };
+    const poiseDamage = (enemy.maxPoise ?? getEnemyPoiseProfile(enemy)?.maximum ?? 40) * (enemy.isBoss ? 0.3 : 0.36);
+    let result: WorldEnemy | undefined;
+    this.enemies = this.enemies.map(candidate => {
+      if (candidate.id !== enemy.id || !getEnemyPoiseProfile(candidate)) return candidate;
+      const applied = applyEnemyPoiseDamage(candidate, poiseDamage);
+      result = applied.enemy;
+      return applied.enemy;
+    });
+    this.visualEvents.push({ kind: 'impact', effectId: 'shield_impact', position: { x: this.player.position.x, y: 0.82, z: this.player.position.z }, color: '#70d7c6', scale: 0.95, sound: 'shield', surface: 'metal', sourceId: attack.id, ownerId: enemy.id, priority: enemy.isBoss ? 'critical_hit' : 'ordinary_hit' });
+    if (result?.state === 'STAGGER') this.addToast('Perfect parry. ' + enemy.name + ' is staggered.');
+    else this.addToast('Parried ' + attack.name + '.');
+    this.addLog('Parry: ' + attack.name + '.');
+    return true;
+  }
+
   private resolveUniqueBlock(attacker: WorldEnemy, blockedDamage: number): void {
     const counter = resolveUniqueTrigger(this.player, 'aspis_bronze_gate', 'BLOCK_SUCCESS', blockedDamage);
     if (!counter.activated) return;
@@ -790,11 +841,12 @@ export class FPSGameRuntime {
     this.visualEvents.push({ kind: 'impact', effectId: 'aspis_impact', position: { x: this.player.position.x, y: 0.75, z: this.player.position.z }, color: '#f0d17f', scale: 0.62, sound: 'shield', sourceId: 'unbroken_line' });
   }
 
-  private primeMyrmidonCounter(): void {
-    if (this.player.classId !== 'BARBARIAN') return;
-    this.player = { ...this.player, statusEffects: applyRealtimeStatus(this.player.statusEffects, { statusId: 'COUNTER', durationSeconds: 1.2, magnitude: 0.3 }, 'perfect_dodge') };
+  private consumePerfectDodgeCounter(): void {
+    if (this.controllerState.perfectDodgeWindowSeconds <= 0) return;
+    this.controllerState = { ...this.controllerState, perfectDodgeWindowSeconds: 0 };
+    this.player = { ...this.player, statusEffects: applyRealtimeStatus(this.player.statusEffects, { statusId: 'COUNTER', durationSeconds: STAMINA_RULES.perfectDodgeCounterSeconds, magnitude: STAMINA_RULES.perfectDodgeCounterMagnitude }, 'perfect_dodge') };
     this.visualEvents.push({ kind: 'impact', effectId: 'laurel_light', position: { x: this.player.position.x, y: 0.75, z: this.player.position.z }, color: '#edc875', scale: 0.7 });
-    this.addToast('Perfect dodge — next melee strike gains 30% damage.');
+    this.addToast('Perfect dodge — next melee strike gains 18% damage.');
   }
 
   private processEnemyRewards(): void {
@@ -807,7 +859,7 @@ export class FPSGameRuntime {
           this.visualEvents.push({ kind: 'bossPhase', effectId: 'guardian_sigil', position: { x: enemy.position.x, y: 0.06, z: enemy.position.z }, color: '#d34e4e', scale: 1.4, sound: 'bossPhase', sourceId: 'warden_phase_two', ownerId: enemy.id, priority: 'critical_hit' });
           this.addLog('The Threadbound Warden breaks its first seal. Red sigils spread through the chamber.');
           this.addToast('Threadbound Warden · Phase II');
-          return { ...enemy, phase: 2, phaseTransitioned: true, activeAttackId: undefined, telegraphPosition: undefined, state: 'RECOVER', stateTimer: 0.72, attackCooldown: 0.55 };
+          return { ...enemy, phase: 2, phaseTransitioned: true, activeAttackId: undefined, telegraphPosition: undefined, state: 'RECOVER', stateTimer: 0.72, attackCooldown: 0.55, phaseTransitionLockSeconds: 0.72, poise: enemy.maxPoise ?? enemy.poise, poiseBreakRecoverySeconds: 0, staggerImmunitySeconds: Math.max(enemy.staggerImmunitySeconds ?? 0, 0.85) };
         }
         return enemy;
       }
@@ -999,7 +1051,7 @@ export class FPSGameRuntime {
     const yaw = spawnFacingAngle(nextWorld.map, { x: 1, y: 1 });
     this.world = { ...markExplored(nextWorld, 1.5, 1.5), worldRevision: this.world.worldRevision + 1 };
     this.player = { ...this.player, position: { x: 1.5, y: 0, z: 1.5 }, rotation: { yaw, pitch: this.player.rotation.pitch } };
-    this.enemies = createFloorEnemies(this.world);
+    this.enemies = createFloorEnemies(this.world).map(initializeEnemyPoise);
     this.projectiles = [];
     this.loot = [];
     this.roomOffer = null;
@@ -1077,7 +1129,7 @@ export class FPSGameRuntime {
   /** Cancels held charge/guard input when the game yields to an overlay or browser state change. */
   cancelHeldActions(): void {
     this.chargeStartedAt = null;
-    this.controllerState = { ...this.controllerState, guarding: false };
+    this.controllerState = { ...this.controllerState, guarding: false, guardExhausted: false };
   }
 
   moveItem(instanceId: string, x: number, y: number): boolean {
@@ -1201,6 +1253,19 @@ export class FPSGameRuntime {
 
   getSnapshot(): FPSGameSnapshot {
     const loadout = CLASS_ABILITY_LOADOUT[this.player.classId];
+    const incomingAttacks = this.enemies.filter(enemy => enemy.health > 0 && enemy.state === 'ATTACK_WINDUP'
+      && Math.hypot(enemy.position.x - this.player.position.x, enemy.position.z - this.player.position.z) <= 10
+      && hasLineOfSight(this.world.map, enemy.position.x, enemy.position.z, this.player.position.x, this.player.position.z, 0.15))
+      .map(enemy => {
+        const attack = getEnemyAttackDefinition(enemy.attackSetId, enemy.activeAttackId, enemy.phase ?? 1);
+        const toward = Math.atan2(enemy.position.z - this.player.position.z, enemy.position.x - this.player.position.x);
+        const delta = Math.atan2(Math.sin(toward - this.player.rotation.yaw), Math.cos(toward - this.player.rotation.yaw));
+        const abs = Math.abs(delta);
+        const direction: 'FRONT' | 'LEFT' | 'RIGHT' | 'BEHIND' = abs < 0.48 ? 'FRONT' : abs > 2.35 ? 'BEHIND' : delta > 0 ? 'RIGHT' : 'LEFT';
+        return { id: enemy.id, name: attack?.name ?? enemy.name, seconds: Math.max(0, enemy.stateTimer), parryable: attack?.parryable === true, direction };
+      })
+      .sort((a, b) => a.seconds - b.seconds || a.id.localeCompare(b.id))
+      .slice(0, 3);
     return {
       player: this.player,
       derivedStats: calculateDerivedStats(this.player),
@@ -1228,6 +1293,9 @@ export class FPSGameRuntime {
       roomOffer: this.roomOffer,
       prompt: this.paused || this.inventoryOpen || this.mapOpen || this.levelUpOpen || this.roomOffer ? null : this.getPrompt(),
       targetEnemy: this.getTargetEnemy(),
+      incomingAttacks,
+      parryWindowSeconds: this.controllerState.parryWindowSeconds,
+      parryRecoverySeconds: this.controllerState.parryRecoverySeconds,
       toast: this.toast,
       log: [...this.logs],
     };

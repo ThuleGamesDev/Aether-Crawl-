@@ -44,6 +44,14 @@ Implemented as a focused maintenance wave on the post-R5B `main`. Resolves confi
 
 Implemented on `codex/maze-of-the-minotaur-fps-r6a`. New FPS floors use a deterministic 23×23 chamber layout with wide routes, optional narrow passages, pillared combat spaces, a single controlled Guardian entrance, wall mounted art, and bounded local light sources. Legacy generation remains available to old callers, and saved R4 maps load without regeneration or a save version change. See [R6A implementation notes](R6A_IMPLEMENTATION.md).
 
+## FPS-R6B — Equipment, dual wield, and two-hand viewmodels
+
+Merged to `main` via PR #24. Adds canonical equipment slots, validated shield/focus/two-hand rules, hand-specific melee resolution, and local first-person hand presentation while retaining version-5 saves. See [R6B implementation notes](R6B_IMPLEMENTATION.md).
+
+## FPS-R6C — Combat mastery: stamina, parry, poise, and enemy reads
+
+Implemented on `codex/maze-of-the-minotaur-fps-r6c`, prepared as a focused pull request. Adds bounded stamina and recovery rules, collision-aware dodge windows, explicit shield-parry attacks, pilot-enemy poise breaks, and readable incoming-attack cues for the Cretan Cave Rat, Bronze Revenant, Bull-Cult Enforcer, and Bronze Gatekeeper. Version-5 saves remain compatible through optional validated fields. See [R6C implementation notes](R6C_IMPLEMENTATION.md).
+
 ## FPS-R6 — Floors 1–5 Action-RPG Vertical Slice & Quality Pass
 
 Next: carry out the user's first-person playtest of floors 1–5 across movement, enemy telegraphs, loot, class progression, room events, save/load, and Guardian arenas. Keep content expansion bounded until the full progression loop is integrated.

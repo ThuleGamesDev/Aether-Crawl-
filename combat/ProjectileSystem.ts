@@ -2,6 +2,7 @@ import type { StatusApplication, Vector3Like, WorldEnemy, WorldProjectile } from
 import { applyEnemyDamage } from './DamageSystem';
 import { isWorldSolid } from '../world/CollisionWorld';
 import { applyRealtimeStatus } from './StatusSystem';
+import { getEnemyPoiseProfile } from './CombatMastery';
 import { getEnemyVfxSurface, getTileVfxSurface, type VFXSurface } from '../presentation/vfxDefinitions';
 
 export interface ProjectileImpact {
@@ -66,7 +67,7 @@ export function updateProjectiles(projectiles: WorldProjectile[], enemies: World
         nextEnemies = nextEnemies.map(enemy => {
           if (enemy.id !== target.id) return enemy;
           let hit = applyEnemyDamage(enemy, current.damage).enemy;
-          if (current.statusEffect) {
+          if (current.statusEffect && !(current.statusEffect.statusId === 'STAGGER' && getEnemyPoiseProfile(target))) {
             const bossAdjusted = target.isBoss && (current.statusEffect.statusId === 'STAGGER' || current.statusEffect.statusId === 'CURSE')
               ? { ...current.statusEffect, durationSeconds: current.statusEffect.durationSeconds * 0.5, magnitude: current.statusEffect.magnitude * 0.5 }
               : current.statusEffect;

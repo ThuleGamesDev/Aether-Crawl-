@@ -13,6 +13,7 @@ export interface InputFrame {
   skillPressed: boolean;
   skillSlot: number | null;
   dodgePressed: boolean;
+  parryPressed?: boolean;
   interactPressed: boolean;
   inventoryPressed: boolean;
   mapPressed: boolean;
@@ -160,7 +161,7 @@ export class InputSystem {
     if (!this.keys.has(key)) {
       this.keys.add(key);
       const action: Record<string, string> = {
-        KeyE: 'interact', KeyI: 'inventory', Tab: 'map', Escape: 'pause', Space: 'dodge',
+        KeyE: 'interact', KeyI: 'inventory', Tab: 'map', Escape: 'pause', Space: 'dodge', KeyQ: 'parry',
         Digit1: 'skill1', Digit2: 'skill2', Digit3: 'skill3', Digit4: 'skill4',
       };
       if (action[key]) this.pressed.add(action[key]);
@@ -222,6 +223,7 @@ export class InputSystem {
       skillPressed: [1, 2, 3, 4].some(slot => this.pressed.has('skill' + slot)),
       skillSlot: [1, 2, 3, 4].find(slot => this.pressed.has('skill' + slot)) ?? null,
       dodgePressed: this.pressed.has('dodge'),
+      parryPressed: this.pressed.has('parry'),
       interactPressed: this.pressed.has('interact'),
       inventoryPressed: this.pressed.has('inventory'),
       mapPressed: this.pressed.has('map'),
@@ -237,6 +239,7 @@ export class InputSystem {
   triggerPrimary(): void { this.pressed.add('primary'); }
   triggerSkill(slot = 1): void { if (slot >= 1 && slot <= 4) this.pressed.add('skill' + slot); }
   triggerDodge(): void { this.pressed.add('dodge'); }
+  triggerParry(): void { this.pressed.add('parry'); }
   triggerInteract(): void { this.pressed.add('interact'); }
   triggerInventory(): void { this.pressed.add('inventory'); }
   triggerMap(): void { this.pressed.add('map'); }

@@ -9,6 +9,7 @@ import { getItemBase } from '../data/itemBases';
 import { getClassSkill } from '../data/classSkillKits';
 import { isValidEffectiveActionSpeedMultiplier } from '../combat/actionSpeed';
 import { isDualWieldLoadout, isTwoHandedItem, validateEquipmentLoadout } from './equipmentRules';
+import { getEnemyAttackSet, LEGACY_ENEMY_ATTACK_ALIASES } from '../data/enemyAttacks';
 
 export const FPS_SAVE_KEY = 'aether_crawl_fps_r1_save_v1';
 export const FPS_SAVE_VERSION = 1;
@@ -89,6 +90,9 @@ function isPlayerCharacter(value: unknown, allowDerivedCaps = false, requireBase
   if (!isRecord(value.stats)) return false;
   const statValues = ['hp', 'maxHp', 'mp', 'maxMp', 'str', 'dex', 'int', 'xp', 'level', 'damageBonus', 'armor'];
   if (!statValues.every(key => Number.isFinite(value.stats[key]))) return false;
+  if (value.stats.baseMaxStamina !== undefined && (!Number.isFinite(value.stats.baseMaxStamina) || value.stats.baseMaxStamina < 1 || value.stats.baseMaxStamina > 100_000)) return false;
+  if (value.stats.stamina !== undefined && (!Number.isFinite(value.stats.stamina) || value.stats.stamina < 0 || value.stats.stamina > 100_000)) return false;
+  if (value.stats.staminaRegenDelaySeconds !== undefined && (!Number.isFinite(value.stats.staminaRegenDelaySeconds) || value.stats.staminaRegenDelaySeconds < 0 || value.stats.staminaRegenDelaySeconds > 10)) return false;
   if (value.stats.maxHp <= 0 || value.stats.hp < 0 || value.stats.hp > value.stats.maxHp || value.stats.maxMp < 0 || value.stats.mp < 0 || value.stats.mp > value.stats.maxMp || value.stats.level < 1 || !Number.isInteger(value.stats.level) || value.stats.xp < 0) return false;
   if (!Array.isArray(value.inventory) || !value.inventory.every((item: unknown) => isItemInstance(item, requireBaseId))) return false;
   if (!isRecord(value.equipment)) return false;
@@ -116,6 +120,7 @@ function isPlayerCharacter(value: unknown, allowDerivedCaps = false, requireBase
     const derived = calculateDerivedStats(value as PlayerCharacter);
     if (Math.abs(value.stats.maxHp - derived.maxHealth) > 0.000001 || Math.abs(value.stats.maxMp - derived.maxMana) > 0.000001 || Math.abs(value.stats.armor - derived.armor) > 0.000001) return false;
     if (value.stats.hp > derived.maxHealth || value.stats.mp > derived.maxMana) return false;
+    if (value.stats.stamina !== undefined && value.stats.stamina > derived.maxStamina) return false;
     const equipped = Object.values(value.equipment) as Array<ItemInstance | null>;
     if (equipped.some(item => item && item.quantity !== 1)) return false;
     if (equipmentSchema === 'legacy') {
@@ -151,6 +156,14 @@ function isWorldEnemy(value: unknown): value is WorldEnemy {
     && Number.isFinite(value.attackRange) && value.attackRange > 0 && Number.isFinite(value.attackTelegraphSeconds) && value.attackTelegraphSeconds >= 0
     && (value.phase === undefined || Number.isInteger(value.phase) && value.phase >= 1 && value.phase <= 2)
     && (value.phaseTransitioned === undefined || typeof value.phaseTransitioned === 'boolean')
+    && ((value.poise === undefined && value.maxPoise === undefined) || Number.isFinite(value.poise) && Number.isFinite(value.maxPoise) && value.maxPoise > 0 && value.maxPoise <= 1000 && value.poise >= 0 && value.poise <= value.maxPoise)
+    && (value.poiseRecoveryDelaySeconds === undefined || Number.isFinite(value.poiseRecoveryDelaySeconds) && value.poiseRecoveryDelaySeconds >= 0 && value.poiseRecoveryDelaySeconds <= 10)
+    && (value.poiseBreakRecoverySeconds === undefined || Number.isFinite(value.poiseBreakRecoverySeconds) && value.poiseBreakRecoverySeconds >= 0 && value.poiseBreakRecoverySeconds <= 10)
+    && (value.staggerImmunitySeconds === undefined || Number.isFinite(value.staggerImmunitySeconds) && value.staggerImmunitySeconds >= 0 && value.staggerImmunitySeconds <= 10)
+    && (value.phaseTransitionLockSeconds === undefined || Number.isFinite(value.phaseTransitionLockSeconds) && value.phaseTransitionLockSeconds >= 0 && value.phaseTransitionLockSeconds <= 5)
+    && (value.attackSetId === undefined || typeof value.attackSetId === 'string')
+    && (value.activeAttackId === undefined || typeof value.activeAttackId === 'string' && getEnemyAttackSet(value.attackSetId, value.phase ?? 1).some(attack => attack.id === (LEGACY_ENEMY_ATTACK_ALIASES[value.activeAttackId] ?? value.activeAttackId)))
+    && (value.activeAttackId === undefined || value.state !== 'ATTACK_WINDUP' || Math.abs(value.attackTelegraphSeconds - getEnemyAttackSet(value.attackSetId, value.phase ?? 1).find(attack => attack.id === (LEGACY_ENEMY_ATTACK_ALIASES[value.activeAttackId] ?? value.activeAttackId))!.windupSeconds) <= 0.000001)
     && (value.behaviorRole === undefined || ['CHASER', 'TANK', 'SKIRMISHER', 'CONTROLLER', 'HEAVY', 'SUPPORT'].includes(value.behaviorRole))
     && (value.statusEffects === undefined || Array.isArray(value.statusEffects) && value.statusEffects.length <= 8 && value.statusEffects.every((status: unknown) => isRecord(status) && typeof status.id === 'string' && typeof status.statusId === 'string' && Number.isFinite(status.durationSeconds) && status.durationSeconds >= 0 && Number.isFinite(status.magnitude) && (status.tickRemainingSeconds === undefined || Number.isFinite(status.tickRemainingSeconds) && status.tickRemainingSeconds >= 0)))
     && (value.pathRefreshSeconds === undefined || Number.isFinite(value.pathRefreshSeconds) && value.pathRefreshSeconds >= 0)

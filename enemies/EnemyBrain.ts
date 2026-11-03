@@ -28,6 +28,13 @@ export function updateEnemyBrains(enemies: WorldEnemy[], map: number[][], player
       statusEffects: enemy.statusEffects?.map(status => ({ ...status })),
     };
     if (next.health <= 0 || next.state === 'DEAD') { next.state = 'DEAD'; return next; }
+    if ((next.phaseTransitionLockSeconds ?? 0) > 0) {
+      next.state = 'RECOVER';
+      next.stateTimer = Math.max(next.stateTimer, next.phaseTransitionLockSeconds ?? 0);
+      next.activeAttackId = undefined;
+      next.telegraphPosition = undefined;
+      return next;
+    }
     if (hasRealtimeStatus(next.statusEffects, 'STAGGER') && next.state !== 'STAGGER') {
       next.state = 'STAGGER';
       next.stateTimer = Math.max(0.24, next.statusEffects?.find(status => status.statusId === 'STAGGER')?.durationSeconds ?? 0.4);

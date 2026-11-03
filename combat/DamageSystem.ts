@@ -37,8 +37,10 @@ export function applyEnemyDamage(enemy: WorldEnemy, amount: number): { enemy: Wo
   const guarded = Math.round(Math.max(0, amount) * incomingDamageMultiplier(enemy.statusEffects) * enemyDamageTakenMultiplier(enemy.statusEffects));
   const health = Math.max(0, enemy.health - Math.max(0, Math.floor(guarded)));
   const defeated = health <= 0;
+  const phaseLocked = (enemy.phaseTransitionLockSeconds ?? 0) > 0 && enemy.state === 'RECOVER';
+  const poiseBreakLocked = (enemy.poiseBreakRecoverySeconds ?? 0) > 0 && enemy.state === 'STAGGER';
   return {
-    enemy: { ...enemy, health, state: defeated ? 'DEAD' : 'HURT', stateTimer: defeated ? 1.1 : 0.2 },
+    enemy: { ...enemy, health, state: defeated ? 'DEAD' : phaseLocked ? 'RECOVER' : poiseBreakLocked ? 'STAGGER' : 'HURT', stateTimer: defeated ? 1.1 : phaseLocked ? Math.max(enemy.stateTimer, enemy.phaseTransitionLockSeconds ?? 0) : poiseBreakLocked ? Math.max(enemy.stateTimer, enemy.poiseBreakRecoverySeconds ?? 0) : 0.2 },
     defeated,
   };
 }
