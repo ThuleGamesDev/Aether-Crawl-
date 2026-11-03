@@ -88,6 +88,7 @@ export function getOffHandPose(player: PlayerCharacter): NonNullable<WeaponPrese
   if (isFocusItem(item)) return 'focus';
   if (item?.type === 'WEAPON') return 'weapon';
   if (isTwoHandedItem(player.equipment.mainHand)) return player.equipment.mainHand?.visualType === 'bow' ? 'bowDraw' : 'twoHandGrip';
+  if (player.equipment.mainHand?.visualType === 'spear') return 'twoHandGrip';
   return 'empty';
 }
 
@@ -360,6 +361,8 @@ export class WeaponPresenter {
   constructor(private readonly camera: THREE.PerspectiveCamera, private readonly assets: AssetManager) {
     this.offHand = new THREE.Sprite(new THREE.SpriteMaterial({ map: assets.offhandTexture('empty'), transparent: true, alphaTest: 0.08, depthTest: false, depthWrite: false, sizeAttenuation: false }));
     this.offHand.name = 'FirstPersonOffHand';
+    this.offHand.renderOrder = 1000;
+    this.offHand.frustumCulled = false;
     this.offHand.center.set(0.5, 0.45);
     this.offHand.scale.set(0.67, 0.67, 1);
     camera.add(this.offHand);
@@ -416,6 +419,24 @@ export class WeaponPresenter {
     this.offHand.rotation.z = pose.offHandRotationZ;
   }
 
+  getDiagnostics(): {
+    mainHandVisualId: WeaponVisualType | null;
+    offHandVisualId: OffHandVisualType | null;
+    mainHandAttachedToCamera: boolean;
+    offHandAttachedToCamera: boolean;
+    mainHandVisible: boolean;
+    offHandVisible: boolean;
+  } {
+    return {
+      mainHandVisualId: this.currentWeapon,
+      offHandVisualId: this.currentOffHandVisual,
+      mainHandAttachedToCamera: this.sprite?.parent === this.camera,
+      offHandAttachedToCamera: this.offHand.parent === this.camera,
+      mainHandVisible: this.sprite?.visible ?? false,
+      offHandVisible: this.offHand.visible,
+    };
+  }
+
   private setOffHand(visual: OffHandVisualType, unique: boolean): void {
     this.offHand.material.map = this.assets.offhandTexture(visual);
     this.offHand.material.needsUpdate = true;
@@ -427,6 +448,8 @@ export class WeaponPresenter {
       const material = new THREE.SpriteMaterial({ map: this.assets.weaponTexture(weapon, classId), transparent: true, alphaTest: 0.08, depthTest: false, depthWrite: false, sizeAttenuation: false });
       this.sprite = new THREE.Sprite(material);
       this.sprite.name = 'FirstPersonMainHand';
+      this.sprite.renderOrder = 1000;
+      this.sprite.frustumCulled = false;
       this.sprite.center.set(0.5, 0.45);
       this.sprite.scale.set(0.72, 0.72, 1);
       this.camera.add(this.sprite);

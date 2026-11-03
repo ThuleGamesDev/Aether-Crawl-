@@ -37,7 +37,7 @@ npm test
 npm run build
 ```
 
-`npm run test:run` launches the Playwright WebGL 2 smoke runner for class entry, the action HUD, save/continue, and mobile movement/attack. It requires an installed Chromium browser. It is a rendering/input smoke test and does not replace hands-on boss balance review.
+`npm run test:run` runs the Playwright WebGL 2 smoke runners for class entry, save/continue, mobile controls, and the deterministic R6F1 visibility fixture. Install Playwright Chromium first or set `CHROMIUM_PATH`; when Chromium is unavailable, the command records an explicit browser-QA skip. R6F1 captures are written to `artifacts/r6f1-browser-smoke/`.
 
 ## Project notes
 
@@ -47,6 +47,7 @@ npm run build
 - [R3A character rig notes](docs/FPS_R3A_CHARACTER_RIGS.md) describe the six pilot rigs, state-driven animation, weapon poses, contact sheet, validation, and R3B handoff.
 - [R3B mythic VFX notes](docs/FPS_R3B_MYTHIC_VFX.md) document gameplay-timed effects, surface responses, Guardian threat tells, audio gating, budgets, validation, and the [VFX gallery](docs/previews/FPS_R3B_MYTHIC_VFX_GALLERY.png).
 - [R6E visual production notes](docs/R6E_IMPLEMENTATION.md) document the Palace Foundations pilot, directional character atlas, equipment viewmodels, material pass, and generated QA sheets.
+- [R6F1 render visibility and browser QA](docs/R6F1_IMPLEMENTATION.md) documents the camera scene-graph fix, visible hand fallbacks, render-quality setting, deterministic WebGL fixture, and exact browser capture paths.
 - [Art direction](docs/ART_DIRECTION.md) and [asset pipeline](docs/ASSET_PIPELINE.md) document the local static pixel art.
 - [Roadmap](docs/ROADMAP.md) tracks the next waves.
 - [Class skill kits, passives, and R5B integration](docs/CLASS_SKILLS_R5B.md) records the eight class builds, effect formulas, save compatibility, and validation status.

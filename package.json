@@ -9,7 +9,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "preview": "vite preview",
-    "test:run": "node scripts/maze-r2a-smoke.cjs"
+    "test:run": "node scripts/test-run.cjs",
+    "test:r6f1-browser": "node scripts/r6f1-browser-smoke.cjs"
   },
   "dependencies": {
     "react": "^18.2.0",

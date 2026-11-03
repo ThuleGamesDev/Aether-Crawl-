@@ -7,6 +7,7 @@ import { loadMazeGame } from './services/mazeSave';
 import { LABYRINTH_THEMES } from './data/mazeContent';
 import type { ClassType } from './types';
 import type { InputSystem } from './engine/InputSystem';
+import type { RenderQuality } from './engine/SceneRenderer';
 import type { VFXMode } from './presentation/vfxDefinitions';
 import { shouldReleasePointerLockForUi } from './services/uiInputPolicy';
 import InventoryPanel from './components/InventoryPanel';
@@ -32,6 +33,7 @@ const App: React.FC = () => {
   const [webglError, setWebglError] = useState('');
   const [mouseSensitivity, setMouseSensitivity] = useState(0.0025);
   const [vfxMode, setVfxMode] = useState<VFXMode>('full');
+  const [renderQuality, setRenderQuality] = useState<RenderQuality>('balanced');
   const [skillDetailsIndex, setSkillDetailsIndex] = useState<number | null>(null);
 
   useEffect(() => {
@@ -44,6 +46,8 @@ const App: React.FC = () => {
       if (Number.isFinite(savedSensitivity) && savedSensitivity >= 0.001 && savedSensitivity <= 0.006) setMouseSensitivity(savedSensitivity);
       const savedVfxMode = window.localStorage.getItem('aether_fps_vfx_mode_r3b');
       if (savedVfxMode === 'full' || savedVfxMode === 'reduced' || savedVfxMode === 'off') setVfxMode(savedVfxMode);
+      const savedRenderQuality = window.localStorage.getItem('aether_fps_render_quality_r6f1');
+      if (savedRenderQuality === 'performance' || savedRenderQuality === 'balanced' || savedRenderQuality === 'sharp') setRenderQuality(savedRenderQuality);
     } catch { /* Sensitivity storage is optional. */ }
   }, []);
 
@@ -147,6 +151,11 @@ const App: React.FC = () => {
     try { window.localStorage.setItem('aether_fps_vfx_mode_r3b', value); } catch { /* Display settings are optional. */ }
   };
 
+  const updateRenderQuality = (value: RenderQuality) => {
+    setRenderQuality(value);
+    try { window.localStorage.setItem('aether_fps_render_quality_r6f1', value); } catch { /* Display settings are optional. */ }
+  };
+
   if (mode === 'MENU') return (
     <main className="fps-menu-screen">
       <div className="fps-menu-frame">
@@ -223,6 +232,14 @@ const App: React.FC = () => {
             <option value="off">Off</option>
           </select>
         </label>
+        <label className="fps-vfx-setting">World render quality
+          <select value={renderQuality} onChange={event => updateRenderQuality(event.target.value as RenderQuality)}>
+            <option value="performance">Performance</option>
+            <option value="balanced">Balanced</option>
+            <option value="sharp">Sharp</option>
+          </select>
+        </label>
+        <p className="fps-muted">This changes only the pixel-art world canvas. The HUD stays at display resolution; nearest-neighbor sampling keeps authored pixel edges crisp.</p>
         <p className="fps-muted">Reduced lowers ordinary particle count and brightness. Off hides combat effects. Guardian attack warnings remain visible in every mode.</p>
         <p className="fps-muted">On touch screens, drag the left side of the view to move and the right side to look. Use the buttons in the lower-right corner for attacks, dodge, and shield parry.</p>
       </section>
@@ -285,7 +302,7 @@ const App: React.FC = () => {
   const selectedSkillDetails = skillDetailsIndex === null ? null : skills[skillDetailsIndex] ?? null;
 
   return <main className="fps-game-shell">
-    <FPSViewport runtime={runtime} mouseSensitivity={mouseSensitivity} vfxMode={vfxMode} onSnapshot={setSnapshot} onInputReady={input => { inputRef.current = input; }} onFailure={setWebglError} />
+    <FPSViewport runtime={runtime} mouseSensitivity={mouseSensitivity} vfxMode={vfxMode} renderQuality={renderQuality} onSnapshot={setSnapshot} onInputReady={input => { inputRef.current = input; }} onFailure={setWebglError} />
     {!webglError && <>
       <div className="fps-vignette" aria-hidden="true" />
       <header className="fps-top-hud">

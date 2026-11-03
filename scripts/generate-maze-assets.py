@@ -228,48 +228,75 @@ for e in ENEMIES: enemy_sprite(e)
 def offhand(name):
     im=Image.new('RGBA',(64,64),(0,0,0,0)); d=ImageDraw.Draw(im)
     dark=rgb('#201a17'); skin=rgb('#d79d72'); sleeve=rgb('#9b332b'); linen=rgb('#f0e4c6'); bronze=rgb('#b98246'); silver=rgb('#cad3db')
-    if name=='empty':
-        pass
-    elif name=='shield':
-        d.ellipse((6,14,58,66),fill=bronze,outline=dark,width=3)
-        d.ellipse((14,22,50,58),fill=rgb('#7e552d'),outline=rgb('#e2bd72'),width=2)
-    elif name in ('xiphos','kopis'):
-        d.line((18,63,55,20),fill=silver,width=5); d.polygon([(55,20),(61,13),(54,12)],fill=silver)
-        d.line((24,67,14,77),fill=bronze,width=6); d.ellipse((10,75,17,82),fill=bronze)
-    elif name=='dory':
-        d.line((14,74,53,15),fill=rgb('#6d4e2f'),width=6)
-        d.polygon([(50,19),(61,4),(57,24)],fill=silver)
-    elif name=='focus':
-        d.ellipse((41,31,57,47),fill=rgb('#e5bd69'),outline=linen,width=2)
-        d.polygon([(49,34),(53,41),(49,46),(45,41)],fill=rgb('#fff0bb'))
-        d.line((32,54,48,60),fill=linen,width=2)
-    elif name=='bow_draw':
-        d.line((31,16,46,63),fill=linen,width=2)
-        d.polygon([(38,42),(46,34),(57,36),(63,43),(57,51),(47,52),(42,48)],fill=skin,outline=dark)
-        d.line((48,42,73,42),fill=silver,width=2); d.polygon([(74,42),(67,38),(67,46)],fill=silver)
-        d.line((50,40,56,46),fill=rgb('#d9ac83'),width=2)
-    elif name=='two_hand_grip':
-        d.polygon([(15,57),(27,48),(42,51),(48,62),(41,72),(25,72)],fill=skin,outline=dark)
-        d.line((36,65,49,23),fill=rgb('#71502f'),width=7)
-        for y in [55,60,65]: d.line((29,y,43,y+3),fill=rgb('#d9ac83'),width=2)
-        d.line((38,65,50,63),fill=bronze,width=3)
-    # Separate leather cuff and gold meander keep the left arm distinct from the weapon sprite.
-    d.polygon([(7,69),(18,62),(29,65),(31,77),(20,84),(7,80)],fill=rgb('#9b7040'),outline=dark)
-    line(d,[(9,72),(19,67),(28,70)],rgb('#e1bd72'),1)
-    greek_band(d,87,rgb('#d0a55f'),sleeve)
     if name=='shield':
-        d.ellipse((29,30,43,44),outline=rgb('#f0d487'),width=1)
-        line(d,[(33,14),(36,19),(39,14)],rgb('#f0d487'),1)
+        # Show the inside of the Aspis: wooden backing and leather straps face the camera.
+        d.ellipse((7,2,58,52),fill=dark,outline=bronze,width=3)
+        d.ellipse((11,6,54,48),fill=rgb('#65472f'),outline=rgb('#d5ad69'),width=2)
+        for x in (18,29,40):
+            d.rectangle((x,10,x+2,43),fill=rgb('#77583a'))
+            line(d,[(x+1,12),(x+1,41)],rgb('#98734a'),1)
+        d.rectangle((24,14,40,38),fill=rgb('#493429'),outline=bronze,width=2)
+        d.rectangle((29,18,36,34),fill=rgb('#2b211d'),outline=rgb('#d0a45f'),width=1)
+    # The whole forearm and cuff stay inside the 64 px canvas, so the off hand cannot crop away.
+    d.polygon([(0,62),(0,53),(10,44),(19,42),(29,48),(31,58),(24,63)],fill=sleeve,outline=dark)
+    d.polygon([(8,50),(15,44),(23,45),(29,53),(25,59),(14,58)],fill=rgb('#76502f'),outline=dark)
+    line(d,[(11,50),(18,47),(25,50)],rgb('#e1bd72'),1)
+    line(d,[(13,54),(21,51),(27,54)],rgb('#4f3828'),1)
+    if name=='empty':
+        d.polygon([(22,42),(24,36),(30,32),(38,34),(43,40),(41,47),(35,52),(27,50)],fill=skin,outline=dark)
+        d.line((28,39,34,39),fill=rgb('#f0c49a'),width=2)
+        d.line((31,44,38,43),fill=rgb('#b97857'),width=1)
     elif name in ('xiphos','kopis'):
-        line(d,[(18,14),(24,30),(29,42)],rgb('#f0e5c7'),1)
+        d.line((32,48,51,19),fill=silver,width=5)
+        d.polygon([(51,19),(61,7),(57,25)],fill=rgb('#e4e0d2'))
+        d.line((28,43,40,51),fill=bronze,width=4)
+        d.line((35,49,30,57),fill=rgb('#5c3925'),width=5)
+        d.ellipse((27,54,33,60),fill=bronze)
+        d.polygon([(24,43),(28,37),(36,37),(41,42),(39,49),(33,52),(27,49)],fill=skin,outline=dark)
+        d.line((29,42,37,45),fill=rgb('#f0c49a'),width=2)
     elif name=='dory':
-        line(d,[(15,10),(18,5),(20,14)],rgb('#fff0cc'),1)
+        d.line((30,57,48,18),fill=rgb('#6d4e2f'),width=6)
+        d.polygon([(46,21),(57,3),(54,27)],fill=silver)
+        d.line((32,53,41,34),fill=rgb('#a47a4c'),width=1)
+        d.polygon([(24,45),(28,38),(36,38),(41,43),(38,50),(31,53)],fill=skin,outline=dark)
+        d.line((29,43,37,46),fill=rgb('#f0c49a'),width=2)
+    elif name=='shield':
+        # A left hand wraps the inner grip; this is distinct art, never a mirrored right hand.
+        d.polygon([(23,31),(28,27),(35,28),(40,34),(40,41),(35,47),(28,45),(24,39)],fill=skin,outline=dark)
+        d.rectangle((29,30,34,40),fill=rgb('#d9ac83'))
+        d.line((27,34,38,37),fill=rgb('#9b6348'),width=2)
+    elif name=='focus':
+        d.line((34,46,47,40),fill=linen,width=2)
+        d.ellipse((43,20,60,37),fill=rgb('#b98246'),outline=dark,width=2)
+        d.ellipse((47,24,56,33),fill=rgb('#e5bd69'),outline=linen,width=1)
+        d.polygon([(51,25),(55,29),(51,33),(48,29)],fill=rgb('#fff0bb'))
+        d.polygon([(22,42),(26,36),(34,35),(40,40),(39,47),(33,51),(26,49)],fill=skin,outline=dark)
+        d.line((27,41,36,43),fill=rgb('#f0c49a'),width=2)
+    elif name=='bow_draw':
+        d.line((34,10,46,54),fill=linen,width=2)
+        d.line((35,11,43,27,38,43,46,54),fill=rgb('#e2d8c4'),width=1)
+        d.line((31,38,61,38),fill=silver,width=2)
+        d.polygon([(60,38),(53,34),(53,42)],fill=silver)
+        d.polygon([(29,34),(37,31),(44,34),(47,40),(43,46),(35,47),(29,42)],fill=skin,outline=dark)
+        d.line((35,36,43,40),fill=rgb('#f0c49a'),width=2)
+    elif name=='two_hand_grip':
+        d.line((39,54,51,14),fill=rgb('#71502f'),width=7)
+        d.line((41,50,52,17),fill=rgb('#aa8250'),width=1)
+        d.line((31,41,43,47),fill=bronze,width=3)
+        d.polygon([(25,36),(30,32),(37,33),(43,38),(42,46),(36,51),(29,48),(25,43)],fill=skin,outline=dark)
+        d.line((29,39,39,43),fill=rgb('#f0c49a'),width=2)
+    if name=='shield':
+        d.point((17,16),fill=(240,212,135,255)); d.point((47,16),fill=(240,212,135,255))
+    elif name in ('xiphos','kopis'):
+        line(d,[(50,18),(54,10),(55,23)],rgb('#f0e5c7'),1)
+    elif name=='dory':
+        line(d,[(47,20),(53,7),(52,22)],rgb('#fff0cc'),1)
     elif name=='focus':
         d.point((49,39),fill=(255,255,240,255))
     elif name=='bow_draw':
-        line(d,[(31,18),(38,36)],rgb('#f0e5c7'),1)
+        line(d,[(35,13),(39,28)],rgb('#f0e5c7'),1)
     elif name=='two_hand_grip':
-        line(d,[(47,25),(51,17)],rgb('#fff0cc'),1)
+        line(d,[(49,20),(53,13)],rgb('#fff0cc'),1)
     im.save(ROOT/'hands'/f'offhand_{name}.png', optimize=True)
 for n in ['empty','xiphos','kopis','dory','shield','focus','two_hand_grip','bow_draw']: offhand(n)
 # Shield cutout is also used as a world/hand prop.

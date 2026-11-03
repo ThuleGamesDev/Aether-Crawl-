@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>R6F1 Render Visibility Fixture</title>
+    <style>
+      * { box-sizing: border-box; }
+      html, body, #root { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #111016; }
+      canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
+      output { display: none; }
+    </style>
+  </head>
+  <body>
+    <div id="root"><canvas id="world" aria-label="R6F1 deterministic renderer fixture"></canvas></div>
+    <output id="fixture-status"></output>
+    <script type="module" src="./r6f1-fixture.ts"></script>
+  </body>
+</html>

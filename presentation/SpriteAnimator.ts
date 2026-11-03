@@ -3,8 +3,8 @@ import type { BiomeId, WorldEnemy } from '../types';
 import { AssetManager } from './AssetManager';
 import { enemyVisuals } from '../data/assetRegistry';
 
-export function createEnemySprite(enemy: WorldEnemy, biome: BiomeId, assets: AssetManager): THREE.Sprite {
-  const material = new THREE.SpriteMaterial({ map: assets.enemyTexture(enemy.visualId, biome), transparent: true, alphaTest: 0.08, depthTest: true, depthWrite: false, color: 0xffffff });
+export function createEnemySprite(enemy: WorldEnemy, biome: BiomeId, assets: AssetManager, fallbackPath?: string): THREE.Sprite {
+  const material = new THREE.SpriteMaterial({ map: assets.enemyTexture(enemy.visualId, biome, fallbackPath), transparent: true, alphaTest: 0.08, depthTest: true, depthWrite: false, color: 0xffffff });
   const sprite = new THREE.Sprite(material);
   sprite.center.set(0.5, 0);
   sprite.name = 'WorldEnemy_' + enemy.id;
