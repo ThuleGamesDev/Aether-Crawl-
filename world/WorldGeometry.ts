@@ -39,6 +39,7 @@ export class WorldGeometry {
     this.addProps(world, assets);
     this.addThreadAnchors(world);
     this.addLawHazards(world);
+    this.addLawSynergyCues(world);
   }
 
   updateLighting(elapsedSeconds: number): void {
@@ -65,7 +66,7 @@ export class WorldGeometry {
       this.ownedGeometries.push(poolGeometry, ringGeometry);
       this.ownedMaterials.push(poolMaterial, ringMaterial);
     }
-    for (const room of world.floor.rooms.filter(candidate => candidate.lawId === 'oath_of_ares')) {
+    for (const room of world.floor.rooms.filter(candidate => candidate.lawId === 'oath_of_ares' || candidate.lawIds?.includes('oath_of_ares'))) {
       const geometry = new THREE.RingGeometry(0.2, 0.3, 8);
       const material = new THREE.MeshBasicMaterial({ color: 0xb34c3d, transparent: true, opacity: 0.74, depthWrite: false, side: THREE.DoubleSide });
       const sigil = new THREE.Mesh(geometry, material);
@@ -73,6 +74,27 @@ export class WorldGeometry {
       sigil.position.set(room.anchor.x + 0.5, 0.05, room.anchor.y + 0.5);
       sigil.name = 'AresLawSigil_' + room.id;
       this.group.add(sigil);
+      this.ownedGeometries.push(geometry);
+      this.ownedMaterials.push(material);
+    }
+  }
+
+  private addLawSynergyCues(world: DungeonWorldState): void {
+    const cues = new Map([
+      ['echo_pack', { color: 0xc79c59, inner: 0.38, outer: 0.48 }],
+      ['venom_nest', { color: 0x91bf67, inner: 0.34, outer: 0.43 }],
+    ]);
+    for (const room of world.floor.rooms) {
+      if (!room.synergyId) continue;
+      const cue = cues.get(room.synergyId);
+      if (!cue) continue;
+      const geometry = new THREE.RingGeometry(cue.inner, cue.outer, 12);
+      const material = new THREE.MeshBasicMaterial({ color: cue.color, transparent: true, opacity: 0.62, depthWrite: false, side: THREE.DoubleSide });
+      const marker = new THREE.Mesh(geometry, material);
+      marker.rotation.x = -Math.PI / 2;
+      marker.position.set(room.anchor.x + 0.5, 0.052, room.anchor.y + 0.5);
+      marker.name = 'LawSynergyCue_' + room.synergyId + '_' + room.id;
+      this.group.add(marker);
       this.ownedGeometries.push(geometry);
       this.ownedMaterials.push(material);
     }

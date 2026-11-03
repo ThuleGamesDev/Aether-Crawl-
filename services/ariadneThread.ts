@@ -395,7 +395,12 @@ function floodFill(map: number[][], start: Position): Set<string> {
 }
 
 function isWalkable(tile: number | undefined): boolean {
-  return tile === TileType.EMPTY || tile === TileType.EXIT || tile === TileType.DOOR;
+  return isThreadWalkableTile(tile);
+}
+
+/** Thread safety checks use the same closed-door rule as world collision and floor reachability. */
+export function isThreadWalkableTile(tile: number | undefined): boolean {
+  return tile === TileType.EMPTY || tile === TileType.EXIT;
 }
 
 function isProtectedCell(floor: FloorState, cell: Position): boolean {

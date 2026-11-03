@@ -38,6 +38,7 @@ function oldR1Fixture(seed = 43109): { player: LegacyPlayerCharacter; world: Dun
   const world: DungeonWorldState = {
     level: 3, seed, biome: 'dungeon', map: generated.map, decorations: generated.decorations,
     floor: generated.floor!, explored: generated.map.map(row => row.map(() => false)), worldRevision: 2,
+    mazeChronicle: { version: 1, nextSequence: 1, events: [] },
   };
   world.explored[1][1] = true;
   const activePlayer = createPlayerCharacter('BARBARIAN', { x: 1.5, y: 0, z: 1.5 });
@@ -238,7 +239,7 @@ describe('FPS-R2A Greek rebrand and Guardian progression', () => {
     expect(storage.getItem(MAZE_SAVE_KEY)).toBeNull();
     expect(saveMazeGame(migration.save!, storage)).toBe(true);
     expect(storage.getItem(FPS_SAVE_KEY)).toBe(original);
-    expect(loadMazeGame(storage).save?.version).toBe(7);
+    expect(loadMazeGame(storage).save?.version).toBe(8);
 
     const invalid = new MemoryStorage();
     invalid.setItem(MAZE_SAVE_KEY, '{broken-json');

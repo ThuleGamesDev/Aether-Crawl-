@@ -332,6 +332,7 @@ export interface SaveData {
 export type DungeonRoomType = 'NORMAL' | 'COMBAT' | 'ELITE' | 'TREASURE' | 'SHRINE' | 'TRAP' | 'SECRET' | 'REST' | 'LOCKED' | 'EVENT' | 'BOSS_ANTECHAMBER' | 'BOSS';
 export type MazeLawId = 'hall_of_echoes' | 'vault_of_tyche' | 'pillars_of_daedalus' | 'bronze_hounds' | 'arachnes_kin' | 'shades_of_styx' | 'oath_of_ares' | 'serpents_bargain' | 'broken_thread';
 export type MazeLawCategory = 'ROOM' | 'CREATURE' | 'CURSE';
+export type MazeLawSynergyId = 'echo_pack' | 'ares_pillar_arena' | 'venom_nest';
 export type AriadneThreadAction = 'REVEAL_PASSAGE' | 'SEAL_PASSAGE';
 export type AriadneThreadDirection = 'NORTH' | 'EAST' | 'SOUTH' | 'WEST';
 export interface AriadneThreadRoute {
@@ -421,6 +422,8 @@ export interface MazeLawHazard {
   cooldownSeconds: number;
   cooldownRemaining: number;
   rewardBaseId?: string;
+  roomId?: string;
+  synergyId?: MazeLawSynergyId;
 }
 export type ArchitecturalRoomShape = 'ENTRY_HALL' | 'HALL' | 'GALLERY' | 'CROSSROADS' | 'PILLARED_HALL' | 'ROTUNDA' | 'GUARDIAN_ARENA' | 'WIDE_PASSAGE' | 'NARROW_PASSAGE';
 export type ArchitecturalCombatSuitability = 'NONE' | 'LIMITED' | 'SUITABLE';
@@ -438,6 +441,7 @@ export interface ArchitecturalRoom {
   roomArchetype?: string;
   /** Stable identifier for a prepared Ariadne's Thread anchor room. */
   threadJunctionId?: string;
+  synergyId?: MazeLawSynergyId;
 }
 
 export interface DungeonRoom {
@@ -454,6 +458,8 @@ export interface DungeonRoom {
   shrine?: 'blood' | 'aether' | 'fortune';
   hazardId?: string;
   lawId?: MazeLawId;
+  lawIds?: MazeLawId[];
+  synergyId?: MazeLawSynergyId;
 }
 export interface FloorState {
   version: 1;
@@ -474,10 +480,26 @@ export interface FloorState {
   lawSpawns?: MazeLawSpawn[];
   lawHazards?: MazeLawHazard[];
   manifestedLawIds?: MazeLawId[];
+  manifestedSynergyIds?: MazeLawSynergyId[];
   /** Seeded route-edit options prepared by the architectural floor generator. */
   threadJunctions?: AriadneThreadJunction[];
   /** Run-owned charges and per-floor, versioned route-edit history. */
   threadProgress?: AriadneThreadProgress;
+}
+
+export type MazeChronicleEvent =
+  | { id: string; sequence: number; kind: 'LAW_CHOSEN'; floor: number; lawId: MazeLawId; offerId: string; replacedLawId?: MazeLawId }
+  | { id: string; sequence: number; kind: 'LAW_MANIFESTED'; floor: number; lawId: MazeLawId }
+  | { id: string; sequence: number; kind: 'SYNERGY_MANIFESTED'; floor: number; synergyId: MazeLawSynergyId }
+  | { id: string; sequence: number; kind: 'THREAD_WOVEN'; floor: number; junctionId: string; routeId: string; action: AriadneThreadAction; chargeCost: number; healthCost: number }
+  | { id: string; sequence: number; kind: 'ROOM_FAMILY_DISCOVERED'; floor: number; familyId: DungeonRoomType }
+  | { id: string; sequence: number; kind: 'ENEMY_FAMILY_DISCOVERED'; floor: number; familyId: string };
+
+/** A bounded, run-local record of choices and discoveries; it contains no telemetry or timestamps. */
+export interface MazeChronicle {
+  version: 1;
+  nextSequence: number;
+  events: MazeChronicleEvent[];
 }
 
 /** Player-owned state for the active solo action-RPG runtime. */

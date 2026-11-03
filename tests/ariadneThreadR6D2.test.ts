@@ -4,7 +4,7 @@ import { FPSGameRuntime } from '../engine/FPSGameRuntime';
 import { generateDungeon } from '../services/dungeonGenerator';
 import { reachableCells, cellKey } from '../services/dungeonPlan';
 import { loadMazeGame, MAZE_SAVE_KEY } from '../services/mazeSave';
-import { createAriadneThreadProgress, openThreadAnchor, planAriadneThreadEdit, validateAriadneThreadFloor } from '../services/ariadneThread';
+import { createAriadneThreadProgress, isThreadWalkableTile, openThreadAnchor, planAriadneThreadEdit, validateAriadneThreadFloor } from '../services/ariadneThread';
 import { shouldReleasePointerLockForUi } from '../services/uiInputPolicy';
 import { AssetManager } from '../presentation/AssetManager';
 import { WorldGeometry } from '../world/WorldGeometry';
@@ -46,6 +46,13 @@ function contextFor(floor: NonNullable<ReturnType<typeof generatedFloor>['floor'
 }
 
 describe('R6D2 Ariadne Thread', () => {
+  it('uses closed-door solidity for Thread reachability checks', () => {
+    expect(isThreadWalkableTile(TileType.EMPTY)).toBe(true);
+    expect(isThreadWalkableTile(TileType.EXIT)).toBe(true);
+    expect(isThreadWalkableTile(TileType.DOOR)).toBe(false);
+    expect(isThreadWalkableTile(TileType.WALL)).toBe(false);
+  });
+
   it('keeps prepared anchors within the floors 2–5 pilot', () => {
     expect(generatedFloor(917, 1).floor!.threadJunctions).toEqual([]);
     expect(generatedFloor(619, 6).floor!.threadJunctions).toEqual([]);
@@ -184,16 +191,17 @@ describe('R6D2 Ariadne Thread', () => {
     const storage = new MemoryStorage();
     const freshStorage = new MemoryStorage();
     expect(runtime.save(freshStorage)).toBe(true);
-    const v7 = JSON.parse(freshStorage.getItem(MAZE_SAVE_KEY)!);
-    const oldMap = structuredClone(v7.world.map);
-    v7.version = 6;
-    delete v7.world.floor.threadJunctions;
-    delete v7.world.floor.threadProgress;
-    storage.setItem(MAZE_SAVE_KEY, JSON.stringify(v7));
+    const v8 = JSON.parse(freshStorage.getItem(MAZE_SAVE_KEY)!);
+    const oldMap = structuredClone(v8.world.map);
+    v8.version = 6;
+    delete v8.world.mazeChronicle;
+    delete v8.world.floor.threadJunctions;
+    delete v8.world.floor.threadProgress;
+    storage.setItem(MAZE_SAVE_KEY, JSON.stringify(v8));
     const migrated = loadMazeGame(storage);
     expect(migrated.migratedFromR6D1).toBe(true);
     expect(migrated.migrationRequired).toBe(true);
-    expect(migrated.save?.version).toBe(7);
+    expect(migrated.save?.version).toBe(8);
     expect(migrated.save?.world.map).toEqual(oldMap);
     expect(migrated.save?.world.floor.threadJunctions).toEqual([]);
     expect(migrated.save?.world.floor.threadProgress?.charges).toBe(2);

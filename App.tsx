@@ -11,6 +11,7 @@ import type { VFXMode } from './presentation/vfxDefinitions';
 import { shouldReleasePointerLockForUi } from './services/uiInputPolicy';
 import InventoryPanel from './components/InventoryPanel';
 import SkillUpgradeScreen from './components/SkillUpgradeScreen';
+import MazeChroniclePanel from './components/MazeChroniclePanel';
 import { getClassSkillKit } from './data/classSkillKits';
 import { classPassiveStackSummary } from './player/ClassPassives';
 import { getClassSkillUnlockLevel, getRankedAbility, getSkillRank } from './player/SkillProgression';
@@ -37,7 +38,7 @@ const App: React.FC = () => {
     const result = loadMazeGame();
     setHasSave(Boolean(result.save));
     if (result.invalid) setSaveWarning('A saved expedition is invalid or unavailable. Existing save data has not been overwritten.');
-    else if (result.migrationRequired) setSaveWarning((result.migratedFromR1 ? 'An FPS-R1' : result.migratedFromR6D1 ? 'An R6D1' : result.migratedFromR6C ? 'An R6C' : result.migratedFromR4B ? 'An FPS-R4B' : result.migratedFromR4A ? 'An FPS-R4A' : 'An FPS-R2A') + ' expedition is ready to migrate when you continue. Its original save is preserved until the new save is written.');
+    else if (result.migrationRequired) setSaveWarning((result.migratedFromR1 ? 'An FPS-R1' : result.migratedFromR6D2 ? 'An R6D2' : result.migratedFromR6D1 ? 'An R6D1' : result.migratedFromR6C ? 'An R6C' : result.migratedFromR4B ? 'An FPS-R4B' : result.migratedFromR4A ? 'An FPS-R4A' : 'An FPS-R2A') + ' expedition is ready to migrate when you continue. Its original save is preserved until the new save is written.');
     try {
       const savedSensitivity = Number(window.localStorage.getItem('aether_fps_mouse_sensitivity'));
       if (Number.isFinite(savedSensitivity) && savedSensitivity >= 0.001 && savedSensitivity <= 0.006) setMouseSensitivity(savedSensitivity);
@@ -54,6 +55,7 @@ const App: React.FC = () => {
     roomOfferOpen: Boolean(snapshot.roomOffer),
     lawOfferOpen: Boolean(snapshot.lawOffer),
     threadOfferOpen: Boolean(snapshot.threadOffer),
+    chronicleOpen: snapshot.chronicleOpen,
     gameOver: snapshot.gameOver,
   }));
 
@@ -86,6 +88,8 @@ const App: React.FC = () => {
         setHasSave(true);
         setMigrationNotice(result.migratedFromR1
           ? 'FPS-R1 progress migrated into the Labyrinth. The original save remains preserved.'
+          : result.migratedFromR6D2
+            ? 'R6D2 progress migrated safely. The existing floor and Thread routes remain intact.'
           : result.migratedFromR6D1
             ? 'R6D1 progress migrated safely. The existing floor and route remain intact.'
           : result.migratedFromR4A
@@ -129,6 +133,7 @@ const App: React.FC = () => {
     runtime.paused = false;
     runtime.inventoryOpen = false;
     runtime.mapOpen = false;
+    runtime.closeMazeChronicle();
     refreshSnapshot();
   };
 
@@ -296,11 +301,12 @@ const App: React.FC = () => {
         <div className="fps-floor-label">FLOOR {snapshot.world.level}<span>{biomeName(snapshot.world.biome)}</span></div>
         <CompactMinimap snapshot={snapshot} onOpen={() => { runtime.mapOpen = true; runtime.inventoryOpen = false; runtime.cancelHeldActions(); refreshSnapshot(); }} />
         <div className="fps-top-actions">
-          <button onClick={() => { runtime.mapOpen = true; runtime.inventoryOpen = false; runtime.cancelHeldActions(); refreshSnapshot(); }}>Map <kbd>Tab</kbd></button>
-          <button onClick={() => { runtime.inventoryOpen = true; runtime.mapOpen = false; runtime.cancelHeldActions(); refreshSnapshot(); }}>Inventory <kbd>I</kbd></button>
+          <button onClick={() => { runtime.closeMazeChronicle(); runtime.mapOpen = true; runtime.inventoryOpen = false; runtime.cancelHeldActions(); refreshSnapshot(); }}>Map <kbd>Tab</kbd></button>
+          <button onClick={() => { runtime.openMazeChronicle(); refreshSnapshot(); }}>Chronicle</button>
+          <button onClick={() => { runtime.closeMazeChronicle(); runtime.inventoryOpen = true; runtime.mapOpen = false; runtime.cancelHeldActions(); refreshSnapshot(); }}>Inventory <kbd>I</kbd></button>
           <button onClick={saveRun}>Save</button>
           {(player.skillPoints ?? 0) > 0 && <button onClick={() => { runtime.openSkillUpgradeScreen(); refreshSnapshot(); }}>Skills <kbd>{player.skillPoints}</kbd></button>}
-          <button onClick={() => { runtime.paused = true; runtime.cancelHeldActions(); refreshSnapshot(); }}>Menu <kbd>Esc</kbd></button>
+          <button onClick={() => { runtime.closeMazeChronicle(); runtime.paused = true; runtime.cancelHeldActions(); refreshSnapshot(); }}>Menu <kbd>Esc</kbd></button>
         </div>
       </header>
 
@@ -362,7 +368,11 @@ const App: React.FC = () => {
 
       {snapshot.paused && !snapshot.gameOver && <Overlay title="Paused" onClose={closeOverlay}>
         <p className="fps-overlay-copy">The simulation is paused. Your Labyrinth position and cooldowns are held until you resume.</p>
-        <div className="fps-overlay-actions"><button className="fps-button fps-button-primary" onClick={closeOverlay}>Resume</button><button className="fps-button" onClick={saveRun}>Save Run</button><button className="fps-button" onClick={returnToMenu}>Save & Main Menu</button></div>
+        <div className="fps-overlay-actions"><button className="fps-button fps-button-primary" onClick={closeOverlay}>Resume</button><button className="fps-button" onClick={() => { runtime.openMazeChronicle(); refreshSnapshot(); }}>Maze Chronicle</button><button className="fps-button" onClick={saveRun}>Save Run</button><button className="fps-button" onClick={returnToMenu}>Save & Main Menu</button></div>
+      </Overlay>}
+
+      {snapshot.chronicleOpen && <Overlay title="Maze Chronicle" onClose={() => { runtime.closeMazeChronicle(); refreshSnapshot(); }} className="fps-overlay-panel-wide">
+        <MazeChroniclePanel chronicle={snapshot.world.mazeChronicle} activeLaws={snapshot.world.floor.lawProgress?.activeLaws ?? []} />
       </Overlay>}
 
       {snapshot.levelUpOpen && <Overlay title="Class Skill Progression" onClose={() => { runtime.deferSkillUpgrade(); refreshSnapshot(); }}>
@@ -405,6 +415,7 @@ const App: React.FC = () => {
               <span><b>What changes</b>{law.whatChanges}</span>
               <span><b>Danger</b>{law.danger}</span>
               <span><b>Reward</b>{law.reward}</span>
+              <small className="fps-law-warning">The Beast will remember this choice.</small>
             </button>;
           })}</div>
           <p className="fps-law-capacity">Choose one Law. It changes a future floor; your current floor remains open until you descend.</p>

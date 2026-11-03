@@ -1,11 +1,12 @@
 import { getBiomeIdForLevel } from '../data/assetRegistry';
 import { generateDungeon } from '../services/dungeonGenerator';
 import { floorRandom } from '../services/floorRandom';
-import { TileType, type DungeonRoom, type FloorState, type PlayerCharacter } from '../types';
+import { TileType, type DungeonRoom, type FloorState, type MazeChronicle, type PlayerCharacter } from '../types';
 import { isWorldSolid } from './CollisionWorld';
 import { spawnFloorEnemies } from './EnemySpawner';
 import { getFloorGuardianDefinition } from '../data/mazeContent';
 import { createEmptyMazeLawProgress } from '../services/lawDraft';
+import { createMazeChronicle } from '../services/mazeChronicle';
 
 export interface DungeonWorldState {
   level: number;
@@ -16,6 +17,7 @@ export interface DungeonWorldState {
   floor: FloorState;
   explored: boolean[][];
   worldRevision: number;
+  mazeChronicle: MazeChronicle;
 }
 
 export type LookTarget =
@@ -44,7 +46,7 @@ export function createDungeonWorld(level: number, seed = randomSeed()): DungeonW
   generated.floor!.lawProgress = createEmptyMazeLawProgress();
   const explored = generated.map.map(row => row.map(() => false));
   explored[1][1] = true;
-  return { level, seed: seed >>> 0, biome, map: generated.map, decorations: generated.decorations, floor: generated.floor!, explored, worldRevision: 1 };
+  return { level, seed: seed >>> 0, biome, map: generated.map, decorations: generated.decorations, floor: generated.floor!, explored, worldRevision: 1, mazeChronicle: createMazeChronicle() };
 }
 
 export function createFloorEnemies(world: DungeonWorldState) {

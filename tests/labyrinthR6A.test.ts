@@ -34,6 +34,17 @@ function setCanvasDocumentMock(): void {
 afterEach(() => { vi.unstubAllGlobals(); });
 
 describe('R6A labyrinth architecture, rooms, and lighting', () => {
+  it('reserves the center chamber only on floors with prepared Thread anchors', () => {
+    for (let level = 2; level <= 5; level += 1) {
+      const floor = architecturalDungeon(6600 + level, level).floor!;
+      expect(floor.threadJunctions).toHaveLength(1);
+      expect(floor.architectureRooms?.find(room => room.id.endsWith('_4'))?.combatSuitability).toBe('NONE');
+    }
+    const laterFloor = architecturalDungeon(6606, 6).floor!;
+    expect(laterFloor.threadJunctions).toEqual([]);
+    expect(laterFloor.architectureRooms?.find(room => room.id.endsWith('_4'))?.combatSuitability).toBe('SUITABLE');
+  });
+
   it('builds deterministic, varied chamber layouts with two combat spaces and a controlled Guardian entrance', () => {
     let narrowPassages = 0;
     const observedShapes = new Set<string>();
@@ -196,6 +207,7 @@ describe('R6A labyrinth architecture, rooms, and lighting', () => {
       floor,
       explored: legacy.map.map((row, y) => row.map((_tile, x) => x === 1 && y === 1)),
       worldRevision: 1,
+      mazeChronicle: { version: 1 as const, nextSequence: 1, events: [] },
     };
     const enemies = spawnFloorEnemies(world.map, floor);
     const storage = new MemoryStorage();

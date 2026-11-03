@@ -1,4 +1,4 @@
-import type { EquipmentSlot, FloorState, ItemInstance, LegacyPlayerCharacter, PlayerCharacter, WorldEnemy, WorldLootDrop } from '../types';
+import type { EquipmentSlot, FloorState, ItemInstance, LegacyPlayerCharacter, MazeChronicle, PlayerCharacter, WorldEnemy, WorldLootDrop } from '../types';
 import { isFPSRunSave, loadFPSGame, type FPSRunSave, type KeyValueStorage } from './fpsSave';
 import type { DungeonWorldState } from '../world/DungeonWorld';
 import { TileType } from '../types';
@@ -15,18 +15,19 @@ import { createEmptyEquipment, getItemEquipmentSlots, isTwoHandedItem, MAX_INVEN
 import { createEmptyMazeLawProgress, createLawDraft } from './lawDraft';
 import { validateLawProgress } from '../world/LivingLabyrinth';
 import { createAriadneThreadProgress, validateAriadneThreadFloor } from './ariadneThread';
+import { createMazeChronicle, validateMazeChronicle } from './mazeChronicle';
 
 export const MAZE_SAVE_KEY = 'maze_of_the_minotaur_fps_r2a_save_v2';
-export const MAZE_SAVE_VERSION = 7;
+export const MAZE_SAVE_VERSION = 8;
 export interface MazeRunSave {
-  version: 7;
+  version: 8;
   savedAt: number;
   player: PlayerCharacter;
   world: DungeonWorldState;
   enemies: WorldEnemy[];
   loot: WorldLootDrop[];
   combat?: FPSRunSave['combat'];
-  migratedFrom?: 'FPS_R1' | 'FPS_R2A' | 'FPS_R4A' | 'FPS_R4B' | 'FPS_R6C' | 'FPS_R6D1';
+  migratedFrom?: 'FPS_R1' | 'FPS_R2A' | 'FPS_R4A' | 'FPS_R4B' | 'FPS_R6C' | 'FPS_R6D1' | 'FPS_R6D2';
 }
 export type MazeRunState = Pick<MazeRunSave, 'player' | 'world' | 'enemies' | 'loot' | 'combat'>;
 
@@ -42,14 +43,14 @@ export function saveMazeGame(save: MazeRunState, storage?: KeyValueStorage): boo
       inventoryGrid: normalizeInventoryGrid(inventory, save.player.inventoryGrid).placements,
       uniqueEffectStates: save.player.uniqueEffectStates ?? [],
     };
-    const envelope: MazeRunSave = { ...save, player, world: withThreadProgress(withLawProgress(save.world)), version: MAZE_SAVE_VERSION, savedAt: Date.now() };
+    const envelope: MazeRunSave = { ...save, player, world: withMazeChronicle(withThreadProgress(withLawProgress(save.world))), version: MAZE_SAVE_VERSION, savedAt: Date.now() };
     if (!isMazeRunSave(envelope)) return false;
     target.setItem(MAZE_SAVE_KEY, JSON.stringify(envelope));
     return true;
   } catch { return false; }
 }
 
-export function loadMazeGame(storage?: KeyValueStorage): { save: MazeRunSave | null; invalid: boolean; migratedFromR1: boolean; migratedFromR2A: boolean; migratedFromR4A: boolean; migratedFromR4B: boolean; migratedFromR6C: boolean; migratedFromR6D1: boolean; migrationRequired: boolean } {
+export function loadMazeGame(storage?: KeyValueStorage): { save: MazeRunSave | null; invalid: boolean; migratedFromR1: boolean; migratedFromR2A: boolean; migratedFromR4A: boolean; migratedFromR4B: boolean; migratedFromR6C: boolean; migratedFromR6D1: boolean; migratedFromR6D2: boolean; migrationRequired: boolean } {
   const target = storage ?? defaultStorage();
   if (!target) return emptyLoadResult(true);
   try {
@@ -57,6 +58,12 @@ export function loadMazeGame(storage?: KeyValueStorage): { save: MazeRunSave | n
     if (raw) {
       const value: unknown = JSON.parse(raw);
       if (isMazeRunSave(value)) return emptyLoadResult(false, value);
+      if (isLegacyMazeRunSaveV7(value)) {
+        const migrated = migrateR6D2Save(value);
+        return isMazeRunSave(migrated)
+          ? { ...emptyLoadResult(false, migrated), migratedFromR6D2: true, migrationRequired: true }
+          : emptyLoadResult(true);
+      }
       if (isLegacyMazeRunSaveV6(value)) {
         const migrated = migrateR6D1Save(value);
         return isMazeRunSave(migrated)
@@ -102,13 +109,14 @@ export function loadMazeGame(storage?: KeyValueStorage): { save: MazeRunSave | n
 }
 
 function emptyLoadResult(invalid: boolean, save: MazeRunSave | null = null) {
-  return { save, invalid, migratedFromR1: false, migratedFromR2A: false, migratedFromR4A: false, migratedFromR4B: false, migratedFromR6C: false, migratedFromR6D1: false, migrationRequired: false };
+  return { save, invalid, migratedFromR1: false, migratedFromR2A: false, migratedFromR4A: false, migratedFromR4B: false, migratedFromR6C: false, migratedFromR6D1: false, migratedFromR6D2: false, migrationRequired: false };
 }
 
 export function isMazeRunSave(value: unknown): value is MazeRunSave {
   if (!isRecord(value) || value.version !== MAZE_SAVE_VERSION || !Number.isFinite(value.savedAt)) return false;
   const legacyShape = { ...value, version: 1 };
   if (!isFPSRunSave(legacyShape, true, true, 'canonical')) return false;
+  if (!value.world.mazeChronicle || !validateMazeChronicle(value.world.mazeChronicle)) return false;
   if (!validateEquipmentLoadout(value.player.equipment)) return false;
   const floor = value.world.floor as FloorState;
   const guardian = getFloorGuardianDefinition(value.world.level);
@@ -136,6 +144,7 @@ export function isMazeRunSave(value: unknown): value is MazeRunSave {
 interface LegacyMazeRunSaveCore extends Omit<FPSRunSave, 'version'> { version: 2 | 3 | 4; migratedFrom?: 'FPS_R1' | 'FPS_R2A' | 'FPS_R4A'; }
 type LegacyMazeRunSaveV5 = Omit<MazeRunSave, 'version'> & { version: 5 };
 type LegacyMazeRunSaveV6 = Omit<MazeRunSave, 'version'> & { version: 6 };
+type LegacyMazeRunSaveV7 = Omit<MazeRunSave, 'version' | 'world'> & { version: 7; world: Omit<DungeonWorldState, 'mazeChronicle'> & { mazeChronicle?: MazeChronicle } };
 type LegacyMazeRunSaveV2 = LegacyMazeRunSaveCore & { version: 2 };
 type LegacyMazeRunSaveV3 = LegacyMazeRunSaveCore & { version: 3 };
 type LegacyMazeRunSaveV4 = LegacyMazeRunSaveCore & { version: 4 };
@@ -147,7 +156,14 @@ function isLegacyMazeRunSaveV3(value: unknown): value is LegacyMazeRunSaveV3 {
 function isLegacyMazeRunSaveV6(value: unknown): value is LegacyMazeRunSaveV6 {
   if (!isRecord(value) || value.version !== 6 || !Number.isFinite(value.savedAt)
     || !isRecord(value.world) || !isRecord(value.world.floor)) return false;
-  const normalized = { ...value, version: MAZE_SAVE_VERSION, world: withThreadProgress(value.world as DungeonWorldState) };
+  const normalized = { ...value, version: MAZE_SAVE_VERSION, world: withMazeChronicle(withThreadProgress(value.world as DungeonWorldState)) };
+  return isMazeRunSave(normalized);
+}
+
+function isLegacyMazeRunSaveV7(value: unknown): value is LegacyMazeRunSaveV7 {
+  if (!isRecord(value) || value.version !== 7 || !Number.isFinite(value.savedAt)
+    || !isRecord(value.world) || !isRecord(value.world.floor)) return false;
+  const normalized = { ...value, version: MAZE_SAVE_VERSION, world: withMazeChronicle(value.world as DungeonWorldState) };
   return isMazeRunSave(normalized);
 }
 
@@ -179,25 +195,30 @@ function isLegacyMazeSaveCore(value: unknown, version: 2 | 3 | 4, isR4A: boolean
 export function migrateR4BSave(save: LegacyMazeRunSaveV4): MazeRunSave {
   assertUniqueLegacyItemIds(save);
   const player = normalizePlayerItems(save.player);
-  return { ...save, version: 7, savedAt: Date.now(), migratedFrom: 'FPS_R4B', player, world: withThreadProgress(withLawProgress(save.world)) };
+  return { ...save, version: MAZE_SAVE_VERSION, savedAt: Date.now(), migratedFrom: 'FPS_R4B', player, world: withMazeChronicle(withThreadProgress(withLawProgress(save.world))) };
 }
 
 /** R4A migration preserves every stored instance and deterministically packs its old list. */
 export function migrateR4ASave(save: LegacyMazeRunSaveV3): MazeRunSave {
   assertUniqueLegacyItemIds(save);
   const player = normalizePlayerItems(save.player);
-  return { ...save, version: 7, savedAt: Date.now(), migratedFrom: 'FPS_R4A', player, world: withThreadProgress(withLawProgress(save.world)) };
+  return { ...save, version: MAZE_SAVE_VERSION, savedAt: Date.now(), migratedFrom: 'FPS_R4A', player, world: withMazeChronicle(withThreadProgress(withLawProgress(save.world))) };
 }
 
 /** R6C version-5 runs retain their exact inventory and world; only versioned Law state is initialized. */
 export function migrateR6CSave(save: LegacyMazeRunSaveV5): MazeRunSave {
   const world = withLawProgress(save.world);
-  return { ...save, version: 7, savedAt: Date.now(), migratedFrom: 'FPS_R6C', world: withThreadProgress(world) };
+  return { ...save, version: MAZE_SAVE_VERSION, savedAt: Date.now(), migratedFrom: 'FPS_R6C', world: withMazeChronicle(withThreadProgress(world)) };
 }
 
 /** R6D1 version-6 runs retain their exact floor geometry; only per-floor Thread state is initialized. */
 export function migrateR6D1Save(save: LegacyMazeRunSaveV6): MazeRunSave {
-  return { ...save, version: 7, savedAt: Date.now(), migratedFrom: 'FPS_R6D1', world: withThreadProgress(save.world) };
+  return { ...save, version: MAZE_SAVE_VERSION, savedAt: Date.now(), migratedFrom: 'FPS_R6D1', world: withMazeChronicle(withThreadProgress(save.world)) };
+}
+
+/** R6D2 v7 runs add an empty run-local Chronicle in memory without changing their saved floor. */
+export function migrateR6D2Save(save: LegacyMazeRunSaveV7): MazeRunSave {
+  return { ...save, version: MAZE_SAVE_VERSION, savedAt: Date.now(), migratedFrom: 'FPS_R6D2', world: withMazeChronicle(save.world as DungeonWorldState) };
 }
 
 /** In-memory conversion only. The v2 source key is replaced only after a valid v4 write. */
@@ -210,14 +231,14 @@ export function migrateR2ASave(save: LegacyMazeRunSaveV2): MazeRunSave {
     lootTier: enemy.lootTier ?? (enemy.isBoss ? 'GUARDIAN' : save.world.floor.rooms.find(room => room.id === enemy.roomId)?.type === 'ELITE' ? 'ELITE' : 'NORMAL'),
   }));
   return {
-    version: 7,
+    version: MAZE_SAVE_VERSION,
     savedAt: Date.now(),
     migratedFrom: 'FPS_R2A',
     player,
     enemies,
     loot: save.loot.map(drop => ({ ...drop, item: normalizeLegacyItem(drop.item) })),
     combat: save.combat,
-    world: withThreadProgress(withLawProgress(save.world)),
+    world: withMazeChronicle(withThreadProgress(withLawProgress(save.world))),
   };
 }
 
@@ -340,10 +361,10 @@ export function migrateR1Save(save: FPSRunSave): MazeRunSave {
   enemies.push(guardianEnemy);
   floor.guardianState = rewarded ? 'DESCENT_UNLOCKED' : defeated ? 'DEFEATED' : 'NOT_DISCOVERED';
   if (floor.guardianState === 'DESCENT_UNLOCKED') bossRoom.resolved = true;
-  const migratedWorld = withThreadProgress(withLawProgress(world));
+  const migratedWorld = withMazeChronicle(withThreadProgress(withLawProgress(world)));
 
   const migrated: MazeRunSave = {
-    version: 7, savedAt: Date.now(), migratedFrom: 'FPS_R1',
+    version: MAZE_SAVE_VERSION, savedAt: Date.now(), migratedFrom: 'FPS_R1',
     player, world: migratedWorld, enemies,
     loot: save.loot.map(drop => ({ ...drop, position: { ...drop.position, x: drop.position.x + offsetX, z: drop.position.z + offsetZ }, item: migrateItem(drop.item) })),
     combat: save.combat,
@@ -364,6 +385,10 @@ function withThreadProgress(world: DungeonWorldState): DungeonWorldState {
   const junctions = world.floor.threadJunctions ?? [];
   const progress = world.floor.threadProgress ?? createAriadneThreadProgress(junctions);
   return { ...world, floor: { ...world.floor, threadJunctions: junctions, threadProgress: progress } };
+}
+
+function withMazeChronicle(world: DungeonWorldState): DungeonWorldState {
+  return { ...world, mazeChronicle: world.mazeChronicle ?? createMazeChronicle() };
 }
 
 const ITEM_NAMES: Record<string, string> = {
