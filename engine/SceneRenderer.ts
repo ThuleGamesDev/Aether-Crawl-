@@ -67,6 +67,7 @@ export class SceneRenderer {
   private readonly canvas: HTMLCanvasElement;
   private readonly assets = new AssetManager();
   private readonly enemyVisuals = new Map<string, EnemyVisualInstance>();
+  private readonly rigConstructionFailures = new Set<string>();
   private readonly lootSprites = new Map<string, THREE.Sprite>();
   private readonly projectileMeshes = new Map<number, THREE.Mesh>();
   private readonly projectilePool: THREE.Mesh[] = [];
@@ -261,7 +262,7 @@ export class SceneRenderer {
     const atlas = this.assets.characterRigAtlas();
     for (const enemy of enemies) {
       const definition = getCharacterRigDefinition(enemy.visualId);
-      const shouldUseRig = Boolean(definition && atlas);
+      const shouldUseRig = Boolean(definition && atlas && !this.rigConstructionFailures.has(enemy.visualId));
       let visual = this.enemyVisuals.get(enemy.id);
       if (visual && ((visual.kind === 'rig') !== shouldUseRig)) {
         this.disposeEnemyVisual(visual);
@@ -275,6 +276,7 @@ export class SceneRenderer {
             visual = { kind: 'rig', animator };
             this.scene.add(animator.group);
           } catch (error) {
+            this.rigConstructionFailures.add(enemy.visualId);
             if (import.meta.env.DEV) console.error(`[SceneRenderer] Rig ${enemy.visualId} failed; using its local enemy sprite fallback.`, error);
             visual = { kind: 'legacy', sprite: createEnemySprite(enemy, world.biome, this.assets, definition.fallbackSprite) };
             this.scene.add(visual.sprite);
