@@ -14,6 +14,11 @@ const themeSlug: Record<BiomeId, string> = {
 };
 
 const themed = (biomeId: BiomeId, kind: 'wall' | 'floor' | 'ceiling' | 'door' | 'exit') => asset(`maze/tiles/${themeSlug[biomeId]}_${kind}.png`);
+const themedWallVariants = (biomeId: BiomeId): [string, string, string] => [
+  themed(biomeId, 'wall'),
+  asset(`maze/tiles/${themeSlug[biomeId]}_wall_variant_2.png`),
+  asset(`maze/tiles/${themeSlug[biomeId]}_wall_variant_3.png`),
+];
 const props = {
   barrel: asset('maze/props/amphora.png'),
   crate: asset('maze/props/broken_amphora.png'),
@@ -22,7 +27,8 @@ const props = {
 
 export const biomeVisuals: Record<BiomeId, BiomeVisualDefinition> = Object.fromEntries(
   (Object.keys(themeSlug) as BiomeId[]).map(biomeId => [biomeId, {
-    wall: themed(biomeId, 'wall'),
+    wall: themedWallVariants(biomeId)[0],
+    wallVariants: themedWallVariants(biomeId),
     floor: themed(biomeId, 'floor'),
     ceiling: themed(biomeId, 'ceiling'),
     door: themed(biomeId, 'door'),
@@ -125,7 +131,7 @@ export const getDecorationAsset = (biomeId: BiomeId, decorationType: number): st
 
 export const getBiomeAssetPaths = (biomeId: BiomeId): string[] => {
   const biome = biomeVisuals[biomeId];
-  return [biome.wall, biome.floor, biome.ceiling, biome.door, biome.exit, biome.torch, biome.props.barrel, biome.props.crate, biome.props.bones, ...biome.props.extra];
+  return [...biome.wallVariants, biome.floor, biome.ceiling, biome.door, biome.exit, biome.torch, biome.props.barrel, biome.props.crate, biome.props.bones, ...biome.props.extra];
 };
 
 export function getEnemyVisualPath(visualId: string): string | undefined {

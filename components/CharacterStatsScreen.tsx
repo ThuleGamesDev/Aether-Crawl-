@@ -31,22 +31,16 @@ export const CharacterStatsScreen: React.FC<{ player: PlayerCharacter; derived: 
       <div className="fps-character-resources">
         <StatLine label="Health" value={`${Math.ceil(player.stats.hp)} / ${Math.ceil(derived.maxHealth)}`} />
         <StatLine label="Mana" value={`${Math.floor(player.stats.mp)} / ${Math.floor(derived.maxMana)}`} />
+        <StatLine label="Stamina" value={`${Math.floor(player.stats.stamina ?? derived.maxStamina)} / ${Math.floor(derived.maxStamina)}`} />
       </div>
     </section>
 
     <div className="fps-character-stat-columns">
       <section className="fps-build-summary fps-character-stat-card">
-        <h3>Attributes & defense</h3>
-        <StatLine label="Strength" value={derived.strength} />
-        <StatLine label="Dexterity" value={derived.dexterity} />
-        <StatLine label="Intelligence" value={derived.intelligence} />
-        <StatLine label="Armor" value={derived.armor} />
+        <h3>Offense</h3>
         <StatLine label="Weapon power" value={derived.weaponPower} />
         <StatLine label="Main-hand power" value={derived.mainHandWeaponPower} />
         <StatLine label="Off-hand power" value={derived.offHandWeaponPower} />
-      </section>
-      <section className="fps-build-summary fps-character-stat-card">
-        <h3>Combat</h3>
         <StatLine label="Physical damage" value={percent(derived.physicalDamageMultiplier)} />
         <StatLine label="Flat physical damage" value={signed(derived.physicalDamageFlat)} />
         <StatLine label="Spell damage" value={percent(derived.spellDamageMultiplier)} />
@@ -56,17 +50,32 @@ export const CharacterStatsScreen: React.FC<{ player: PlayerCharacter; derived: 
         <StatLine label="Cast speed" value={percent(derived.castSpeedMultiplier)} />
         <StatLine label="Critical chance" value={percent(derived.criticalChance)} />
         <StatLine label="Critical damage" value={percent(derived.criticalDamageMultiplier)} />
-        <StatLine label="Projectile speed" value={percent(derived.projectileSpeedMultiplier)} />
-      </section>
-      <section className="fps-build-summary fps-character-stat-card">
-        <h3>Survival & utility</h3>
-        <StatLine label="Movement speed" value={percent(derived.movementSpeedMultiplier)} />
-        <StatLine label="Cooldown recovery" value={percent(1 - derived.cooldownMultiplier)} />
-        <StatLine label="Mana cost reduction" value={percent(1 - derived.manaCostMultiplier)} />
         <StatLine label="Bleed chance / power" value={`${percent(derived.bleedChance)} / ${percent(derived.bleedPowerMultiplier)}`} />
         <StatLine label="Poison chance / power" value={`${percent(derived.poisonChance)} / ${percent(derived.poisonPowerMultiplier)}`} />
         <StatLine label="Fire chance / power" value={`${percent(derived.fireChance)} / ${percent(derived.firePowerMultiplier)}`} />
-        <StatLine label="Life on hit / kill" value={`${derived.lifeOnHit} / ${derived.lifeOnKill}`} />
+      </section>
+      <section className="fps-build-summary fps-character-stat-card">
+        <h3>Defense</h3>
+        <StatLine label="Armor" value={derived.armor} />
+        <StatLine label="Life on hit" value={derived.lifeOnHit} />
+        <StatLine label="Life on kill" value={derived.lifeOnKill} />
+      </section>
+      <section className="fps-build-summary fps-character-stat-card">
+        <h3>Resources</h3>
+        <StatLine label="Maximum health" value={Math.ceil(derived.maxHealth)} />
+        <StatLine label="Maximum mana" value={Math.floor(derived.maxMana)} />
+        <StatLine label="Maximum stamina" value={Math.floor(derived.maxStamina)} />
+        <StatLine label="Stamina regeneration" value={`${derived.staminaRegenPerSecond.toFixed(1)} / sec`} />
+      </section>
+      <section className="fps-build-summary fps-character-stat-card">
+        <h3>Utility</h3>
+        <StatLine label="Strength" value={derived.strength} />
+        <StatLine label="Dexterity" value={derived.dexterity} />
+        <StatLine label="Intelligence" value={derived.intelligence} />
+        <StatLine label="Movement speed" value={percent(derived.movementSpeedMultiplier)} />
+        <StatLine label="Cooldown recovery" value={percent(1 - derived.cooldownMultiplier)} />
+        <StatLine label="Mana cost reduction" value={percent(1 - derived.manaCostMultiplier)} />
+        <StatLine label="Projectile speed" value={percent(derived.projectileSpeedMultiplier)} />
       </section>
     </div>
 

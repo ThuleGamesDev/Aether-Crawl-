@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { getUniqueItem } from '../data/uniqueItems';
 import type { EquipmentSlot, ItemInstance, PlayerCharacter } from '../types';
 import { compareDerivedStats, calculateDerivedStats } from '../player/DerivedStats';
@@ -9,6 +9,7 @@ import { consumableStackKey, INVENTORY_GRID_HEIGHT, INVENTORY_GRID_WIDTH, itemFo
 import { ItemIcon } from './ItemIcon';
 import { CharacterStatsScreen } from './CharacterStatsScreen';
 import { EQUIPMENT_SLOTS, equipmentSlotLabel, getEquipmentRequirement, getItemEquipmentSlots, isDualWieldLoadout, isFocusItem, isShieldItem, isTwoHandedItem, type EquipmentTransactionResult } from '../services/equipmentRules';
+import { resolveActionLoadout } from '../services/actionLoadout';
 
 const LEFT_PAPERDOLL_SLOTS: EquipmentSlot[] = ['head', 'arms', 'legs', 'feet', 'ring1', 'ring2'];
 const RIGHT_PAPERDOLL_SLOTS: EquipmentSlot[] = ['mainHand', 'offHand', 'torso', 'neck', 'divineSigil'];
@@ -25,6 +26,7 @@ interface InventoryPanelProps {
 
 const InventoryPanel: React.FC<InventoryPanelProps> = ({ player, onEquip, onUnequip, onUse, onMove, onSplit, onDrop }) => {
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const inventoryCellRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const [message, setMessage] = useState('');
   const [activeScreen, setActiveScreen] = useState<'INVENTORY' | 'CHARACTER_STATS'>('INVENTORY');
   const grid = useMemo(() => normalizeInventoryGrid(player.inventory, player.inventoryGrid), [player.inventory, player.inventoryGrid]);
@@ -62,7 +64,10 @@ const InventoryPanel: React.FC<InventoryPanelProps> = ({ player, onEquip, onUneq
     : [];
   const unique = selected?.uniqueEffectId ? getUniqueItem(selected.uniqueEffectId) : undefined;
   const selectedSlot = selected ? EQUIPMENT_SLOTS.find(slot => player.equipment[slot]?.instanceId === selected.instanceId) : undefined;
+  const previewSlot = equipPreview?.ok ? equipPreview.slot : undefined;
   const activeUniqueSeconds = selected?.uniqueEffectId ? uniqueEffectRemaining(player, selected.uniqueEffectId as Parameters<typeof uniqueEffectRemaining>[1]) : 0;
+  const currentActionLoadout = resolveActionLoadout(player);
+  const previewActionLoadout = equipPreview?.ok ? resolveActionLoadout(equipPreview.player) : selectedSlot ? currentActionLoadout : null;
 
   const quickEquip = (item: ItemInstance) => {
     if (!getItemEquipmentSlots(item).length) { setMessage('This item has no compatible equipment slot.'); return; }
@@ -131,7 +136,22 @@ const InventoryPanel: React.FC<InventoryPanelProps> = ({ player, onEquip, onUneq
       <div className="fps-grid-board" role="grid" aria-label="10 by 5 inventory bag">
         {Array.from({ length: INVENTORY_GRID_WIDTH * INVENTORY_GRID_HEIGHT }, (_, index) => {
           const x = index % INVENTORY_GRID_WIDTH, y = Math.floor(index / INVENTORY_GRID_WIDTH);
-          return <button key={'cell:' + index} className="fps-grid-cell" style={{ left: (x * 10) + '%', top: (y * 20) + '%', width: '10%', height: '20%' }} aria-label={'Bag cell ' + (x + 1) + ', ' + (y + 1)} onClick={() => clickCell(x, y)} />;
+          return <button
+            key={'cell:' + index}
+            ref={element => { inventoryCellRefs.current[index] = element; }}
+            tabIndex={index === 0 ? 0 : -1}
+            className="fps-grid-cell"
+            style={{ left: (x * 10) + '%', top: (y * 20) + '%', width: '10%', height: '20%' }}
+            aria-label={'Bag cell ' + (x + 1) + ', ' + (y + 1)}
+            onClick={() => clickCell(x, y)}
+            onKeyDown={event => {
+              const nextX = Math.max(0, Math.min(INVENTORY_GRID_WIDTH - 1, x + (event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0)));
+              const nextY = Math.max(0, Math.min(INVENTORY_GRID_HEIGHT - 1, y + (event.key === 'ArrowDown' ? 1 : event.key === 'ArrowUp' ? -1 : 0)));
+              if (nextX === x && nextY === y) return;
+              event.preventDefault();
+              inventoryCellRefs.current[nextY * INVENTORY_GRID_WIDTH + nextX]?.focus();
+            }}
+          />;
         })}
         {grid.placements.map(placement => {
           const item = inventoryById.get(placement.instanceId);
@@ -166,9 +186,20 @@ const InventoryPanel: React.FC<InventoryPanelProps> = ({ player, onEquip, onUneq
         <div className={'fps-detail-hero fps-rarity-' + selected.rarity.toLowerCase()}><ItemIcon item={selected} /><div><small>{selected.type} · {selected.rarity}</small><h4>{describeItem(selected)}</h4><span>Item Level {selected.itemLevel} · {footprint?.width}×{footprint?.height}</span></div></div>
         <p className="fps-detail-description">{selected.description}</p>
         <div className="fps-detail-base-stats"><b>Base</b><span>{baseItemSummary(selected)}</span><span>Requires level {requirement}{!requirementMet ? ' · Locked' : ''}</span><span>Compatible slots: {getItemEquipmentSlots(selected).map(equipmentSlotLabel).join(', ') || 'None'}</span>{itemHandLabel(selected, player)}</div>
+        {selected.type === 'WEAPON' && <div className="fps-detail-weapon-actions" aria-label="Resolved weapon actions">
+          <b>Weapon actions · R6F2 resolver</b>
+          <ActionResolutionRow label="LMB · Primary" currentId={currentActionLoadout.primary.abilityId} currentName={currentActionLoadout.primary.ability.name} nextId={previewActionLoadout?.primary.abilityId} nextName={previewActionLoadout?.primary.ability.name} />
+          <ActionResolutionRow label="RMB · Secondary" currentId={currentActionLoadout.secondary.abilityId} currentName={currentActionLoadout.secondary.ability.name} nextId={previewActionLoadout?.secondary.abilityId} nextName={previewActionLoadout?.secondary.ability.name} />
+          {!previewActionLoadout && <small>This equipment change is not valid, so its action loadout cannot be previewed.</small>}
+        </div>}
         {selected.affixes.length > 0 && <div className="fps-detail-affixes"><b>Modifiers</b>{selected.affixes.map((affix, index) => <span key={affix.id + ':' + index}>{describeAffix(affix.id, affix.value)}</span>)}</div>}
         {unique && <div className="fps-unique-rule"><b>Mythic unique · {unique.effectId}</b><p>{unique.effectSummary}</p><dl><dt>Trigger</dt><dd>{unique.triggerRule}</dd><dt>Cooldown</dt><dd>{unique.cooldownRule}</dd><dt>Limit</dt><dd>{unique.capRule}</dd></dl>{unique.requiredClass && player.classId !== unique.requiredClass && <small className="fps-unique-fallback">{unique.fallbackSummary}</small>}{activeUniqueSeconds > 0 && <small className="fps-unique-active">Active · {activeUniqueSeconds.toFixed(1)}s</small>}</div>}
-        {equipmentChanges.length > 0 && <div className="fps-item-comparison"><b>After equip</b>{equipmentChanges.slice(0, 8).map(change => <span key={change.id} className={change.delta > 0 ? 'positive' : 'negative'}>{change.label} {formatDelta(change.delta, change.id)}</span>)}</div>}
+        {equipmentChanges.length > 0 && <ItemComparison
+          rows={equipmentChanges}
+          slotLabel={previewSlot ? equipmentSlotLabel(previewSlot) : 'Equipment'}
+          currentItemName={previewSlot ? player.equipment[previewSlot]?.name ?? 'Empty' : 'Current loadout'}
+          incomingItemName={selected.name}
+        />}
         <div className="fps-detail-actions">
           {selectedSlot ? <button onClick={() => unequip(selectedSlot)}>Unequip</button> : itemSlotFor(selected) && <button disabled={!requirementMet} onClick={() => quickEquip(selected)}>{!requirementMet ? 'Level locked' : 'Equip'}</button>}
           {selectedInInventory && equipPreview && !equipPreview.ok && <small className="fps-equip-error" role="status">{equipPreview.message}</small>}
@@ -230,10 +261,49 @@ function baseItemSummary(item: ItemInstance): string {
 }
 
 function formatDelta(delta: number, id: string): string {
-  const percent = id.includes('Multiplier') || id.includes('Chance') || id === 'cooldownRecovery' || id === 'manaCostReduction';
-  const amount = Math.abs(delta) < 0.1 ? Math.abs(delta).toFixed(1) : Math.abs(delta).toFixed(0);
-  return (delta > 0 ? '+' : '−') + amount + (percent ? '%' : '');
+  const amount = Math.abs(delta) < 0.1 ? Math.abs(delta).toFixed(1) : Math.abs(delta) < 10 ? Math.abs(delta).toFixed(1) : Math.abs(delta).toFixed(0);
+  return (delta > 0 ? '+' : '−') + amount + (isPercentageStat(id) ? '%' : '');
 }
+
+function isPercentageStat(id: string): boolean {
+  return id.includes('Multiplier') || id.includes('Chance') || id === 'cooldownRecovery' || id === 'manaCostReduction';
+}
+
+const ItemComparison: React.FC<{
+  rows: Array<{ id: string; label: string; before: number; after: number; delta: number }>;
+  slotLabel: string;
+  currentItemName: string;
+  incomingItemName: string;
+}> = ({ rows, slotLabel, currentItemName, incomingItemName }) => <div className="fps-item-comparison" aria-label="Derived stat comparison after equipping this item">
+  <div className="fps-item-comparison-heading"><b>Derived stats · equip preview</b><span>Replace {slotLabel}</span></div>
+  <div className="fps-item-comparison-items"><span><small>Current</small><strong>{currentItemName}</strong></span><b aria-hidden="true">→</b><span><small>Equipped</small><strong>{incomingItemName}</strong></span></div>
+  <div className="fps-item-comparison-table" role="table" aria-label="Current and preview derived stats">
+    <div className="fps-item-comparison-row header" role="row"><span role="columnheader">Stat</span><span role="columnheader">Current</span><span role="columnheader">After</span><span role="columnheader">Change</span></div>
+    {rows.map(row => <div className="fps-item-comparison-row" role="row" key={row.id}>
+      <span role="rowheader">{row.label}</span>
+      <span role="cell">{formatStatValue(row.before, row.id)}</span>
+      <span role="cell">{formatStatValue(row.after, row.id)}</span>
+      <span role="cell" className={row.delta > 0 ? 'positive' : 'negative'}>{formatDelta(row.delta, row.id)}</span>
+    </div>)}
+  </div>
+</div>;
+
+function formatStatValue(value: number, id: string): string {
+  const rounded = Math.abs(value) >= 100 ? Math.round(value) : Number.isInteger(value) ? value : Number(value.toFixed(1));
+  return String(rounded) + (isPercentageStat(id) ? '%' : '');
+}
+
+const ActionResolutionRow: React.FC<{
+  label: string;
+  currentId: string;
+  currentName: string;
+  nextId?: string;
+  nextName?: string;
+}> = ({ label, currentId, currentName, nextId, nextName }) => <div className="fps-action-resolution-row">
+  <span>{label}</span>
+  <span title={currentId}>{currentName} <code>{currentId}</code></span>
+  {nextId && <span title={nextId} className={nextId === currentId ? 'unchanged' : 'changed'}>Equip · {nextName} <code>{nextId}</code></span>}
+</div>;
 
 export default InventoryPanel;
 

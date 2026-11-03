@@ -36,13 +36,14 @@ export class AssetManager {
   private readonly loadErrors = new Set<string>();
   private generation = 0;
 
-  texture(kind: 'wall' | 'floor' | 'ceiling' | 'door' | 'exit' | 'loot', biome: BiomeId): THREE.CanvasTexture {
-    const key = kind + ':' + biome;
+  texture(kind: 'wall' | 'floor' | 'ceiling' | 'door' | 'exit' | 'loot', biome: BiomeId, variation = 0): THREE.CanvasTexture {
+    const wallVariation = kind === 'wall' ? Math.max(0, Math.min(2, Math.floor(variation))) : 0;
+    const key = kind + ':' + biome + (kind === 'wall' ? ':' + wallVariation : '');
     let texture = this.textures.get(key);
     if (!texture) {
       texture = createPixelTexture(kind, biome);
       this.textures.set(key, texture);
-      if (kind !== 'loot') this.loadLocal(texture, biomeVisuals[biome][kind]);
+      if (kind !== 'loot') this.loadLocal(texture, kind === 'wall' ? biomeVisuals[biome].wallVariants[wallVariation] : biomeVisuals[biome][kind]);
     }
     return texture;
   }
