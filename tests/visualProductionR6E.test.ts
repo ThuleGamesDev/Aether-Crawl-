@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CHARACTER_RIG_MANIFEST, CHARACTER_RIG_VISUAL_IDS, getCharacterRigDefinition, sampleCharacterPose, validateCharacterRigManifest } from '../data/characterRigs';
 import { enemyVisuals, getLevelAssetPaths, offhandVisuals, weaponVisuals } from '../data/assetRegistry';
 import { selectEnemyCharacterAnimation } from '../data/enemyCharacterAnimation';
-import { getPixelRenderSize } from '../engine/SceneRenderer';
+import { getPixelRenderSize, RENDER_QUALITY_SCALES } from '../engine/SceneRenderer';
 import { getCharacterViewForViewer, CharacterRigAnimator } from '../presentation/CharacterRigAnimator';
 import { AssetManager } from '../presentation/AssetManager';
 import { getWeaponPresentationPose, isWeaponPresentationCenterClear } from '../presentation/WeaponPresenter';
@@ -202,7 +202,7 @@ describe('R6E visual production pilot', () => {
     const viewports = [[1280, 720], [1920, 1080], [2560, 1440]] as const;
     const sizes = viewports.map(([width, height]) => getPixelRenderSize(width, height, false));
     expect(sizes.map(size => size.scale)).toEqual([sizes[0].scale, sizes[0].scale, sizes[0].scale]);
-    expect(sizes[0].scale).toBe(0.56);
+    expect(sizes[0].scale).toBe(RENDER_QUALITY_SCALES.balanced.desktop);
     for (let index = 0; index < viewports.length; index += 1) {
       expect(sizes[index].width / sizes[index].height).toBeCloseTo(viewports[index][0] / viewports[index][1], 2);
     }

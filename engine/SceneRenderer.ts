@@ -19,15 +19,31 @@ type EnemyVisualInstance =
   | { kind: 'legacy'; sprite: THREE.Sprite }
   | { kind: 'rig'; animator: CharacterRigAnimator };
 
-export const DEFAULT_PIXEL_RENDER_SCALE = 0.56;
-export const MOBILE_PIXEL_RENDER_SCALE = DEFAULT_PIXEL_RENDER_SCALE * 0.78;
+export type RenderQuality = 'performance' | 'balanced' | 'sharp';
 
-export function getPixelRenderSize(viewportWidth: number, viewportHeight: number, isMobile: boolean): { width: number; height: number; scale: number } {
+export const RENDER_QUALITY_SCALES: Record<RenderQuality, { desktop: number; mobile: number }> = {
+  performance: { desktop: 0.48, mobile: 0.4 },
+  balanced: { desktop: 0.68, mobile: 0.54 },
+  sharp: { desktop: 0.84, mobile: 0.68 },
+};
+export const DEFAULT_PIXEL_RENDER_SCALE = RENDER_QUALITY_SCALES.balanced.desktop;
+export const MOBILE_PIXEL_RENDER_SCALE = RENDER_QUALITY_SCALES.balanced.mobile;
+
+export function getPixelRenderSize(viewportWidth: number, viewportHeight: number, isMobile: boolean, quality: RenderQuality = 'balanced'): { width: number; height: number; scale: number } {
   if (viewportWidth <= 0 || viewportHeight <= 0) return { width: 0, height: 0, scale: 0 };
-  const requestedScale = isMobile ? MOBILE_PIXEL_RENDER_SCALE : DEFAULT_PIXEL_RENDER_SCALE;
-  const minimumScale = Math.max(160 / viewportWidth, 120 / viewportHeight);
-  const scale = Math.max(requestedScale, minimumScale);
+  const requestedScale = isMobile ? RENDER_QUALITY_SCALES[quality].mobile : RENDER_QUALITY_SCALES[quality].desktop;
+  const minimumScale = Math.min(1, Math.max(160 / viewportWidth, 120 / viewportHeight));
+  const scale = Math.min(0.92, Math.max(requestedScale, minimumScale));
   return { width: Math.max(1, Math.round(viewportWidth * scale)), height: Math.max(1, Math.round(viewportHeight * scale)), scale };
+}
+
+export function attachCameraToScene(scene: THREE.Scene, camera: THREE.Camera): void {
+  if (camera.parent !== scene) scene.add(camera);
+}
+
+function isInSceneGraph(scene: THREE.Scene, object: THREE.Object3D): boolean {
+  for (let node: THREE.Object3D | null = object; node; node = node.parent) if (node === scene) return true;
+  return false;
 }
 
 export interface VisualEvent {
@@ -48,8 +64,10 @@ export class SceneRenderer {
   readonly renderer: THREE.WebGLRenderer;
   readonly scene = new THREE.Scene();
   readonly camera = new THREE.PerspectiveCamera(72, 1, 0.045, 34);
+  private readonly canvas: HTMLCanvasElement;
   private readonly assets = new AssetManager();
   private readonly enemyVisuals = new Map<string, EnemyVisualInstance>();
+  private readonly rigConstructionFailures = new Set<string>();
   private readonly lootSprites = new Map<string, THREE.Sprite>();
   private readonly projectileMeshes = new Map<number, THREE.Mesh>();
   private readonly projectilePool: THREE.Mesh[] = [];
@@ -68,8 +86,17 @@ export class SceneRenderer {
   private worldRevision: number;
   private readonly resizeObserver: ResizeObserver | null;
   private elapsedSeconds = 0;
+  private worldEnemyCount = 0;
+  private renderQuality: RenderQuality;
+  private pixelScale = DEFAULT_PIXEL_RENDER_SCALE;
+  private readonly diagnosticsPoint = new THREE.Vector3();
+  private readonly diagnosticsMatrix = new THREE.Matrix4();
+  private readonly diagnosticsFrustum = new THREE.Frustum();
+  private readonly diagnosticsSphere = new THREE.Sphere();
 
-  constructor(canvas: HTMLCanvasElement, world: DungeonWorldState) {
+  constructor(canvas: HTMLCanvasElement, world: DungeonWorldState, renderQuality: RenderQuality = 'balanced') {
+    this.canvas = canvas;
+    this.renderQuality = renderQuality;
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false, powerPreference: 'high-performance', preserveDrawingBuffer: false });
     this.renderer.setPixelRatio(1);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -82,6 +109,7 @@ export class SceneRenderer {
     keyLight.position.set(-3, 8, 4);
     this.scene.add(keyLight);
     this.camera.rotation.order = 'YXZ';
+    attachCameraToScene(this.scene, this.camera);
     this.geometry = new WorldGeometry(world, this.assets);
     this.scene.add(this.geometry.group);
     this.worldRevision = world.worldRevision;
@@ -113,12 +141,19 @@ export class SceneRenderer {
     this.vfx.setMode(mode);
   }
 
+  setRenderQuality(quality: RenderQuality): void {
+    if (this.renderQuality === quality) return;
+    this.renderQuality = quality;
+    this.resize(this.canvas);
+  }
+
   private resize(canvas: HTMLCanvasElement): void {
     const bounds = canvas.getBoundingClientRect();
     if (!bounds.width || !bounds.height) return;
     const isMobile = window.matchMedia?.('(max-width: 767px)').matches ?? false;
-    const { width, height } = getPixelRenderSize(bounds.width, bounds.height, isMobile);
+    const { width, height, scale } = getPixelRenderSize(bounds.width, bounds.height, isMobile, this.renderQuality);
     if (canvas.width !== width || canvas.height !== height) this.renderer.setSize(width, height, false);
+    this.pixelScale = scale;
     this.renderer.domElement.style.width = '100%';
     this.renderer.domElement.style.height = '100%';
     this.renderer.domElement.style.imageRendering = 'pixelated';
@@ -180,7 +215,43 @@ export class SceneRenderer {
     this.renderer.render(this.scene, this.camera);
   }
 
+  getDiagnostics(): {
+    worldEnemyCount: number;
+    enemyVisualCount: number;
+    enemyVisualsInCamera: number;
+    atlas: ReturnType<AssetManager['getDiagnostics']>;
+    viewmodels: ReturnType<WeaponPresenter['getDiagnostics']>;
+    cameraAttachedToScene: boolean;
+    drawingBuffer: { width: number; height: number; cssWidth: number; cssHeight: number; scale: number; quality: RenderQuality };
+    render: { calls: number; triangles: number };
+  } {
+    this.camera.updateMatrixWorld(true);
+    this.diagnosticsMatrix.multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse);
+    this.diagnosticsFrustum.setFromProjectionMatrix(this.diagnosticsMatrix);
+    let inCamera = 0;
+    for (const visual of this.enemyVisuals.values()) {
+      const root = visual.kind === 'rig' ? visual.animator.group : visual.sprite;
+      if (!root.visible || !isInSceneGraph(this.scene, root)) continue;
+      root.getWorldPosition(this.diagnosticsPoint);
+      this.diagnosticsSphere.center.copy(this.diagnosticsPoint);
+      this.diagnosticsSphere.radius = visual.kind === 'rig' ? visual.animator.definition.worldHeight * 0.55 : 1.1;
+      if (this.diagnosticsFrustum.intersectsSphere(this.diagnosticsSphere)) inCamera += 1;
+    }
+    const bounds = this.canvas.getBoundingClientRect();
+    return {
+      worldEnemyCount: this.worldEnemyCount,
+      enemyVisualCount: this.enemyVisuals.size,
+      enemyVisualsInCamera: inCamera,
+      atlas: this.assets.getDiagnostics(),
+      viewmodels: this.weapon.getDiagnostics(),
+      cameraAttachedToScene: this.camera.parent === this.scene && isInSceneGraph(this.scene, this.camera),
+      drawingBuffer: { width: this.canvas.width, height: this.canvas.height, cssWidth: bounds.width, cssHeight: bounds.height, scale: this.pixelScale, quality: this.renderQuality },
+      render: { calls: this.renderer.info.render.calls, triangles: this.renderer.info.render.triangles },
+    };
+  }
+
   private syncEnemies(enemies: WorldEnemy[], world: DungeonWorldState, deltaSeconds: number): void {
+    this.worldEnemyCount = enemies.length;
     const ids = new Set(enemies.map(enemy => enemy.id));
     for (const [id, visual] of this.enemyVisuals) {
       if (!ids.has(id)) { this.disposeEnemyVisual(visual); this.enemyVisuals.delete(id); }
@@ -191,7 +262,7 @@ export class SceneRenderer {
     const atlas = this.assets.characterRigAtlas();
     for (const enemy of enemies) {
       const definition = getCharacterRigDefinition(enemy.visualId);
-      const shouldUseRig = Boolean(definition && atlas);
+      const shouldUseRig = Boolean(definition && atlas && !this.rigConstructionFailures.has(enemy.visualId));
       let visual = this.enemyVisuals.get(enemy.id);
       if (visual && ((visual.kind === 'rig') !== shouldUseRig)) {
         this.disposeEnemyVisual(visual);
@@ -200,11 +271,18 @@ export class SceneRenderer {
       }
       if (!visual) {
         if (shouldUseRig && definition && atlas) {
-          const animator = new CharacterRigAnimator(enemy, definition, atlas, CHARACTER_RIG_MANIFEST.atlasWidth, CHARACTER_RIG_MANIFEST.atlasHeight, CHARACTER_RIG_MANIFEST.cellSize);
-          visual = { kind: 'rig', animator };
-          this.scene.add(animator.group);
+          try {
+            const animator = new CharacterRigAnimator(enemy, definition, atlas, CHARACTER_RIG_MANIFEST.atlasWidth, CHARACTER_RIG_MANIFEST.atlasHeight, CHARACTER_RIG_MANIFEST.cellSize);
+            visual = { kind: 'rig', animator };
+            this.scene.add(animator.group);
+          } catch (error) {
+            this.rigConstructionFailures.add(enemy.visualId);
+            if (import.meta.env.DEV) console.error(`[SceneRenderer] Rig ${enemy.visualId} failed; using its local enemy sprite fallback.`, error);
+            visual = { kind: 'legacy', sprite: createEnemySprite(enemy, world.biome, this.assets, definition.fallbackSprite) };
+            this.scene.add(visual.sprite);
+          }
         } else {
-          const sprite = createEnemySprite(enemy, world.biome, this.assets);
+          const sprite = createEnemySprite(enemy, world.biome, this.assets, definition?.fallbackSprite);
           visual = { kind: 'legacy', sprite };
           this.scene.add(sprite);
         }
@@ -383,6 +461,7 @@ export class SceneRenderer {
     this.resizeObserver?.disconnect();
     this.onDisposeResize();
     this.weapon.dispose();
+    this.scene.remove(this.camera);
     this.vfx.dispose();
     this.scene.remove(this.geometry.group);
     this.geometry.dispose();

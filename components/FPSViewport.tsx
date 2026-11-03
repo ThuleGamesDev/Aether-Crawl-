@@ -2,7 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { FPSGameRuntime } from '../engine/FPSGameRuntime';
 import { GameLoop } from '../engine/GameLoop';
 import { InputSystem } from '../engine/InputSystem';
-import { SceneRenderer } from '../engine/SceneRenderer';
+import { SceneRenderer, type RenderQuality } from '../engine/SceneRenderer';
 import type { FPSGameSnapshot } from '../engine/FPSGameRuntime';
 import { audioService } from '../services/audioService';
 import type { VFXMode } from '../presentation/vfxDefinitions';
@@ -11,19 +11,22 @@ interface FPSViewportProps {
   runtime: FPSGameRuntime;
   mouseSensitivity: number;
   vfxMode: VFXMode;
+  renderQuality: RenderQuality;
   onSnapshot: (snapshot: FPSGameSnapshot) => void;
   onInputReady: (input: InputSystem | null) => void;
   onFailure: (message: string) => void;
 }
 
-const FPSViewport: React.FC<FPSViewportProps> = ({ runtime, mouseSensitivity, vfxMode, onSnapshot, onInputReady, onFailure }) => {
+const FPSViewport: React.FC<FPSViewportProps> = ({ runtime, mouseSensitivity, vfxMode, renderQuality, onSnapshot, onInputReady, onFailure }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<SceneRenderer | null>(null);
   const sensitivityRef = useRef(mouseSensitivity);
   const vfxModeRef = useRef(vfxMode);
+  const renderQualityRef = useRef(renderQuality);
   const callbacksRef = useRef({ onSnapshot, onInputReady, onFailure });
   sensitivityRef.current = mouseSensitivity;
   vfxModeRef.current = vfxMode;
+  renderQualityRef.current = renderQuality;
   callbacksRef.current = { onSnapshot, onInputReady, onFailure };
 
   useEffect(() => {
@@ -33,7 +36,7 @@ const FPSViewport: React.FC<FPSViewportProps> = ({ runtime, mouseSensitivity, vf
     let input: InputSystem | null = null;
     let loop: GameLoop | null = null;
     try {
-      renderer = new SceneRenderer(canvas, runtime.world);
+      renderer = new SceneRenderer(canvas, runtime.world, renderQualityRef.current);
       rendererRef.current = renderer;
       renderer.setVfxMode(vfxModeRef.current);
       input = new InputSystem(canvas, () => sensitivityRef.current);
@@ -55,6 +58,7 @@ const FPSViewport: React.FC<FPSViewportProps> = ({ runtime, mouseSensitivity, vf
         const state = runtime.getRenderState();
         for (const event of state.events) if (event.sound) audioService.playCombatCue(event.sound, event.position);
         renderer.renderFrame({ ...state, deltaSeconds, elapsedSeconds: elapsedSeconds + interpolation / 60 });
+        if (import.meta.env.DEV) canvas.dataset.r6f1RenderDiagnostics = JSON.stringify(renderer.getDiagnostics());
       });
       loop.start();
       callbacksRef.current.onSnapshot(runtime.getSnapshot());
@@ -78,6 +82,10 @@ const FPSViewport: React.FC<FPSViewportProps> = ({ runtime, mouseSensitivity, vf
   useEffect(() => {
     rendererRef.current?.setVfxMode(vfxMode);
   }, [vfxMode]);
+
+  useEffect(() => {
+    rendererRef.current?.setRenderQuality(renderQuality);
+  }, [renderQuality]);
 
   return <canvas ref={canvasRef} className="fps-world-canvas" aria-label="Maze of the Minotaur first-person labyrinth" data-maze-fps-viewport />;
 };
