@@ -52,5 +52,5 @@ export function getOldestActiveLaw(progress: MazeLawProgress): ActiveMazeLaw | u
 function hash32(text: string): number {
   let hash = 2166136261;
   for (let index = 0; index < text.length; index += 1) hash = Math.imul(hash ^ text.charCodeAt(index), 16777619);
-  return (hash >>> 0) % Math.max(1, MAZE_LAWS.length * MAZE_LAW_CATEGORIES.length);
+  return hash >>> 0;
 }
