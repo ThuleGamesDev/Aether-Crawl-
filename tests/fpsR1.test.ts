@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { ClassType, DungeonRoom, PlayerCharacter, WorldEnemy, WorldProjectile } from '../types';
+import type { ClassType, DungeonRoom, LegacyPlayerCharacter, PlayerCharacter, WorldEnemy, WorldProjectile } from '../types';
 import { CLASS_ABILITY_LOADOUT, getAbility } from '../combat/AbilityRegistry';
 import { calculatePlayerDamage, resolveMeleeAttack } from '../combat/DamageSystem';
 import { updateProjectiles } from '../combat/ProjectileSystem';
@@ -194,16 +194,16 @@ describe('FPS-R1 solo runtime', () => {
     const gained = grantExperience(player, 40);
     expect(gained.levelsGained).toBe(1);
     expect(gained.player.stats.level).toBe(2);
-    const armor = createItemInstance({ id: 'test_armor', name: 'Test Armor', description: 'Armor for a test.', type: 'ARMOR', value: 4, quantity: 1 }, 'instance_test_armor');
+    const armor = createItemInstance({ id: 'linothorax', name: 'Test Armor', description: 'Armor for a test.', type: 'ARMOR', value: 4, quantity: 1 }, 'instance_test_armor');
     const equipped = equipItem({ ...gained.player, inventory: [armor] }, armor.instanceId);
-    expect(equipped.equipment.armor?.instanceId).toBe(armor.instanceId);
+    expect(equipped.equipment.torso?.instanceId).toBe(armor.instanceId);
     expect(equipped.stats.armor).toBe(4);
 
-    const charm = createItemInstance({ id: 'test_charm', name: 'Test Charm', description: 'Strength charm.', type: 'ACCESSORY', value: 5, statBonus: 'STR', quantity: 1 }, 'instance_test_charm');
+    const charm = createItemInstance({ id: 'bronze_signet', name: 'Test Charm', description: 'Strength charm.', type: 'ACCESSORY', value: 5, statBonus: 'STR', quantity: 1 }, 'instance_test_charm');
     const withCharm = equipItem({ ...gained.player, inventory: [charm] }, charm.instanceId);
     const cleave = getAbility('barbarian_cleave')!;
     expect(calculatePlayerDamage(withCharm, cleave)).toBeGreaterThan(calculatePlayerDamage(gained.player, cleave));
-    expect(unequipItem(withCharm, 'accessory').equipment.accessory).toBeNull();
+    expect(unequipItem(withCharm, 'ring1').equipment.ring1).toBeNull();
   });
 
   it('pays an enemy reward once after a lethal projectile hit', () => {
@@ -304,7 +304,11 @@ describe('FPS-R1 solo runtime', () => {
     const storage = new MemoryStorage();
     storage.setItem('aether_save', 'legacy-party-save');
     const world = createDungeonWorld(1, 1234);
-    const player = createPlayerCharacter('PALADIN');
+    const activePlayer = createPlayerCharacter('PALADIN');
+    const player: LegacyPlayerCharacter = {
+      ...activePlayer,
+      equipment: { weapon: activePlayer.equipment.mainHand, armor: null, offhand: activePlayer.equipment.offHand, accessory: null },
+    };
     expect(saveFPSGame({ player, world, enemies: [], loot: [] }, storage)).toBe(true);
     const loaded = loadFPSGame(storage);
     expect(loaded.invalid).toBe(false);

@@ -78,9 +78,9 @@ describe('R5C save, input, and hotpath hardening', () => {
     expect(isValidEffectiveActionSpeedMultiplier(Number.POSITIVE_INFINITY)).toBe(false);
   });
 
-  it('round-trips an active max-speed HASTE action through the unchanged v4 save exactly once', () => {
+  it('round-trips an active max-speed HASTE action through the v5 save exactly once', () => {
     const runtime = new FPSGameRuntime('BARBARIAN');
-    const weapon = runtime.player.equipment.weapon;
+    const weapon = runtime.player.equipment.mainHand;
     if (!weapon) throw new Error('The boundary fixture requires the Barbarian starting weapon.');
     const maxSpeedWeapon: ItemInstance = {
       ...weapon,
@@ -88,7 +88,7 @@ describe('R5C save, input, and hotpath hardening', () => {
     };
     runtime.player = {
       ...runtime.player,
-      equipment: { ...runtime.player.equipment, weapon: maxSpeedWeapon },
+      equipment: { ...runtime.player.equipment, mainHand: maxSpeedWeapon },
       statusEffects: applyRealtimeStatus([], {
         statusId: 'HASTE', durationSeconds: 6, magnitude: ACTION_SPEED_RULES.maximumHasteBonus,
       }, 'r5c_speed_boundary'),
@@ -107,7 +107,7 @@ describe('R5C save, input, and hotpath hardening', () => {
     expect(runtime.save(storage)).toBe(true);
     const loaded = loadMazeGame(storage);
     expect(loaded.invalid).toBe(false);
-    expect(loaded.save?.version).toBe(4);
+    expect(loaded.save?.version).toBe(5);
     expect(loaded.save?.combat?.action).toEqual(active);
 
     const resumed = new FPSGameRuntime('BARBARIAN', loaded.save!);
@@ -244,10 +244,10 @@ describe('R5C save, input, and hotpath hardening', () => {
     ];
     const signet: ItemInstance = { ...base, instanceId: 'r5c_signet', itemLevel: 1, rarity: 'MAGIC', affixes, quantity: 1 };
     const player = createPlayerCharacter('BARBARIAN');
-    const withSignet = { ...player, equipment: { ...player.equipment, accessory: signet } };
+    const withSignet = { ...player, equipment: { ...player.equipment, ring1: signet } };
     const derived = calculateDerivedStats(withSignet);
     expect(derived.attackSpeedMultiplier).toBeCloseTo(1.05);
     expect(derived.cooldownMultiplier).toBeCloseTo(0.96);
-    expect(withSignet.equipment.accessory?.affixes).toEqual(affixes);
+    expect(withSignet.equipment.ring1?.affixes).toEqual(affixes);
   });
 });

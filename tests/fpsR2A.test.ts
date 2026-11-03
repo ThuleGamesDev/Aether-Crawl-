@@ -17,7 +17,7 @@ import { loadMazeGame, MAZE_SAVE_KEY, saveMazeGame } from '../services/mazeSave'
 import { getBiomeIdForLevel } from '../data/assetRegistry';
 import { createDungeonWorld } from '../world/DungeonWorld';
 import { reachableCells, cellKey } from '../services/dungeonPlan';
-import { TileType, type WorldEnemy, type WorldProjectile } from '../types';
+import { TileType, type LegacyPlayerCharacter, type WorldEnemy, type WorldProjectile } from '../types';
 import type { DungeonWorldState } from '../world/DungeonWorld';
 import { spawnFloorEnemies } from '../world/EnemySpawner';
 
@@ -33,14 +33,18 @@ const EXPECTED_CLASSES = {
 } as const;
 const localAssetExists = (url: string) => existsSync(resolve(process.cwd(), 'public', url.replace(/^\//, '')));
 
-function oldR1Fixture(seed = 43109): { player: ReturnType<typeof createPlayerCharacter>; world: DungeonWorldState; enemies: WorldEnemy[]; loot: []; combat: undefined } {
+function oldR1Fixture(seed = 43109): { player: LegacyPlayerCharacter; world: DungeonWorldState; enemies: WorldEnemy[]; loot: []; combat: undefined } {
   const generated = generateDungeon('dungeon', seed, 3);
   const world: DungeonWorldState = {
     level: 3, seed, biome: 'dungeon', map: generated.map, decorations: generated.decorations,
     floor: generated.floor!, explored: generated.map.map(row => row.map(() => false)), worldRevision: 2,
   };
   world.explored[1][1] = true;
-  const player = createPlayerCharacter('BARBARIAN', { x: 1.5, y: 0, z: 1.5 });
+  const activePlayer = createPlayerCharacter('BARBARIAN', { x: 1.5, y: 0, z: 1.5 });
+  const player: LegacyPlayerCharacter = {
+    ...activePlayer,
+    equipment: { weapon: activePlayer.equipment.mainHand, armor: null, offhand: activePlayer.equipment.offHand, accessory: null },
+  };
   player.name = 'Barbarian';
   player.stats.level = 7;
   player.stats.xp = 13;
@@ -228,7 +232,7 @@ describe('FPS-R2A Greek rebrand and Guardian progression', () => {
     expect(storage.getItem(MAZE_SAVE_KEY)).toBeNull();
     expect(saveMazeGame(migration.save!, storage)).toBe(true);
     expect(storage.getItem(FPS_SAVE_KEY)).toBe(original);
-    expect(loadMazeGame(storage).save?.version).toBe(4);
+    expect(loadMazeGame(storage).save?.version).toBe(5);
 
     const invalid = new MemoryStorage();
     invalid.setItem(MAZE_SAVE_KEY, '{broken-json');

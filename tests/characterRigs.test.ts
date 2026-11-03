@@ -174,8 +174,8 @@ describe('FPS-R3A first-person weapon poses', () => {
     const player = createPlayerCharacter('BARBARIAN');
     const labrys = createItemInstance({ id: 'r3a_labrys', name: 'Labrys', description: 'Test axe', type: 'WEAPON', value: 8, quantity: 1, visualType: 'axe' }, 'r3a_labrys_instance');
     const kopis = createItemInstance({ id: 'r3a_kopis', name: 'Kopis', description: 'Test dagger', type: 'WEAPON', value: 5, quantity: 1, visualType: 'dagger' }, 'r3a_kopis_instance');
-    expect(getWeaponVisualTypeForPlayer({ ...player, equipment: { ...player.equipment, weapon: labrys } })).toBe('axe');
-    expect(getWeaponVisualTypeForPlayer({ ...player, equipment: { ...player.equipment, weapon: kopis } })).toBe('dagger');
-    expect(getWeaponVisualTypeForPlayer({ ...player, equipment: { ...player.equipment, weapon: null } })).toBe('sword');
+    expect(getWeaponVisualTypeForPlayer({ ...player, equipment: { ...player.equipment, mainHand: labrys } })).toBe('axe');
+    expect(getWeaponVisualTypeForPlayer({ ...player, equipment: { ...player.equipment, mainHand: kopis } })).toBe('dagger');
+    expect(getWeaponVisualTypeForPlayer({ ...player, equipment: { ...player.equipment, mainHand: null } })).toBe('sword');
   });
 });

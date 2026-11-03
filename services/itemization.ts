@@ -24,6 +24,7 @@ const ROLLABLE_BASE_IDS = [
   'labrys', 'dory_spear', 'xiphos', 'kopis', 'labyrinth_bow', 'oracle_staff', 'asclepiad_staff', 'chthonic_staff',
   'pankration_wraps', 'aspis', 'linothorax', 'bronze_cuirass', 'cretan_pelt', 'greaves', 'laurel_circlet',
   'ares_votive', 'chthonic_seal', 'serpent_ring', 'bronze_signet', 'threaded_amulet',
+  'bronze_helm', 'bronze_bracers', 'linen_leggings', 'bronze_sandals', 'sun_focus', 'labyrinth_spear',
 ] as const;
 
 const GUARDIAN_REWARDS: Readonly<Record<string, string>> = Object.freeze({
@@ -287,3 +288,4 @@ function safeRandom(random: RandomSource): number {
 }
 function randomIndex(random: RandomSource, length: number): number { return Math.floor(safeRandom(random) * Math.max(1, length)); }
 function isRecord(value: unknown): value is Record<string, any> { return Boolean(value && typeof value === 'object' && !Array.isArray(value)); }
+

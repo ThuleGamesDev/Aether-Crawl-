@@ -7,14 +7,9 @@ import { calculateDerivedStats } from './DerivedStats';
 import { createClassPassiveState } from './ClassPassives';
 import { consumableEffect, createEnemyDrop, createLootInstance, legacyBaseId, normalizeLegacyItem, type RandomSource } from '../services/itemization';
 import { consumableStackKey, MAX_CONSUMABLE_STACK, moveInventoryGridItem, normalizeInventoryGrid, syncInventoryGrid } from '../services/inventoryGrid';
+import { canStoreInventoryItems, createEmptyEquipment, getEquipmentRequirement, getItemEquipmentSlots, isTwoHandedItem, MAX_INVENTORY_INSTANCES, resolveEquipmentSlot, type EquipmentTransactionResult } from '../services/equipmentRules';
 
-export const itemSlotFor = (item: Item): EquipmentSlot | null => {
-  if (item.type === 'WEAPON') return 'weapon';
-  if (item.type === 'ARMOR') return 'armor';
-  if (item.type === 'SHIELD') return 'offhand';
-  if (item.type === 'ACCESSORY') return 'accessory';
-  return null;
-};
+export const itemSlotFor = (item: Item): EquipmentSlot | null => getItemEquipmentSlots(item)[0] ?? null;
 
 export function createItemInstance(item: Item, instanceId: string, itemLevel = 1, rarity: ItemRarity = 'COMMON'): ItemInstance {
   const { isEquipped: _isEquipped, ...base } = item;
@@ -37,11 +32,15 @@ export function createPlayerCharacter(classId: ClassType, spawn = { x: 1.5, y: 0
   if (!template) throw new Error('Unknown class ID: ' + classId);
   const id = 'player_' + classId.toLowerCase();
   const items = template.startItems.map(item => createItemInstance(item, id + '_' + item.id));
-  const equipment: PlayerCharacter['equipment'] = { weapon: null, armor: null, offhand: null, accessory: null };
+  const equipment = createEmptyEquipment();
   const inventory: ItemInstance[] = [];
   for (const item of items) {
-    const slot = itemSlotFor(item);
-    if (slot && !equipment[slot]) equipment[slot] = item;
+    const compatible = getItemEquipmentSlots(item);
+    const slot = compatible.find(candidate => !equipment[candidate]
+      && (candidate !== 'offHand' || !isTwoHandedItem(equipment.mainHand))
+      && (candidate !== 'offHand' || item.type !== 'WEAPON' || Boolean(equipment.mainHand && equipment.mainHand.type === 'WEAPON' && !isTwoHandedItem(equipment.mainHand))))
+      ?? (compatible.includes('mainHand') && !equipment.mainHand ? 'mainHand' : null);
+    if (slot) equipment[slot] = item;
     else inventory.push(item);
   }
   const stats: SoloCharacterStats = {
@@ -104,39 +103,65 @@ export function grantExperience(player: PlayerCharacter, amount: number): { play
   return { player: refreshPlayerDerivedCaps(next), levelsGained };
 }
 
-export function equipItem(player: PlayerCharacter, instanceId: string): PlayerCharacter {
+export function tryEquipItem(player: PlayerCharacter, instanceId: string, reservedIds: readonly string[] = []): EquipmentTransactionResult {
   const itemIndex = player.inventory.findIndex(item => item.instanceId === instanceId);
-  if (itemIndex < 0) return player;
+  if (itemIndex < 0) return equipmentFailure(player, 'ITEM_MISSING', 'That item is no longer in the bag.');
   const item = player.inventory[itemIndex];
-  const slot = itemSlotFor(item);
-  if (!slot) return player;
-  const base = getItemBase(item.baseId);
-  if (player.stats.level < (base?.requiredLevel ?? 1)) return player;
-  const weapon = slot === 'weapon' ? item : player.equipment.weapon;
-  if (slot === 'offhand' && isTwoHanded(weapon)) return player;
+  const compatible = getItemEquipmentSlots(item);
+  if (!compatible.length) return equipmentFailure(player, 'NOT_EQUIPPABLE', 'This item has no safe equipment slot.');
+  const requirement = getEquipmentRequirement(item, player.stats.level);
+  if (!requirement.met) return equipmentFailure(player, 'LEVEL_REQUIREMENT', 'Requires level ' + requirement.requiredLevel + '.');
+  const slot = resolveEquipmentSlot(player, item);
+  if (!slot) return equipmentFailure(player, 'TWO_HAND_CONFLICT', 'The two-handed weapon occupies both hands.');
+  if (slot === 'offHand' && isTwoHandedItem(player.equipment.mainHand)) {
+    return equipmentFailure(player, 'TWO_HAND_CONFLICT', 'The two-handed weapon occupies both hands.');
+  }
 
   const inventory = player.inventory.filter((_, index) => index !== itemIndex);
+  const additions: ItemInstance[] = [];
   if (item.quantity > 1) {
-    const splitId = allocateSplitInstanceId(player, item);
-    inventory.push({ ...item, instanceId: splitId, quantity: item.quantity - 1 });
+    const splitId = allocateSplitInstanceId(player, item, reservedIds);
+    additions.push({ ...item, instanceId: splitId, quantity: item.quantity - 1 });
   }
   const equipment = { ...player.equipment };
   const replaced = equipment[slot];
-  if (replaced) inventory.push(replaced);
+  if (replaced) additions.push(replaced);
   equipment[slot] = { ...item, quantity: 1 };
-  if (slot === 'weapon' && isTwoHanded(item) && equipment.offhand) {
-    inventory.push(equipment.offhand);
-    equipment.offhand = null;
+  if (slot === 'mainHand' && isTwoHandedItem(item) && equipment.offHand) {
+    additions.push(equipment.offHand);
+    equipment.offHand = null;
   }
-  return refreshPlayerDerivedCaps({ ...player, equipment, inventory, inventoryGrid: syncInventoryGrid(inventory, player.inventoryGrid) });
+  if (!canStoreInventoryItems(inventory, equipment, additions, reservedIds)) {
+    const code = inventory.length + additions.length > MAX_INVENTORY_INSTANCES ? 'INVENTORY_CAPACITY' : 'INVALID_IDENTITY';
+    const message = code === 'INVENTORY_CAPACITY'
+      ? 'Cannot equip safely: bag and overflow are at their storage limit. No items were moved.'
+      : 'Cannot equip safely: an item identity is duplicated or invalid. No items were moved.';
+    return equipmentFailure(player, code, message);
+  }
+  inventory.push(...additions);
+  const next = refreshPlayerDerivedCaps({ ...player, equipment, inventory, inventoryGrid: syncInventoryGrid(inventory, player.inventoryGrid) });
+  return { ok: true, player: next, slot };
+}
+
+/** Compatibility wrapper for existing simulation callers; UI uses the result API to report failures. */
+export function equipItem(player: PlayerCharacter, instanceId: string): PlayerCharacter {
+  return tryEquipItem(player, instanceId).player;
+}
+
+export function tryUnequipItem(player: PlayerCharacter, slot: EquipmentSlot, reservedIds: readonly string[] = []): EquipmentTransactionResult {
+  const item = player.equipment[slot];
+  if (!item) return equipmentFailure(player, 'ITEM_MISSING', 'That equipment slot is already empty.');
+  const equipment = { ...player.equipment, [slot]: null };
+  const inventory = [...player.inventory, item];
+  if (!canStoreInventoryItems(player.inventory, equipment, [item], reservedIds)) {
+    return equipmentFailure(player, 'INVENTORY_CAPACITY', 'Cannot unequip safely: bag and overflow are at their storage limit. No items were moved.');
+  }
+  const next = refreshPlayerDerivedCaps({ ...player, equipment, inventory, inventoryGrid: syncInventoryGrid(inventory, player.inventoryGrid) });
+  return { ok: true, player: next, slot };
 }
 
 export function unequipItem(player: PlayerCharacter, slot: EquipmentSlot): PlayerCharacter {
-  const item = player.equipment[slot];
-  if (!item) return player;
-  const equipment = { ...player.equipment, [slot]: null };
-  const inventory = [...player.inventory, item];
-  return refreshPlayerDerivedCaps({ ...player, equipment, inventory, inventoryGrid: syncInventoryGrid(inventory, player.inventoryGrid) });
+  return tryUnequipItem(player, slot).player;
 }
 
 export function rollEnemyDrop(enemy: WorldEnemy, floorLevel: number, random: RandomSource): ItemInstance | null {
@@ -211,6 +236,9 @@ export function addInventoryItem(player: PlayerCharacter, incoming: ItemInstance
       if (remaining > 0) incoming = { ...incoming, instanceId: nextInstanceId() };
     }
   }
+  if (inventory.length > MAX_INVENTORY_INSTANCES) {
+    return { player, stored: false, stacked: false, overflowIds: normalizeInventoryGrid(player.inventory, player.inventoryGrid).overflowIds };
+  }
   const grid = normalizeInventoryGrid(inventory, player.inventoryGrid);
   return { player: { ...player, inventory, inventoryGrid: grid.placements }, stored: true, stacked, overflowIds: grid.overflowIds };
 }
@@ -283,12 +311,9 @@ export function refreshPlayerDerivedCaps(player: PlayerCharacter): PlayerCharact
   } };
 }
 
-function isTwoHanded(item: ItemInstance | null): boolean {
-  return Boolean(item && (getItemBase(item.baseId)?.twoHanded || item.visualType === 'bow' || item.visualType === 'axe' || item.visualType === 'staff'));
-}
-
-function allocateSplitInstanceId(player: PlayerCharacter, item: ItemInstance): string {
+function allocateSplitInstanceId(player: PlayerCharacter, item: ItemInstance, reservedIds: readonly string[] = []): string {
   const used = new Set<string>([
+    ...reservedIds,
     ...player.inventory.map(candidate => candidate.instanceId),
     ...Object.values(player.equipment).filter((candidate): candidate is ItemInstance => Boolean(candidate)).map(candidate => candidate.instanceId),
   ]);
@@ -297,4 +322,8 @@ function allocateSplitInstanceId(player: PlayerCharacter, item: ItemInstance): s
   let suffix = 2;
   while (used.has(id)) id = stem + '_' + suffix++;
   return id;
+}
+
+function equipmentFailure(player: PlayerCharacter, errorCode: EquipmentTransactionResult['errorCode'], message: string): EquipmentTransactionResult {
+  return { ok: false, player, errorCode, message };
 }

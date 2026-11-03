@@ -1,21 +1,22 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { getItemBase } from '../data/itemBases';
 import { getUniqueItem } from '../data/uniqueItems';
 import type { EquipmentSlot, ItemInstance, PlayerCharacter } from '../types';
 import { compareDerivedStats, calculateDerivedStats } from '../player/DerivedStats';
-import { equipItem, itemSlotFor } from '../player/PlayerProgression';
+import { itemSlotFor, tryEquipItem } from '../player/PlayerProgression';
 import { uniqueEffectRemaining } from '../player/UniqueEffects';
 import { consumableEffect, describeAffix, describeItem } from '../services/itemization';
 import { consumableStackKey, INVENTORY_GRID_HEIGHT, INVENTORY_GRID_WIDTH, itemFootprint, normalizeInventoryGrid } from '../services/inventoryGrid';
 import { ItemIcon } from './ItemIcon';
 import { CharacterStatsScreen } from './CharacterStatsScreen';
+import { EQUIPMENT_SLOTS, equipmentSlotLabel, getEquipmentRequirement, getItemEquipmentSlots, isDualWieldLoadout, isFocusItem, isShieldItem, isTwoHandedItem, type EquipmentTransactionResult } from '../services/equipmentRules';
 
-const EQUIPMENT_SLOTS: EquipmentSlot[] = ['weapon', 'armor', 'offhand', 'accessory'];
+const LEFT_PAPERDOLL_SLOTS: EquipmentSlot[] = ['head', 'arms', 'legs', 'feet', 'ring1', 'ring2'];
+const RIGHT_PAPERDOLL_SLOTS: EquipmentSlot[] = ['mainHand', 'offHand', 'torso', 'neck', 'divineSigil'];
 
 interface InventoryPanelProps {
   player: PlayerCharacter;
-  onEquip(instanceId: string): void;
-  onUnequip(slot: EquipmentSlot): void;
+  onEquip(instanceId: string): EquipmentTransactionResult;
+  onUnequip(slot: EquipmentSlot): EquipmentTransactionResult;
   onUse(instanceId: string): void;
   onMove(instanceId: string, x: number, y: number): boolean;
   onSplit(instanceId: string): boolean;
@@ -55,17 +56,23 @@ const InventoryPanel: React.FC<InventoryPanelProps> = ({ player, onEquip, onUneq
     else setMessage('That position is blocked or outside the bag.');
   };
 
-  const equipmentChanges = selected && selectedInInventory && itemSlotFor(selected)
-    ? compareDerivedStats(player, equipItem(player, selected.instanceId)).filter(row => Math.abs(row.delta) >= 0.01)
+  const equipPreview = selected && selectedInInventory ? tryEquipItem(player, selected.instanceId) : null;
+  const equipmentChanges = equipPreview?.ok
+    ? compareDerivedStats(player, equipPreview.player).filter(row => Math.abs(row.delta) >= 0.01)
     : [];
   const unique = selected?.uniqueEffectId ? getUniqueItem(selected.uniqueEffectId) : undefined;
   const selectedSlot = selected ? EQUIPMENT_SLOTS.find(slot => player.equipment[slot]?.instanceId === selected.instanceId) : undefined;
   const activeUniqueSeconds = selected?.uniqueEffectId ? uniqueEffectRemaining(player, selected.uniqueEffectId as Parameters<typeof uniqueEffectRemaining>[1]) : 0;
 
   const quickEquip = (item: ItemInstance) => {
-    if (!itemSlotFor(item)) return;
-    onEquip(item.instanceId);
-    setMessage('Equipment updated.');
+    if (!getItemEquipmentSlots(item).length) { setMessage('This item has no compatible equipment slot.'); return; }
+    const result = onEquip(item.instanceId);
+    setMessage(result.ok ? 'Equipped to ' + equipmentSlotLabel(result.slot!) + '.' : result.message ?? 'That item could not be equipped.');
+  };
+
+  const unequip = (slot: EquipmentSlot) => {
+    const result = onUnequip(slot);
+    setMessage(result.ok ? 'Unequipped from ' + equipmentSlotLabel(slot) + '.' : result.message ?? 'That item could not be unequipped.');
   };
 
   const useSelected = () => {
@@ -88,7 +95,8 @@ const InventoryPanel: React.FC<InventoryPanelProps> = ({ player, onEquip, onUneq
   const canUse = Boolean(selected && selectedEffect && (selectedEffect === 'HEALTH'
     ? player.stats.hp < derived.maxHealth
     : player.stats.mp < derived.maxMana));
-  const requirement = selected ? getItemBase(selected.baseId)?.requiredLevel ?? 1 : 1;
+  const requirement = selected ? getEquipmentRequirement(selected, player.stats.level).requiredLevel : 1;
+  const requirementMet = selected ? getEquipmentRequirement(selected, player.stats.level).met : false;
   const footprint = selected ? itemFootprint(selected) : null;
 
   return <div className="fps-inventory-root">
@@ -98,20 +106,17 @@ const InventoryPanel: React.FC<InventoryPanelProps> = ({ player, onEquip, onUneq
     </nav>
     {activeScreen === 'CHARACTER_STATS' ? <CharacterStatsScreen player={player} derived={derived} /> : <div className="fps-inventory-layout">
     <section className="fps-inventory-equipment" aria-label="Equipped items">
-      <div className="fps-inventory-section-heading"><h3>Equipment</h3><span>4 slots</span></div>
-      <div className="fps-equipment-list">{EQUIPMENT_SLOTS.map(slot => {
-        const item = player.equipment[slot];
-        return <article className={'fps-equipment-slot' + (item?.instanceId === selectedId ? ' selected' : '')} key={slot}>
-          <button className="fps-equipment-select" onClick={() => item && setSelectedId(item.instanceId)} aria-label={item ? 'Inspect ' + describeItem(item) : slot + ' slot empty'}>
-            <span className="fps-equipment-icon">{item ? <ItemIcon item={item} /> : <i>◇</i>}</span>
-            <span className="fps-equipment-copy"><small>{slot.toUpperCase()}</small><strong>{item ? describeItem(item) : 'Empty'}</strong>{item && <small>{item.rarity} · Item Level {item.itemLevel}</small>}</span>
-          </button>
-          {item && <button className="fps-small-action" onClick={() => onUnequip(slot)}>Unequip</button>}
-        </article>;
-      })}</div>
+      <div className="fps-inventory-section-heading"><h3>Equipment</h3><span>11 slots</span></div>
+      <div className="fps-paperdoll" aria-label="Equipment paperdoll">
+        <div className="fps-paperdoll-column">{LEFT_PAPERDOLL_SLOTS.map(slot => <EquipmentSlotCard key={slot} slot={slot} player={player} selectedId={selectedId} onSelect={setSelectedId} onUnequip={unequip} />)}</div>
+        <div className="fps-paperdoll-hero" aria-hidden="true"><i className="fps-paperdoll-head" /><i className="fps-paperdoll-torso" /><i className="fps-paperdoll-arm left" /><i className="fps-paperdoll-arm right" /><i className="fps-paperdoll-leg left" /><i className="fps-paperdoll-leg right" /><span>HERO</span></div>
+        <div className="fps-paperdoll-column">{RIGHT_PAPERDOLL_SLOTS.map(slot => <EquipmentSlotCard key={slot} slot={slot} player={player} selectedId={selectedId} onSelect={setSelectedId} onUnequip={unequip} />)}</div>
+      </div>
       <div className="fps-build-summary">
         <h3>Active build</h3>
         <StatLine label="Weapon power" value={derived.weaponPower} />
+        <StatLine label="Main-hand power" value={derived.mainHandWeaponPower} />
+        <StatLine label="Off-hand power" value={derived.offHandWeaponPower} />
         <StatLine label="Armor" value={derived.armor} />
         <StatLine label="Attack speed" value={derived.attackSpeedMultiplier * 100} suffix="%" />
         <StatLine label="Critical chance" value={derived.criticalChance * 100} suffix="%" />
@@ -160,12 +165,13 @@ const InventoryPanel: React.FC<InventoryPanelProps> = ({ player, onEquip, onUneq
       {selected ? <>
         <div className={'fps-detail-hero fps-rarity-' + selected.rarity.toLowerCase()}><ItemIcon item={selected} /><div><small>{selected.type} · {selected.rarity}</small><h4>{describeItem(selected)}</h4><span>Item Level {selected.itemLevel} · {footprint?.width}×{footprint?.height}</span></div></div>
         <p className="fps-detail-description">{selected.description}</p>
-        <div className="fps-detail-base-stats"><b>Base</b><span>{baseItemSummary(selected)}</span><span>Requires level {requirement}</span>{selectedSlot && <span>Equipped in {selectedSlot}</span>}</div>
+        <div className="fps-detail-base-stats"><b>Base</b><span>{baseItemSummary(selected)}</span><span>Requires level {requirement}{!requirementMet ? ' · Locked' : ''}</span><span>Compatible slots: {getItemEquipmentSlots(selected).map(equipmentSlotLabel).join(', ') || 'None'}</span>{itemHandLabel(selected, player)}</div>
         {selected.affixes.length > 0 && <div className="fps-detail-affixes"><b>Modifiers</b>{selected.affixes.map((affix, index) => <span key={affix.id + ':' + index}>{describeAffix(affix.id, affix.value)}</span>)}</div>}
         {unique && <div className="fps-unique-rule"><b>Mythic unique · {unique.effectId}</b><p>{unique.effectSummary}</p><dl><dt>Trigger</dt><dd>{unique.triggerRule}</dd><dt>Cooldown</dt><dd>{unique.cooldownRule}</dd><dt>Limit</dt><dd>{unique.capRule}</dd></dl>{unique.requiredClass && player.classId !== unique.requiredClass && <small className="fps-unique-fallback">{unique.fallbackSummary}</small>}{activeUniqueSeconds > 0 && <small className="fps-unique-active">Active · {activeUniqueSeconds.toFixed(1)}s</small>}</div>}
         {equipmentChanges.length > 0 && <div className="fps-item-comparison"><b>After equip</b>{equipmentChanges.slice(0, 8).map(change => <span key={change.id} className={change.delta > 0 ? 'positive' : 'negative'}>{change.label} {formatDelta(change.delta, change.id)}</span>)}</div>}
         <div className="fps-detail-actions">
-          {selectedSlot ? <button onClick={() => onUnequip(selectedSlot)}>Unequip</button> : itemSlotFor(selected) && <button disabled={requirement > player.stats.level} onClick={() => onEquip(selected.instanceId)}>{requirement > player.stats.level ? 'Level locked' : 'Equip'}</button>}
+          {selectedSlot ? <button onClick={() => unequip(selectedSlot)}>Unequip</button> : itemSlotFor(selected) && <button disabled={!requirementMet} onClick={() => quickEquip(selected)}>{!requirementMet ? 'Level locked' : 'Equip'}</button>}
+          {selectedInInventory && equipPreview && !equipPreview.ok && <small className="fps-equip-error" role="status">{equipPreview.message}</small>}
           {selected.type === 'POTION' && <button disabled={!canUse} onClick={useSelected}>Use</button>}
           {selectedInInventory && consumableStackKey(selected) && selected.quantity > 1 && <button onClick={splitSelected}>Split stack</button>}
           {selectedInInventory && <button className="fps-drop-action" onClick={dropSelected}>Drop 1 nearby</button>}
@@ -185,6 +191,33 @@ const InventoryPanel: React.FC<InventoryPanelProps> = ({ player, onEquip, onUneq
   </div>;
 };
 
+export const EquipmentSlotCard: React.FC<{
+  slot: EquipmentSlot;
+  player: PlayerCharacter;
+  selectedId: string | null;
+  onSelect(instanceId: string): void;
+  onUnequip(slot: EquipmentSlot): void;
+}> = ({ slot, player, selectedId, onSelect, onUnequip }) => {
+  const item = player.equipment[slot];
+  const reserved = slot === 'offHand' && isTwoHandedItem(player.equipment.mainHand);
+  return <article className={'fps-equipment-slot' + (item?.instanceId === selectedId ? ' selected' : '') + (reserved ? ' reserved' : '')}>
+    <button className="fps-equipment-select" onClick={() => item && onSelect(item.instanceId)} aria-label={item ? 'Inspect ' + describeItem(item) : equipmentSlotLabel(slot) + (reserved ? ', reserved by two-handed weapon' : ', slot empty')}>
+      <span className="fps-equipment-icon">{item ? <ItemIcon item={item} /> : <i>◇</i>}</span>
+      <span className="fps-equipment-copy"><small>{equipmentSlotLabel(slot)}</small><strong>{item ? describeItem(item) : reserved ? 'Reserved · 2H' : 'Empty'}</strong>{item && <small>{item.rarity} · Item Level {item.itemLevel} · {itemHandLabel(item, player)}</small>}</span>
+    </button>
+    {item && <button className="fps-small-action" aria-label={'Unequip ' + equipmentSlotLabel(slot)} onClick={() => onUnequip(slot)}>Unequip</button>}
+  </article>;
+};
+
+function itemHandLabel(item: ItemInstance, player: PlayerCharacter): string {
+  if (isShieldItem(item)) return 'Shield';
+  if (isFocusItem(item)) return 'Focus';
+  if (item.type === 'WEAPON' && isTwoHandedItem(item)) return '2H';
+  if (item.type === 'WEAPON') return isDualWieldLoadout(player.equipment)
+    && (player.equipment.mainHand?.instanceId === item.instanceId || player.equipment.offHand?.instanceId === item.instanceId) ? 'Dual Wield · 1H' : '1H';
+  return '';
+}
+
 const StatLine: React.FC<{ label: string; value: number | string; suffix?: string }> = ({ label, value, suffix = '' }) => <div className="fps-stat-line"><span>{label}</span><b>{typeof value === 'number' ? (Number.isInteger(value) ? value : value.toFixed(1)) + suffix : value}</b></div>;
 
 function baseItemSummary(item: ItemInstance): string {
@@ -203,3 +236,4 @@ function formatDelta(delta: number, id: string): string {
 }
 
 export default InventoryPanel;
+
