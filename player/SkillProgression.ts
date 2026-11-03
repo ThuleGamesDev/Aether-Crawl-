@@ -110,8 +110,7 @@ export function applySkillUpgrade(player: PlayerCharacter, abilityId: string): P
 }
 
 export function isClassSkillSlotUnlocked(player: PlayerCharacter, slot: number): boolean {
-  if (!Number.isInteger(slot) || slot < 1 || slot > 4) return false;
-  const abilityId = getClassSkillKit(player.classId)?.skills.find(skill => skill.slot === slot)?.abilityId;
+  const abilityId = CLASS_ABILITY_LOADOUT[player.classId].skillSlots[slot - 1];
   return Boolean(abilityId && getSkillRank(player, abilityId) > 0);
 }
 

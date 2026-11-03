@@ -536,8 +536,6 @@ export type LegacyEquipmentSlot = 'weapon' | 'armor' | 'offhand' | 'accessory';
 export type LegacyEquipmentLoadout = Record<LegacyEquipmentSlot, ItemInstance | null>;
 export type ItemRarity = 'COMMON' | 'MAGIC' | 'RARE' | 'UNIQUE';
 
-export type WeaponFamily = 'XIPHOS' | 'KOPIS' | 'DORY' | 'LABRYS' | 'BOW' | 'STAFF' | 'DAGGERS' | 'UNARMED' | 'MAUL';
-
 export type ItemTag = 'WEAPON' | 'PHYSICAL' | 'SPELL' | 'MELEE' | 'PROJECTILE' | 'BOW' | 'DAGGER' | 'STAFF' | 'TWO_HANDED'
   | 'ARMOR' | 'SHIELD' | 'ACCESSORY' | 'RING' | 'AMULET' | 'FOCUS' | 'DIVINE_SIGIL' | 'CONSUMABLE' | 'MATERIAL';
 
@@ -547,8 +545,6 @@ export interface ItemBaseDefinition extends Omit<Item, 'isEquipped' | 'quantity'
   tags: ItemTag[];
   /** Explicit compatible slots; rings may use either ring slot and one-handed weapons may use either hand. */
   equipmentSlots: EquipmentSlot[];
-  /** Canonical combat family; legacy items may use a documented visualType fallback. */
-  weaponFamily?: WeaponFamily;
   requiredLevel: number;
   twoHanded?: boolean;
   legacyIds?: string[];

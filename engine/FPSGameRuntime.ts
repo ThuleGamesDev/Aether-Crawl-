@@ -5,7 +5,7 @@ import { raycastGrid, hasLineOfSight, isWorldSolid, moveWithEntitySlide, moveWit
 import { updateEnemyBrains } from '../enemies/EnemyBrain';
 import { isVisibleProjectileImpact, MAX_PROJECTILE_PIERCE, updateProjectiles, type ProjectileImpact } from '../combat/ProjectileSystem';
 import { applyEnemyDamage, calculateIncomingDamage, calculatePlayerDamage, getAreaTargetIds, getMeleeTargetIds, projectileDirection, resolveAreaAttack, resolveChainAttack, resolveMeleeAttack } from '../combat/DamageSystem';
-import { getAbility } from '../combat/AbilityRegistry';
+import { CLASS_ABILITY_LOADOUT, getAbility, getSkillAbilityId } from '../combat/AbilityRegistry';
 import { getEnemyAttackDefinition, isEnemyAttackParryable } from '../data/enemyAttacks';
 import { getEnemyAttackTelegraphDescriptor, getGuardianTelegraphEffect } from '../data/enemyAttackTelegraph';
 import { getFloorGuardianDefinition } from '../data/mazeContent';
@@ -36,7 +36,6 @@ import { abilityPoiseDamage, applyEnemyPoiseDamage, enemyAttackContainsPoint, ge
 import { awardThreadCharge, buildThreadAnchorOffer, closeThreadAnchor as clearOpenThreadAnchor, createAriadneThreadProgress, openThreadAnchor as markThreadAnchorOpen, planAriadneThreadEdit, type ThreadAnchorOffer, type ThreadEditContext } from '../services/ariadneThread';
 import type { AriadneThreadAction } from '../types';
 import { createMazeChronicle, recordMazeChronicleEvent, type MazeChronicleEventInput } from '../services/mazeChronicle';
-import { resolveActionLoadout, type ResolvedActionLoadout, type ResolvedClassSkill, type ResolvedWeaponAction } from '../services/actionLoadout';
 
 export interface FPSGameSnapshot {
   player: PlayerCharacter;
@@ -45,7 +44,6 @@ export interface FPSGameSnapshot {
   enemies: WorldEnemy[];
   loot: WorldLootDrop[];
   action: ActivePlayerAction | null;
-  resolvedActionLoadout: ResolvedActionLoadout;
   primaryAbilityId: string;
   secondaryAbilityId: string;
   skillAbilityId: string;
@@ -97,7 +95,6 @@ export class FPSGameRuntime {
   world: DungeonWorldState;
   enemies: WorldEnemy[];
   projectiles: WorldProjectile[] = [];
-  private readonly actionProjectileIds = new Set<number>();
   loot: WorldLootDrop[] = [];
   roomOffer: RoomOffer | null = null;
   private threadOffer: ThreadAnchorOffer | null = null;
@@ -112,9 +109,6 @@ export class FPSGameRuntime {
   private elapsedSeconds = 0;
   private nextProjectileId = 1;
   private chargeStartedAt: number | null = null;
-  private chargeAction: ResolvedWeaponAction | null = null;
-  private actionLoadoutCache: ResolvedActionLoadout | null = null;
-  private actionLoadoutCacheKey = '';
   private isMoving = false;
   private cameraBob = 0;
   private toast = '';
@@ -231,7 +225,6 @@ export class FPSGameRuntime {
         actionForHits = this.combat.action ?? actionForHits;
       }
     }
-    if (actionUpdate.completed) this.actionProjectileIds.clear();
 
     this.enemies = this.enemies.map(enemy => tickEnemyPoise(enemy, dt));
     const enemyUpdate = updateEnemyBrains(this.enemies, this.world.map, this.player, dt);
@@ -281,61 +274,37 @@ export class FPSGameRuntime {
   }
 
   private processInput(input: InputFrame): void {
-    const loadout = this.getResolvedActionLoadout();
+    const loadout = CLASS_ABILITY_LOADOUT[this.player.classId];
     if (input.primaryPressed) this.startAbility(loadout.primary);
     if (input.secondaryPressed) {
-      if (loadout.secondary.ability.chargeMinSeconds) {
-        this.chargeStartedAt = this.elapsedSeconds;
-        this.chargeAction = loadout.secondary;
-      } else this.startAbility(loadout.secondary);
+      const ability = getAbility(loadout.secondary);
+      if (ability?.chargeMinSeconds) this.chargeStartedAt = this.elapsedSeconds;
+      else this.startAbility(loadout.secondary);
     }
     if (input.secondaryReleased && this.chargeStartedAt !== null) {
       const chargedFor = Math.max(0, this.elapsedSeconds - this.chargeStartedAt);
       this.chargeStartedAt = null;
-      const chargedAction = this.chargeAction;
-      this.chargeAction = null;
-      if (chargedAction) this.startAbility(chargedAction, chargedFor);
+      this.startAbility(loadout.secondary, chargedFor);
     }
     if (input.skillPressed) {
-      const skill = input.skillSlot === null ? undefined : loadout.classSkills.find(candidate => candidate.slot === input.skillSlot);
-      if (skill?.unlocked) this.startAbility(skill);
-      else if (skill) this.addToast('Unlock this skill at level ' + skill.unlockLevel + '.');
+      const abilityId = input.skillSlot === null ? null : getSkillAbilityId(this.player.classId, input.skillSlot);
+      if (abilityId && isClassSkillSlotUnlocked(this.player, input.skillSlot!)) this.startAbility(abilityId);
+      else if (abilityId) this.addToast('Unlock this skill at level ' + (getClassSkillUnlockLevel(this.player.classId, input.skillSlot!) ?? '?') + '.');
       else if (input.skillSlot !== null) this.addToast('No skill learned in slot ' + input.skillSlot + ' yet.');
     }
     if (input.interactPressed) this.interact();
   }
 
-  private getResolvedActionLoadout(): ResolvedActionLoadout {
-    const equipment = this.player.equipment;
-    const skillKey = this.player.skills.map(skill => skill.abilityId + ':' + skill.rank).join(',');
-    const itemKey = (item: ItemInstance | null) => item ? [item.instanceId, item.baseId ?? '', item.id, item.visualType ?? '', item.type].join(':') : '-';
-    const key = [this.player.classId, this.player.stats.level, skillKey, itemKey(equipment.mainHand), itemKey(equipment.offHand), this.combat.nextMeleeWeaponHand].join('|');
-    if (!this.actionLoadoutCache || key !== this.actionLoadoutCacheKey) {
-      this.actionLoadoutCache = resolveActionLoadout(this.player, this.combat.nextMeleeWeaponHand);
-      this.actionLoadoutCacheKey = key;
-    }
-    return this.actionLoadoutCache;
-  }
-
-  private startAbility(action: ResolvedWeaponAction | ResolvedClassSkill, chargeSeconds = 0): void {
-    const abilityId = action.abilityId;
-    const ability = action.ability;
+  private startAbility(abilityId: string, chargeSeconds = 0): void {
+    const ability = getAbility(abilityId);
     const projectileCount = ability?.kind === 'PROJECTILE' ? boundedProjectileCount(ability) : 0;
     if (ability?.kind === 'PROJECTILE' && this.projectiles.length + projectileCount > 64) {
       this.addToast('The projectile field is full.');
       return;
     }
-    const result = this.combat.start(this.player, abilityId, chargeSeconds, {
-      source: action.source,
-      actionSlot: action.source === 'CLASS_SKILL' ? undefined : action.actionSlot,
-      weaponSlot: action.source === 'CLASS_SKILL' ? undefined : action.weaponSlot,
-      sourceItemInstanceId: action.source === 'CLASS_SKILL' ? null : action.sourceItemInstanceId,
-      presentationProfile: action.source === 'CLASS_SKILL' ? undefined : action,
-      alternatesHand: action.source === 'CLASS_SKILL' ? false : action.alternatesHand,
-    });
+    const result = this.combat.start(this.player, abilityId, chargeSeconds);
     if (result.error) { if (result.error !== 'Recovering from the current action.') this.addToast(result.error); return; }
     this.player = result.player;
-    this.actionProjectileIds.clear();
     if (result.ability) {
       if (abilityId.startsWith('necromancer_')) {
         const seal = resolveUniqueTrigger(this.player, 'stygian_seal', 'SOUL_SKILL_CAST');
@@ -345,7 +314,7 @@ export class FPSGameRuntime {
         }
       }
       this.addLog(result.ability.name + '.');
-      this.visualEvents.push({ kind: 'audio', position: { ...this.player.position }, sound: getAbilityStartSound(result.ability, action.source === 'CLASS_SKILL' ? undefined : action.audioProfile) });
+      this.visualEvents.push({ kind: 'audio', position: { ...this.player.position }, sound: getAbilityStartSound(result.ability) });
     }
   }
 
@@ -403,7 +372,7 @@ export class FPSGameRuntime {
     const perHitMultiplier = ability.damagePerHitMultiplier ?? (hitCount > 1 ? 1 / hitCount : 1);
     damageMultiplier *= perHitMultiplier;
     if (ability.kind === 'PROJECTILE' && (ability.projectileCount ?? 1) > 1) damageMultiplier *= Math.max(0.1, Math.min(1, ability.damagePerProjectileMultiplier ?? 1));
-    const damage = ability.damage > 0 ? calculatePlayerDamage(this.player, ability, damageMultiplier, this.random(), action.weaponSlot ?? 'mainHand', action.actionSource !== 'CLASS_SKILL') : 0;
+    const damage = ability.damage > 0 ? calculatePlayerDamage(this.player, ability, damageMultiplier, this.random(), action.weaponSlot ?? 'mainHand') : 0;
 
     if (hitIndex === 0 && ability.selfStatuses?.length) {
       for (const status of ability.selfStatuses) {
@@ -475,9 +444,7 @@ export class FPSGameRuntime {
           }
         }
       }
-      const effectId = action.actionSource !== 'CLASS_SKILL' && action.presentationProfile?.vfxProfile
-        ? action.presentationProfile.vfxProfile
-        : ability.meleeStyle === 'THRUST' ? 'spear_thrust' : ability.meleeStyle === 'BASH' ? 'aspis_impact' : 'bronze_slash';
+      const effectId = ability.meleeStyle === 'THRUST' ? 'spear_thrust' : ability.meleeStyle === 'BASH' ? 'aspis_impact' : 'bronze_slash';
       const reach = Math.min(1, ability.range * 0.45);
       this.visualEvents.push({ kind: 'melee', effectId, position: { x: this.player.position.x + Math.cos(this.player.rotation.yaw) * reach, y: 0.9, z: this.player.position.z + Math.sin(this.player.rotation.yaw) * reach }, direction: { x: Math.cos(this.player.rotation.yaw), z: Math.sin(this.player.rotation.yaw) }, color: ability.projectileColor ?? '#ffd17b', scale: ability.meleeStyle === 'THRUST' ? 0.85 : 1.2, sourceId: ability.id });
       for (const id of result.hitEnemyIds) {
@@ -506,15 +473,14 @@ export class FPSGameRuntime {
       const derived = calculateDerivedStats(this.player);
       const speed = (ability.projectileSpeed ?? 10) * derived.projectileSpeedMultiplier;
       const fan = count > 1 ? Math.max(0, Math.min(0.55, ability.projectileSpreadRadians ?? 0)) : 0;
-      const lateral = action.presentationProfile?.animationProfile === 'BOW' ? 0 : 0.2;
+      const lateral = this.player.equipment.mainHand?.visualType === 'bow' ? 0 : 0.2;
       for (let index = 0; index < count; index += 1) {
         const offset = count === 1 ? 0 : -fan + 2 * fan * index / (count - 1);
         const direction = projectileDirection(this.player.rotation.yaw + offset, this.player.rotation.pitch);
         const originX = this.player.position.x + direction.x * 0.42 - Math.sin(this.player.rotation.yaw) * lateral;
         const originZ = this.player.position.z + direction.z * 0.42 + Math.cos(this.player.rotation.yaw) * lateral;
-        const projectileId = this.nextProjectileId++;
         this.projectiles.push({
-          id: projectileId,
+          id: this.nextProjectileId++,
           position: { x: originX, y: 1.28 + direction.y * 0.12, z: originZ },
           velocity: { x: direction.x * speed, y: direction.y * speed, z: direction.z * speed },
           radius: ability.projectileRadius ?? 0.13,
@@ -527,11 +493,7 @@ export class FPSGameRuntime {
           pierceRemaining: Math.min(MAX_PROJECTILE_PIERCE, Math.max(0, Math.floor(ability.pierceCount ?? 0))),
           hitEnemyIds: [],
         });
-        this.actionProjectileIds.add(projectileId);
-        const effectId = action.actionSource !== 'CLASS_SKILL' && action.presentationProfile?.vfxProfile
-          ? action.presentationProfile.vfxProfile
-          : abilityVfxEffect(ability.id, ability.onHitStatus?.statusId) ?? (ability.manaCost > 0 ? 'chthonic_bolt' : 'oracle_spark');
-        this.visualEvents.push({ kind: 'cast', effectId, position: { x: originX, y: 1.25, z: originZ }, direction: { x: direction.x, z: direction.z }, color: ability.projectileColor, scale: count > 1 ? 0.43 : 0.55, sourceId: ability.id });
+        this.visualEvents.push({ kind: 'cast', effectId: abilityVfxEffect(ability.id, ability.onHitStatus?.statusId) ?? (ability.manaCost > 0 ? 'chthonic_bolt' : 'oracle_spark'), position: { x: originX, y: 1.25, z: originZ }, direction: { x: direction.x, z: direction.z }, color: ability.projectileColor, scale: count > 1 ? 0.43 : 0.55, sourceId: ability.id });
       }
       return;
     }
@@ -622,9 +584,7 @@ export class FPSGameRuntime {
       this.applyPlayerHealing(restored, 'LIFE_ON_HIT');
     }
     const aimedTargetId = ability.kind === 'PROJECTILE' ? this.getTargetEnemy()?.id : undefined;
-    if (aimedTargetId && enemyIds.includes(aimedTargetId) && this.player.classId === 'RANGER' && ability.kind === 'PROJECTILE') {
-      this.player = recordMarkedPreyHit(this.player, aimedTargetId);
-    }
+    if (aimedTargetId && enemyIds.includes(aimedTargetId) && ability.id.startsWith('ranger_')) this.player = recordMarkedPreyHit(this.player, aimedTargetId);
     const hitIds = new Set(enemyIds);
     const poiseDamage = abilityPoiseDamage(ability, this.player, weaponSlot);
     const broken: WorldEnemy[] = [];
@@ -1424,7 +1384,7 @@ export class FPSGameRuntime {
     const reservedIds = this.loot.flatMap(drop => [drop.id, drop.item.instanceId]);
     const result = tryEquipItem(this.player, instanceId, reservedIds);
     if (!result.ok) { this.addToast(result.message ?? 'That item could not be equipped.'); return result; }
-    this.cancelActionForEquipmentChange();
+    this.combat.cancelActiveAction();
     this.player = result.player;
     this.addToast('Equipped ' + (this.player.equipment[result.slot!]?.name ?? 'item') + '.');
     return result;
@@ -1433,19 +1393,7 @@ export class FPSGameRuntime {
   /** Cancels held charge/guard input when the game yields to an overlay or browser state change. */
   cancelHeldActions(): void {
     this.chargeStartedAt = null;
-    this.chargeAction = null;
     this.controllerState = { ...this.controllerState, guarding: false, guardExhausted: false };
-  }
-
-  private cancelActionForEquipmentChange(): void {
-    if (this.combat.action) {
-      const cancelledProjectileIds = this.actionProjectileIds;
-      this.projectiles = this.projectiles.filter(projectile => !cancelledProjectileIds.has(projectile.id));
-    }
-    this.actionProjectileIds.clear();
-    this.cancelHeldActions();
-    this.combat.cancelActiveAction();
-    this.actionLoadoutCache = null;
   }
 
   moveItem(instanceId: string, x: number, y: number): boolean {
@@ -1469,7 +1417,7 @@ export class FPSGameRuntime {
     const reservedIds = this.loot.flatMap(drop => [drop.id, drop.item.instanceId]);
     const result = tryUnequipItem(this.player, slot, reservedIds);
     if (!result.ok) { this.addToast(result.message ?? 'That item could not be unequipped.'); return result; }
-    this.cancelActionForEquipmentChange();
+    this.combat.cancelActiveAction();
     this.player = result.player;
     this.addToast('Unequipped ' + equippedName + '.');
     return result;
@@ -1653,11 +1601,7 @@ export class FPSGameRuntime {
   }
 
   getSnapshot(): FPSGameSnapshot {
-    const loadout = this.getResolvedActionLoadout();
-    const classSkills = [...loadout.classSkills].sort((a, b) => a.slot - b.slot);
-    const activeAction = this.combat.action;
-    const displayedPrimaryId = activeAction?.actionSlot === 'PRIMARY' ? activeAction.abilityId : loadout.primary.abilityId;
-    const displayedSecondaryId = activeAction?.actionSlot === 'SECONDARY' ? activeAction.abilityId : loadout.secondary.abilityId;
+    const loadout = CLASS_ABILITY_LOADOUT[this.player.classId];
     const incomingAttacks = this.enemies.filter(enemy => enemy.health > 0 && enemy.state === 'ATTACK_WINDUP'
       && Math.hypot(enemy.position.x - this.player.position.x, enemy.position.z - this.player.position.z) <= 10
       && hasLineOfSight(this.world.map, enemy.position.x, enemy.position.z, this.player.position.x, this.player.position.z, 0.15))
@@ -1677,16 +1621,15 @@ export class FPSGameRuntime {
       world: this.world,
       enemies: this.enemies,
       loot: this.loot,
-      action: activeAction,
-      resolvedActionLoadout: loadout,
-      primaryAbilityId: displayedPrimaryId,
-      secondaryAbilityId: displayedSecondaryId,
-      skillAbilityId: classSkills[0]?.abilityId ?? '',
-      skillAbilityIds: classSkills.map(skill => skill.abilityId),
-      primaryCooldown: this.combat.getCooldown(displayedPrimaryId),
-      secondaryCooldown: this.combat.getCooldown(displayedSecondaryId),
-      skillCooldown: this.combat.getCooldown(classSkills[0]?.abilityId ?? ''),
-      skillCooldowns: classSkills.map(skill => this.combat.getCooldown(skill.abilityId)),
+      action: this.combat.action,
+      primaryAbilityId: loadout.primary,
+      secondaryAbilityId: loadout.secondary,
+      skillAbilityId: loadout.skill,
+      skillAbilityIds: [...loadout.skillSlots],
+      primaryCooldown: this.combat.getCooldown(loadout.primary),
+      secondaryCooldown: this.combat.getCooldown(loadout.secondary),
+      skillCooldown: this.combat.getCooldown(loadout.skill),
+      skillCooldowns: loadout.skillSlots.map(id => id ? this.combat.getCooldown(id) : 0),
       skillUpgradeChoices: getSkillUpgradeChoices(this.player),
       levelUpOpen: this.levelUpOpen,
       chargeProgress: this.chargeStartedAt === null ? 0 : Math.min(1, (this.elapsedSeconds - this.chargeStartedAt) / 1),
@@ -1753,8 +1696,7 @@ function cloneWorld(world: DungeonWorldState): DungeonWorldState {
   };
 }
 
-function getAbilityStartSound(ability: NonNullable<ReturnType<typeof getAbility>>, profile?: NonNullable<VisualEvent['sound']>): NonNullable<VisualEvent['sound']> {
-  if (profile) return profile;
+function getAbilityStartSound(ability: NonNullable<ReturnType<typeof getAbility>>): NonNullable<VisualEvent['sound']> {
   if (ability.meleeStyle === 'BASH') return 'shield';
   if (ability.element) return 'cast';
   if (ability.meleeStyle === 'THRUST') return 'spear';
@@ -1803,12 +1745,10 @@ function boundedProjectileCount(ability: NonNullable<ReturnType<typeof getAbilit
 function abilityVfxEffect(abilityId: string, statusId?: string): PixelEffectId | undefined {
   const statusEffect = statusVfxEffect(statusId);
   if (statusEffect) return statusEffect;
-  if (abilityId === 'paladin_dory_impale') return 'dory_thrust';
-  if (abilityId === 'paladin_aspis_charge') return 'bronze_impact';
-  if (abilityId === 'rogue_knife_fan' || abilityId === 'ranger_volley' || abilityId === 'ranger_piercing_hunt') return 'ariadne_thread';
   if (/blood_oath/i.test(abilityId)) return 'blood_hit';
   if (/fireburst|promethean|flame/i.test(abilityId)) return 'promethean_flame';
   if (/necromancer_|soul_drain|chthonic|underworld|warden|curse|grasp/i.test(abilityId)) return 'chthonic_bolt';
+  if (/ranger_volley|javelin/i.test(abilityId)) return 'dory_thrust';
   if (/sorcerer_|oracle|spark|lightning|charged_bolt/i.test(abilityId)) return 'oracle_spark';
   if (/web|snare/i.test(abilityId)) return 'web_snare';
   return undefined;
