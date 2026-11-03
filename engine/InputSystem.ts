@@ -25,6 +25,7 @@ export class InputSystem {
   private readonly keys = new Set<string>();
   private readonly pressed = new Set<string>();
   private readonly touchRoles = new Map<number, TouchRole>();
+  private readonly capturedTouchPointers = new Set<number>();
   private movementTouch: { x: number; y: number; originX: number; originY: number } | null = null;
   private lookX = 0;
   private lookY = 0;
@@ -45,6 +46,7 @@ export class InputSystem {
     canvas.addEventListener('pointermove', this.onPointerMove);
     canvas.addEventListener('pointerup', this.onPointerUp);
     canvas.addEventListener('pointercancel', this.onPointerUp);
+    canvas.addEventListener('lostpointercapture', this.onPointerUp);
     window.addEventListener('keydown', this.onKeyDown);
     window.addEventListener('keyup', this.onKeyUp);
     window.addEventListener('mouseup', this.onMouseUp);
@@ -112,7 +114,10 @@ export class InputSystem {
   private readonly onPointerDown = (event: PointerEvent) => {
     if (event.pointerType !== 'touch') return;
     event.preventDefault();
-    this.canvas.setPointerCapture?.(event.pointerId);
+    try {
+      this.canvas.setPointerCapture(event.pointerId);
+      this.capturedTouchPointers.add(event.pointerId);
+    } catch { /* Touch input still works where pointer capture is unavailable. */ }
     const bounds = this.canvas.getBoundingClientRect();
     const x = event.clientX - bounds.left, y = event.clientY - bounds.top;
     const role: TouchRole = x < bounds.width * 0.44 ? 'move' : 'look';
@@ -143,6 +148,7 @@ export class InputSystem {
   private readonly onPointerUp = (event: PointerEvent) => {
     if (this.touchRoles.get(event.pointerId) === 'move') this.movementTouch = null;
     this.touchRoles.delete(event.pointerId);
+    this.capturedTouchPointers.delete(event.pointerId);
     this.lastTouchLookX = undefined;
     this.lastTouchLookY = undefined;
   };
@@ -173,6 +179,10 @@ export class InputSystem {
     this.keys.clear();
     this.pressed.clear();
     this.movementTouch = null;
+    for (const pointerId of this.capturedTouchPointers) {
+      try { this.canvas.releasePointerCapture?.(pointerId); } catch { /* The browser may already have released it. */ }
+    }
+    this.capturedTouchPointers.clear();
     this.touchRoles.clear();
     this.lookX = 0;
     this.lookY = 0;
@@ -250,6 +260,7 @@ export class InputSystem {
     this.canvas.removeEventListener('pointermove', this.onPointerMove);
     this.canvas.removeEventListener('pointerup', this.onPointerUp);
     this.canvas.removeEventListener('pointercancel', this.onPointerUp);
+    this.canvas.removeEventListener('lostpointercapture', this.onPointerUp);
     window.removeEventListener('keydown', this.onKeyDown);
     window.removeEventListener('keyup', this.onKeyUp);
     window.removeEventListener('mouseup', this.onMouseUp);

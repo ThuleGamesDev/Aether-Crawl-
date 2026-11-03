@@ -2,16 +2,19 @@ import { FLOOR_ENEMY_ROSTERS, getFloorGuardianDefinition } from '../data/mazeCon
 import { enemyDefinitions } from '../data/enemies';
 import { TileType, type FloorState, type WorldEnemy } from '../types';
 import { floorRandom } from '../services/floorRandom';
-import { isWorldSolid } from './CollisionWorld';
+import { canOccupyWorldPosition, isWorldSolid } from './CollisionWorld';
 
-export function spawnFloorEnemies(map: number[][], floor: FloorState): WorldEnemy[] {
+export function spawnFloorEnemies(map: number[][], floor: FloorState, playerPosition = { x: 1.5, z: 1.5 }): WorldEnemy[] {
   const definitions = new Map(enemyDefinitions.map(definition => [definition.id, definition]));
   const random = floorRandom(floor.seed ^ 0xE11E5);
   const occupied = new Set<string>();
   const enemies: WorldEnemy[] = [];
   const make = (definitionId: string, x: number, z: number, roomId?: string, guardian = false) => {
     const definition = definitions.get(guardian ? 'skeleton_warrior' : definitionId);
-    if (!definition || isWorldSolid(map[z]?.[x])) return false;
+    const collisionRadius = guardian ? 0.42 : definitionId === 'giant_rat' ? 0.22 : 0.28;
+    const worldX = x + 0.5, worldZ = z + 0.5;
+    if (!definition || isWorldSolid(map[z]?.[x]) || !canOccupyWorldPosition(map, worldX, worldZ, collisionRadius)
+      || Math.hypot(worldX - playerPosition.x, worldZ - playerPosition.z) < collisionRadius + 0.45) return false;
     const cell = x + ',' + z;
     if (occupied.has(cell)) return false;
     occupied.add(cell);
@@ -20,12 +23,12 @@ export function spawnFloorEnemies(map: number[][], floor: FloorState): WorldEnem
     const health = guardian ? guardianDefinition!.health : Math.round(definition.fpsHp * levelScale);
     const id = guardianDefinition?.id ?? definition.id;
     enemies.push({
-      id: 'enemy_' + floor.level + '_' + (floor.seed >>> 0) + '_' + id,
+      id: 'enemy_' + floor.level + '_' + (floor.seed >>> 0) + '_' + id + '_' + enemies.length,
       definitionId: id,
       name: guardianDefinition?.name ?? definition.fpsName,
       visualId: guardianDefinition?.visualId ?? definition.fpsVisualId,
-      position: { x: x + 0.5, y: 0, z: z + 0.5 },
-      collisionRadius: guardian ? 0.42 : definitionId === 'giant_rat' ? 0.22 : 0.28,
+      position: { x: worldX, y: 0, z: worldZ },
+      collisionRadius,
       health,
       maxHealth: health,
       damage: guardian ? guardianDefinition!.damage : Math.max(3, Math.round(definition.fpsDamage * Math.min(1.45, levelScale))),
@@ -72,12 +75,22 @@ export function spawnFloorEnemies(map: number[][], floor: FloorState): WorldEnem
   }
 
   const freeCells: Array<{ x: number; z: number; score: number }> = [];
-  const start = { x: 1, z: 1 };
-  for (let z = 1; z < map.length - 1; z += 1) for (let x = 1; x < map[z].length - 1; x += 1) {
-    if (isWorldSolid(map[z][x]) || occupied.has(x + ',' + z) || floor.rooms.find(room => room.type === 'BOSS')?.cells.some(cell => cell.x === x && cell.y === z)) continue;
-    const distanceFromStart = Math.hypot(x - start.x, z - start.z);
-    if (distanceFromStart < 4) continue;
-    freeCells.push({ x, z, score: distanceFromStart + random() * 2 });
+  const bossCells = new Set((floor.rooms.find(room => room.type === 'BOSS')?.cells ?? []).map(cell => cell.x + ',' + cell.y));
+  if (floor.architectureRooms?.length) {
+    for (const room of combatRooms) for (const cell of room.cells) {
+      if (isWorldSolid(map[cell.y]?.[cell.x]) || occupied.has(cell.x + ',' + cell.y) || bossCells.has(cell.x + ',' + cell.y)
+        || !canOccupyWorldPosition(map, cell.x + 0.5, cell.y + 0.5, 0.28)
+        || Math.hypot(cell.x + 0.5 - playerPosition.x, cell.y + 0.5 - playerPosition.z) < 4) continue;
+      freeCells.push({ x: cell.x, z: cell.y, score: Math.hypot(cell.x + 0.5 - playerPosition.x, cell.y + 0.5 - playerPosition.z) + random() * 2 });
+    }
+  } else {
+    const start = { x: 1, z: 1 };
+    for (let z = 1; z < map.length - 1; z += 1) for (let x = 1; x < map[z].length - 1; x += 1) {
+      if (isWorldSolid(map[z][x]) || occupied.has(x + ',' + z) || bossCells.has(x + ',' + z)) continue;
+      const distanceFromStart = Math.hypot(x - start.x, z - start.z);
+      if (distanceFromStart < 4 || !canOccupyWorldPosition(map, x + 0.5, z + 0.5, 0.28)) continue;
+      freeCells.push({ x, z, score: distanceFromStart + random() * 2 });
+    }
   }
   freeCells.sort((a, b) => b.score - a.score);
   for (const cell of freeCells) {

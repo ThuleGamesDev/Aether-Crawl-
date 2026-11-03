@@ -1,7 +1,7 @@
 import { existsSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { biomeVisuals, collectAssetPaths, enemyVisuals, getLevelAssetPaths, vfxVisuals } from '../data/assetRegistry';
+import { biomeVisuals, collectAssetPaths, enemyVisuals, getDecorationAsset, getLevelAssetPaths, propVisuals, vfxVisuals } from '../data/assetRegistry';
 import { enemyDefinitions } from '../data/enemies';
 import { enemyAbilities } from '../data/enemyAbilities';
 
@@ -45,6 +45,17 @@ describe('static asset registry', () => {
   it('resolves every registry asset to a repository file', () => {
     for (const path of collectAssetPaths()) expect(localAssetExists(path), path).toBe(true);
     for (const [type, path] of Object.entries(vfxVisuals)) expect(localAssetExists(path), `${type}: ${path}`).toBe(true);
+  });
+
+  it('registers the new wall mounted and regional room art while retaining decoration code 1 for torches', () => {
+    expect(propVisuals.wallTorch).toBe('/assets/maze/props/wall_torch.png');
+    expect(propVisuals.frescoPanel).toBe('/assets/maze/props/fresco_panel.png');
+    expect(propVisuals.chthonicAltar).toBe('/assets/maze/props/chthonic_altar.png');
+    expect(localAssetExists(propVisuals.wallTorch)).toBe(true);
+    expect(localAssetExists(propVisuals.frescoPanel)).toBe(true);
+    expect(localAssetExists(propVisuals.chthonicAltar)).toBe(true);
+    expect(getDecorationAsset('dungeon', 1)).toBe(propVisuals.wallTorch);
+    expect(getDecorationAsset('dungeon', 7)).toBe(propVisuals.oilBowl);
   });
 
   it('preloads the active floor set without downloading other biome surfaces up front', () => {

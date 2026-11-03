@@ -2,6 +2,7 @@ import type { ClassPassiveState, FloorState, ItemInstance, PlayerCharacter, Worl
 import type { DungeonWorldState } from '../world/DungeonWorld';
 import { isWorldSolid } from '../world/CollisionWorld';
 import type { PlayerCombatSaveState } from '../player/PlayerCombat';
+import { isValidFloorState } from './dungeonSave';
 import { CLASS_ABILITY_LOADOUT, getAbility } from '../combat/AbilityRegistry';
 import { calculateDerivedStats } from '../player/DerivedStats';
 import { getItemBase } from '../data/itemBases';
@@ -124,10 +125,7 @@ function isDungeonWorld(value: unknown): value is DungeonWorldState {
   if (!Array.isArray(value.decorations) || value.decorations.length !== value.map.length || !value.decorations.every((row: unknown) => Array.isArray(row) && row.length === width && row.every((tile: unknown) => Number.isInteger(tile)))) return false;
   if (!Array.isArray(value.explored) || value.explored.length !== value.map.length || !value.explored.every((row: unknown) => Array.isArray(row) && row.length === width && row.every((cell: unknown) => typeof cell === 'boolean')) || !isRecord(value.floor)) return false;
   const floor = value.floor as FloorState;
-  return floor.version === 1 && floor.level === value.level && floor.biome === value.biome && Number.isFinite(floor.seed) && Array.isArray(floor.rooms)
-    && Number.isFinite(floor.keys) && Array.isArray(floor.visitedCells) && Array.isArray(floor.pendingEffects)
-    && (floor.pendingEncounterId === null || typeof floor.pendingEncounterId === 'string')
-    && floor.rooms.every(room => isRecord(room) && typeof room.id === 'string' && typeof room.type === 'string' && isRecord(room.anchor) && Number.isFinite(room.anchor.x) && Number.isFinite(room.anchor.y) && Array.isArray(room.cells));
+  return floor.level === value.level && floor.biome === value.biome && isValidFloorState(floor, value.map);
 }
 
 function isWorldEnemy(value: unknown): value is WorldEnemy {

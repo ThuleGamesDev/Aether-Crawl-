@@ -27,7 +27,7 @@ export const biomeVisuals: Record<BiomeId, BiomeVisualDefinition> = Object.fromE
     ceiling: themed(biomeId, 'ceiling'),
     door: themed(biomeId, 'door'),
     exit: themed(biomeId, 'exit'),
-    torch: asset('maze/props/oil_bowl.png'),
+    torch: asset('maze/props/wall_torch.png'),
     props: { ...props, extra: [asset('maze/props/offering_altar.png'), asset('maze/props/column_fragment.png')] as [string, string] },
     ambientColor: LABYRINTH_THEMES[biomeId].accent,
   }])
@@ -79,8 +79,11 @@ export const propVisuals = {
   brokenAmphora: props.crate,
   labyrinthTablet: props.bones,
   offeringAltar: asset('maze/props/offering_altar.png'),
+  chthonicAltar: asset('maze/props/chthonic_altar.png'),
   columnFragment: asset('maze/props/column_fragment.png'),
   oilBowl: asset('maze/props/oil_bowl.png'),
+  wallTorch: asset('maze/props/wall_torch.png'),
+  frescoPanel: asset('maze/props/fresco_panel.png'),
   bullRelief: asset('maze/props/bull_relief.png'),
   cisternMirror: asset('maze/props/cistern_mirror.png'),
 };
@@ -102,6 +105,9 @@ export const getDecorationAsset = (biomeId: BiomeId, decorationType: number): st
   if (decorationType === 4) return biome.props.bones;
   if (decorationType === 5) return biome.props.extra[0];
   if (decorationType === 6) return biome.props.extra[1];
+  if (decorationType === 7) return propVisuals.oilBowl;
+  if (decorationType === 9) return propVisuals.frescoPanel;
+  if (decorationType === 10) return propVisuals.bullRelief;
   return undefined;
 };
 

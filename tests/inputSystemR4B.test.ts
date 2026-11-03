@@ -18,16 +18,19 @@ function setup(pointerLock = false) {
     pointerLockElement: null as HTMLCanvasElement | null,
     exitPointerLock() { this.pointerLockElement = null; },
   });
+  const captured = new Set<number>();
+  const released: number[] = [];
   const canvas = Object.assign(new EventSurface(), {
     clientWidth: 200,
     getBoundingClientRect: () => ({ left: 0, top: 0, width: 200, height: 100 }),
-    setPointerCapture: () => undefined,
+    setPointerCapture: (pointerId: number) => { captured.add(pointerId); },
+    releasePointerCapture: (pointerId: number) => { captured.delete(pointerId); released.push(pointerId); },
     ...(pointerLock ? { requestPointerLock: () => undefined } : {}),
   });
   vi.stubGlobal('window', browserWindow);
   vi.stubGlobal('document', browserDocument);
   const input = new InputSystem(canvas as unknown as HTMLCanvasElement, () => 0.0025);
-  return { input, canvas, browserWindow, browserDocument };
+  return { input, canvas, browserWindow, browserDocument, captured, released };
 }
 
 afterEach(() => { vi.unstubAllGlobals(); });
@@ -71,6 +74,22 @@ describe('FPS-R4B mouse and overlay input handling', () => {
     canvas.emit('pointermove', { pointerId: 7, clientX: 55, clientY: 50, preventDefault: () => undefined });
     expect(input.readFrame().movement.strafe).toBeGreaterThan(0.9);
     canvas.emit('pointercancel', { pointerId: 7 });
+    expect(input.readFrame().movement).toMatchObject({ forward: 0, strafe: 0 });
+    input.dispose();
+  });
+
+  it('releases active touch captures when handing control to an overlay', () => {
+    const { input, canvas, captured, released } = setup();
+    canvas.emit('pointerdown', { pointerType: 'touch', pointerId: 7, clientX: 20, clientY: 50, preventDefault: () => undefined });
+    canvas.emit('pointerdown', { pointerType: 'touch', pointerId: 8, clientX: 170, clientY: 50, preventDefault: () => undefined });
+    canvas.emit('pointermove', { pointerId: 7, clientX: 65, clientY: 50, preventDefault: () => undefined });
+    expect(captured.size).toBe(2);
+    expect(input.readFrame().movement.strafe).toBeGreaterThan(0.9);
+
+    input.handoffToUi();
+
+    expect([...captured]).toEqual([]);
+    expect(released.sort()).toEqual([7, 8]);
     expect(input.readFrame().movement).toMatchObject({ forward: 0, strafe: 0 });
     input.dispose();
   });

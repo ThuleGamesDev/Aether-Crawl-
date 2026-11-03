@@ -4,9 +4,11 @@
 
 ## Floor ownership
 
-The existing 12×12 recursive maze generator remains the foundation. `generateDungeon(biome, seed, level)` uses the small local `floorRandom` helper for maze, loops, decorations and gameplay placement. Combat/ordinary loot randomness is not rewritten. Saved maps and room plans are loaded verbatim, never regenerated.
+The legacy `generateDungeon(biome, seed, level)` path remains a 12×12 recursive maze for its existing callers. The active FPS runtime opts into the deterministic 23×23 architectural layout described in [R6A implementation notes](R6A_IMPLEMENTATION.md). Both paths use the local `floorRandom` helper, and the room plan remains responsible for gameplay decisions. Combat and ordinary loot randomness is not rewritten. Saved maps and room plans are loaded verbatim, never regenerated.
 
 `dungeonPlan.ts` finds the existing exit route, assigns a guardian threshold and camp, prefers off-route reward anchors, and groups remaining walkable cells into logical route areas of up to eight cells. Special nodes are gameplay anchors, not a claim that each tile is an architectural room. Normal areas may contain a final single-cell remainder. Node IDs include level and floor seed; labels and stories live separately in `data/dungeonRooms.ts`.
+
+On new FPS floors, semantic architecture descriptors add chamber shape, combat suitability, lighting theme, and landmark IDs. The tile grid still decides collision, pathing, line of sight, and projectile blocking; these descriptors only guide room placement and presentation. `FloorState.architectureRooms` is optional so version-4 saves from before R6A remain valid.
 
 Locked/secret chambers are carved only into previously solid side walls with a single connection to the reachable maze. Prefer a two-cell gate/chamber; a sealed one-cell alcove plus its approach is the fallback on dense maps. No old corridor or start/exit tile becomes a gate. Every primary route remains traversable without a key or secret discovery. A treasure/camp/threshold and two marked patrols are always placed on the generated early maps. The first-five-floor budget is intentionally small:
 
@@ -74,6 +76,8 @@ Old saves lacking floor state keep their map, decorations and cleared path. A de
 ## Architecture and validation
 
 - `floorRandom.ts`: local deterministic RNG/hash.
+- `labyrinthLayout.ts`: deterministic FPS chamber topology and registered wall/floor dressing.
+- `world/architecture.ts`: cardinal wall face selection for wall mounted props.
 - `dungeonPlan.ts`: topology queries, bounded placement, logical clusters, legacy migration.
 - `dungeonGameplay.ts`: pure decision/reward/check/visit/claim/encounter settlement and preparation rules.
 - `dungeonSave.ts`: serialized floor validation.
