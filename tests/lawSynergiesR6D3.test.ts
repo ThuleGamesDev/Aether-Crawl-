@@ -5,6 +5,7 @@ import { createMinotaurInheritancePlan, isMinotaurInheritancePlan } from '../dat
 import { createMazeChronicle, MAX_MAZE_CHRONICLE_EVENTS, recordMazeChronicleEvent, validateMazeChronicle } from '../services/mazeChronicle';
 import { buildThreadAnchorOffer, createAriadneThreadProgress, openThreadAnchor } from '../services/ariadneThread';
 import { isValidFloorState } from '../services/dungeonSave';
+import { createLawDraft } from '../services/lawDraft';
 import { loadMazeGame, MAZE_SAVE_KEY, saveMazeGame } from '../services/mazeSave';
 import type { ActiveMazeLaw, MazeLawId, MazeLawProgress } from '../types';
 import type { KeyValueStorage } from '../services/fpsSave';
@@ -162,5 +163,36 @@ describe('R6D3 bounded Maze Chronicle', () => {
     chronicle = recordMazeChronicleEvent(chronicle, { kind: 'SYNERGY_MANIFESTED', floor: 2, synergyId: 'echo_pack' });
     expect(chronicle.events.map(event => event.kind)).toEqual(['ROOM_FAMILY_DISCOVERED', 'SYNERGY_MANIFESTED']);
     expect(chronicle.events.some(event => event.kind === 'ROOM_FAMILY_DISCOVERED' && event.familyId === 'SECRET')).toBe(false);
+  });
+
+  it('records two Guardian Law choices and reveals their paired consequence only when encountered', () => {
+    const runtime = new FPSGameRuntime('BARBARIAN');
+    const pairPool: MazeLawId[] = ['hall_of_echoes', 'bronze_hounds', 'oath_of_ares'];
+    const firstDraft = { ...createLawDraft(runtime.world.seed, runtime.world.floor.guardianId!, 1, pairPool), open: true };
+    runtime.world = { ...runtime.world, floor: { ...runtime.world.floor, lawProgress: { version: 1, activeLaws: [], choiceHistory: [], draft: firstDraft } } };
+    expect(runtime.selectLaw('hall_of_echoes')).toBe(true);
+
+    const secondBase = createDungeonWorld(2, 78731);
+    const secondDraft = { ...createLawDraft(secondBase.seed, secondBase.floor.guardianId!, 2, pairPool), open: true };
+    runtime.world = { ...secondBase, floor: { ...secondBase.floor, lawProgress: { ...runtime.world.floor.lawProgress!, draft: secondDraft } }, mazeChronicle: runtime.world.mazeChronicle };
+    expect(runtime.selectLaw('bronze_hounds')).toBe(true);
+    const manifested = applyLivingLabyrinth(secondBase, runtime.world.floor.lawProgress!);
+    runtime.world = { ...manifested, mazeChronicle: runtime.world.mazeChronicle };
+    const room = runtime.world.floor.rooms.find(candidate => candidate.synergyId === 'echo_pack')!;
+    const target = spawnFloorEnemies(runtime.world.map, runtime.world.floor).find(enemy => enemy.roomId === room.id && enemy.lawId);
+    expect(target).toBeTruthy();
+    runtime.player = { ...runtime.player, position: { ...target!.position } };
+    runtime.enemies = spawnFloorEnemies(runtime.world.map, runtime.world.floor);
+    runtime.update(0, {
+      movement: { forward: 0, strafe: 0, turn: 0 }, lookX: 0, lookY: 0, sprint: false,
+      primaryPressed: false, secondaryPressed: false, secondaryDown: false, secondaryReleased: false,
+      skillPressed: false, skillSlot: null, dodgePressed: false, interactPressed: false,
+      inventoryPressed: false, mapPressed: false, pausePressed: false,
+    });
+
+    expect(runtime.world.mazeChronicle.events.filter(event => event.kind === 'LAW_CHOSEN')).toHaveLength(2);
+    expect(runtime.world.mazeChronicle.events).toContainEqual(expect.objectContaining({ kind: 'LAW_MANIFESTED', floor: 2, lawId: 'hall_of_echoes' }));
+    expect(runtime.world.mazeChronicle.events).toContainEqual(expect.objectContaining({ kind: 'LAW_MANIFESTED', floor: 2, lawId: 'bronze_hounds' }));
+    expect(runtime.world.mazeChronicle.events).toContainEqual(expect.objectContaining({ kind: 'SYNERGY_MANIFESTED', floor: 2, synergyId: 'echo_pack' }));
   });
 });

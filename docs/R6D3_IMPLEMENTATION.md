@@ -48,7 +48,7 @@ Regression assertions cover both cases. No additional pre-PR Copilot findings we
 ## Technical verification
 
 - `npm run typecheck` — passed.
-- `npm test` — passed: 313 tests across 33 files, including 8 R6D3 tests.
+- `npm test` — passed: 314 tests across 33 files, including 9 R6D3 tests.
 - `npm run build` — passed. Vite reports the Three.js chunk at 542.46 kB and the application chunk at 654.87 kB before gzip, above the 500 kB advisory threshold.
 - `git diff --check` — passed for the proposed tracked files; added files were also checked against an empty index with no whitespace errors.
 - Browser/WebGL smoke and first-person gameplay or balance review were not run. The workspace has no verified browser smoke result for this wave, and gameplay review is reserved for the user's playtest.
