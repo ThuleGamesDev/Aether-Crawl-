@@ -1,4 +1,5 @@
 import type { ArchitecturalRoom, FloorState, Position } from '../types';
+import { validateLawHazard, validateLawProgress, validateLawSpawn, validLawId } from '../world/LivingLabyrinth';
 const roomTypes = new Set(['NORMAL','COMBAT','ELITE','TREASURE','SHRINE','TRAP','SECRET','REST','LOCKED','EVENT','BOSS_ANTECHAMBER','BOSS']);
 const architectureShapes = new Set(['ENTRY_HALL','HALL','GALLERY','CROSSROADS','PILLARED_HALL','ROTUNDA','GUARDIAN_ARENA','WIDE_PASSAGE','NARROW_PASSAGE']);
 const combatSuitabilities = new Set(['NONE','LIMITED','SUITABLE']);
@@ -12,8 +13,14 @@ export function isValidFloorState(value: unknown, map: number[][]): value is Flo
   for (const r of f.rooms) { if (!r || typeof r.id !== 'string' || ids.has(r.id) || !roomTypes.has(r.type) || !pos(r.anchor) || !Array.isArray(r.cells) || !r.cells.every(pos) || r.gate && !pos(r.gate) || !['discovered','visited','resolved'].every(k => typeof (r as unknown as Record<string,unknown>)[k] === 'boolean')) return false;
     if ((r.type === 'LOCKED' || r.type === 'SECRET') && !r.gate || r.type === 'SHRINE' && !['blood','aether','fortune'].includes(r.shrine ?? '') || r.type === 'TRAP' && !['trap_corridor','mana_mist','toxic_spores','crumbling_ceiling','arcane_surge','frostbound_draft'].includes(r.hazardId ?? '')) return false;
     if (r.unlocked !== undefined && typeof r.unlocked !== 'boolean' || r.attempted !== undefined && typeof r.attempted !== 'boolean') return false;
+    if (r.lawId !== undefined && !validLawId(r.lawId)) return false;
     ids.add(r.id); }
   if (f.architectureRooms !== undefined && !isValidArchitectureRooms(f.architectureRooms, map, pos)) return false;
+  const roomIds = new Set(ids);
+  if (f.lawProgress !== undefined && !validateLawProgress(f.lawProgress)) return false;
+  if (f.lawSpawns !== undefined && (!Array.isArray(f.lawSpawns) || f.lawSpawns.length > 5 || !f.lawSpawns.every(spawn => validateLawSpawn(spawn, roomIds)) || f.lawSpawns.reduce((sum, spawn) => sum + spawn.count, 0) > 5)) return false;
+  if (f.lawHazards !== undefined && (!Array.isArray(f.lawHazards) || f.lawHazards.length > 1 || !f.lawHazards.every(hazard => validateLawHazard(hazard) && hazard.x >= 0 && hazard.z >= 0 && hazard.x < (map[0]?.length ?? 0) && hazard.z < map.length))) return false;
+  if (f.manifestedLawIds !== undefined && (!Array.isArray(f.manifestedLawIds) || f.manifestedLawIds.length > 3 || new Set(f.manifestedLawIds).size !== f.manifestedLawIds.length || !f.manifestedLawIds.every(validLawId))) return false;
   return (f.pendingEncounterId === null || ids.has(f.pendingEncounterId)) && f.visitedCells.every(k => typeof k === 'string' && /^\d+,\d+$/.test(k)) && f.pendingEffects.every(e => e && ['WEAKNESS','STRENGTH'].includes(e.type) && Number.isFinite(e.value) && Number.isInteger(e.duration) && e.duration > 0 && e.duration <= 5);
 }
 

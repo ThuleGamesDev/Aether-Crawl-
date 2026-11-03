@@ -55,8 +55,12 @@ export function initializeEnemyPoise(enemy: WorldEnemy): WorldEnemy {
 
 export function tickEnemyPoise(enemy: WorldEnemy, deltaSeconds: number): WorldEnemy {
   const profile = getEnemyPoiseProfile(enemy);
-  if (!profile) return enemy;
   const dt = Math.max(0, Math.min(0.05, Number.isFinite(deltaSeconds) ? deltaSeconds : 0));
+  if (!profile) {
+    const currentPhaseLock = enemy.phaseTransitionLockSeconds ?? 0;
+    if (currentPhaseLock <= 0) return enemy;
+    return { ...enemy, phaseTransitionLockSeconds: Math.max(0, currentPhaseLock - dt) };
+  }
   const initialized = initializeEnemyPoise(enemy);
   const breakRecovery = Math.max(0, (initialized.poiseBreakRecoverySeconds ?? 0) - dt);
   const immunity = Math.max(0, (initialized.staggerImmunitySeconds ?? 0) - dt);

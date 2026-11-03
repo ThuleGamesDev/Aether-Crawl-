@@ -12,18 +12,20 @@ import { getItemBase } from '../data/itemBases';
 import { consumableStackKey, normalizeInventoryGrid, normalizeInventoryStacks, syncInventoryGrid, validateInventoryGrid, MAX_CONSUMABLE_STACK } from './inventoryGrid';
 import { getUniqueItem, isUniqueEffectId, MAX_UNIQUE_EFFECT_STATE_COUNT } from '../data/uniqueItems';
 import { createEmptyEquipment, getItemEquipmentSlots, isTwoHandedItem, MAX_INVENTORY_INSTANCES, validateEquipmentLoadout } from './equipmentRules';
+import { createEmptyMazeLawProgress, createLawDraft } from './lawDraft';
+import { validateLawProgress } from '../world/LivingLabyrinth';
 
 export const MAZE_SAVE_KEY = 'maze_of_the_minotaur_fps_r2a_save_v2';
-export const MAZE_SAVE_VERSION = 5;
+export const MAZE_SAVE_VERSION = 6;
 export interface MazeRunSave {
-  version: 5;
+  version: 6;
   savedAt: number;
   player: PlayerCharacter;
   world: DungeonWorldState;
   enemies: WorldEnemy[];
   loot: WorldLootDrop[];
   combat?: FPSRunSave['combat'];
-  migratedFrom?: 'FPS_R1' | 'FPS_R2A' | 'FPS_R4A' | 'FPS_R4B';
+  migratedFrom?: 'FPS_R1' | 'FPS_R2A' | 'FPS_R4A' | 'FPS_R4B' | 'FPS_R6C';
 }
 export type MazeRunState = Pick<MazeRunSave, 'player' | 'world' | 'enemies' | 'loot' | 'combat'>;
 
@@ -39,14 +41,14 @@ export function saveMazeGame(save: MazeRunState, storage?: KeyValueStorage): boo
       inventoryGrid: normalizeInventoryGrid(inventory, save.player.inventoryGrid).placements,
       uniqueEffectStates: save.player.uniqueEffectStates ?? [],
     };
-    const envelope: MazeRunSave = { ...save, player, version: MAZE_SAVE_VERSION, savedAt: Date.now() };
+    const envelope: MazeRunSave = { ...save, player, world: withLawProgress(save.world), version: MAZE_SAVE_VERSION, savedAt: Date.now() };
     if (!isMazeRunSave(envelope)) return false;
     target.setItem(MAZE_SAVE_KEY, JSON.stringify(envelope));
     return true;
   } catch { return false; }
 }
 
-export function loadMazeGame(storage?: KeyValueStorage): { save: MazeRunSave | null; invalid: boolean; migratedFromR1: boolean; migratedFromR2A: boolean; migratedFromR4A: boolean; migratedFromR4B: boolean; migrationRequired: boolean } {
+export function loadMazeGame(storage?: KeyValueStorage): { save: MazeRunSave | null; invalid: boolean; migratedFromR1: boolean; migratedFromR2A: boolean; migratedFromR4A: boolean; migratedFromR4B: boolean; migratedFromR6C: boolean; migrationRequired: boolean } {
   const target = storage ?? defaultStorage();
   if (!target) return emptyLoadResult(true);
   try {
@@ -54,6 +56,12 @@ export function loadMazeGame(storage?: KeyValueStorage): { save: MazeRunSave | n
     if (raw) {
       const value: unknown = JSON.parse(raw);
       if (isMazeRunSave(value)) return emptyLoadResult(false, value);
+      if (isLegacyMazeRunSaveV5(value)) {
+        const migrated = migrateR6CSave(value);
+        return isMazeRunSave(migrated)
+          ? { ...emptyLoadResult(false, migrated), migratedFromR6C: true, migrationRequired: true }
+          : emptyLoadResult(true);
+      }
       if (isLegacyMazeRunSaveV4(value)) {
         const migrated = migrateR4BSave(value);
         return isMazeRunSave(migrated)
@@ -87,7 +95,7 @@ export function loadMazeGame(storage?: KeyValueStorage): { save: MazeRunSave | n
 }
 
 function emptyLoadResult(invalid: boolean, save: MazeRunSave | null = null) {
-  return { save, invalid, migratedFromR1: false, migratedFromR2A: false, migratedFromR4A: false, migratedFromR4B: false, migrationRequired: false };
+  return { save, invalid, migratedFromR1: false, migratedFromR2A: false, migratedFromR4A: false, migratedFromR4B: false, migratedFromR6C: false, migrationRequired: false };
 }
 
 export function isMazeRunSave(value: unknown): value is MazeRunSave {
@@ -98,6 +106,8 @@ export function isMazeRunSave(value: unknown): value is MazeRunSave {
   const floor = value.world.floor as FloorState;
   const guardian = getFloorGuardianDefinition(value.world.level);
   if (floor.guardianId !== guardian.id || !['NOT_DISCOVERED', 'ALIVE', 'DEFEATED', 'DESCENT_UNLOCKED'].includes(String(floor.guardianState))) return false;
+  if (!floor.lawProgress || !validateLawProgress(floor.lawProgress)) return false;
+  if (floor.guardianState === 'DESCENT_UNLOCKED' && (!floor.lawProgress.draft || floor.lawProgress.draft.guardianId !== guardian.id || floor.lawProgress.draft.floorLevel !== floor.level)) return false;
   const guardians = value.enemies.filter((enemy: WorldEnemy) => enemy.definitionId === guardian.id);
   if (guardians.length !== 1 || !guardians[0].isBoss) return false;
   if (floor.guardianState === 'DESCENT_UNLOCKED' && (guardians[0].health > 0 || !guardians[0].rewardGranted)) return false;
@@ -115,6 +125,7 @@ export function isMazeRunSave(value: unknown): value is MazeRunSave {
 }
 
 interface LegacyMazeRunSaveCore extends Omit<FPSRunSave, 'version'> { version: 2 | 3 | 4; migratedFrom?: 'FPS_R1' | 'FPS_R2A' | 'FPS_R4A'; }
+type LegacyMazeRunSaveV5 = Omit<MazeRunSave, 'version'> & { version: 5 };
 type LegacyMazeRunSaveV2 = LegacyMazeRunSaveCore & { version: 2 };
 type LegacyMazeRunSaveV3 = LegacyMazeRunSaveCore & { version: 3 };
 type LegacyMazeRunSaveV4 = LegacyMazeRunSaveCore & { version: 4 };
@@ -125,6 +136,15 @@ function isLegacyMazeRunSaveV3(value: unknown): value is LegacyMazeRunSaveV3 {
 
 function isLegacyMazeRunSaveV2(value: unknown): value is LegacyMazeRunSaveV2 { return isLegacyMazeSaveCore(value, 2, false); }
 function isLegacyMazeRunSaveV4(value: unknown): value is LegacyMazeRunSaveV4 { return isLegacyMazeSaveCore(value, 4, true); }
+function isLegacyMazeRunSaveV5(value: unknown): value is LegacyMazeRunSaveV5 {
+  if (!isRecord(value) || value.version !== 5 || !Number.isFinite(value.savedAt)) return false;
+  if (!isFPSRunSave({ ...value, version: 1 }, true, true, 'canonical')) return false;
+  const floor = value.world.floor as FloorState;
+  const guardian = getFloorGuardianDefinition(value.world.level);
+  const guardians = value.enemies.filter((enemy: WorldEnemy) => enemy.definitionId === guardian.id);
+  return floor.guardianId === guardian.id && ['NOT_DISCOVERED', 'ALIVE', 'DEFEATED', 'DESCENT_UNLOCKED'].includes(String(floor.guardianState))
+    && guardians.length === 1 && guardians[0].isBoss && (floor.guardianState !== 'DESCENT_UNLOCKED' || guardians[0].health <= 0 && guardians[0].rewardGranted);
+}
 
 function isLegacyMazeSaveCore(value: unknown, version: 2 | 3 | 4, isR4A: boolean): value is LegacyMazeRunSaveCore {
   if (!isRecord(value) || value.version !== version || !Number.isFinite(value.savedAt)) return false;
@@ -142,14 +162,20 @@ function isLegacyMazeSaveCore(value: unknown, version: 2 | 3 | 4, isR4A: boolean
 export function migrateR4BSave(save: LegacyMazeRunSaveV4): MazeRunSave {
   assertUniqueLegacyItemIds(save);
   const player = normalizePlayerItems(save.player);
-  return { ...save, version: 5, savedAt: Date.now(), migratedFrom: 'FPS_R4B', player };
+  return { ...save, version: 6, savedAt: Date.now(), migratedFrom: 'FPS_R4B', player, world: withLawProgress(save.world) };
 }
 
 /** R4A migration preserves every stored instance and deterministically packs its old list. */
 export function migrateR4ASave(save: LegacyMazeRunSaveV3): MazeRunSave {
   assertUniqueLegacyItemIds(save);
   const player = normalizePlayerItems(save.player);
-  return { ...save, version: 5, savedAt: Date.now(), migratedFrom: 'FPS_R4A', player };
+  return { ...save, version: 6, savedAt: Date.now(), migratedFrom: 'FPS_R4A', player, world: withLawProgress(save.world) };
+}
+
+/** R6C version-5 runs retain their exact inventory and world; only versioned Law state is initialized. */
+export function migrateR6CSave(save: LegacyMazeRunSaveV5): MazeRunSave {
+  const world = withLawProgress(save.world);
+  return { ...save, version: 6, savedAt: Date.now(), migratedFrom: 'FPS_R6C', world };
 }
 
 /** In-memory conversion only. The v2 source key is replaced only after a valid v4 write. */
@@ -162,14 +188,14 @@ export function migrateR2ASave(save: LegacyMazeRunSaveV2): MazeRunSave {
     lootTier: enemy.lootTier ?? (enemy.isBoss ? 'GUARDIAN' : save.world.floor.rooms.find(room => room.id === enemy.roomId)?.type === 'ELITE' ? 'ELITE' : 'NORMAL'),
   }));
   return {
-    version: 5,
+    version: 6,
     savedAt: Date.now(),
     migratedFrom: 'FPS_R2A',
     player,
-    world: save.world,
     enemies,
     loot: save.loot.map(drop => ({ ...drop, item: normalizeLegacyItem(drop.item) })),
     combat: save.combat,
+    world: withLawProgress(save.world),
   };
 }
 
@@ -227,6 +253,7 @@ export function migrateR1Save(save: FPSRunSave): MazeRunSave {
     }),
     guardianId: getFloorGuardianDefinition(oldWorld.level).id,
     guardianState: 'NOT_DISCOVERED',
+    lawProgress: createEmptyMazeLawProgress(),
   };
   const world: DungeonWorldState = { ...oldWorld, map, decorations, explored, floor, worldRevision: oldWorld.worldRevision + 1 };
   const player = normalizePlayerItems({
@@ -291,14 +318,24 @@ export function migrateR1Save(save: FPSRunSave): MazeRunSave {
   enemies.push(guardianEnemy);
   floor.guardianState = rewarded ? 'DESCENT_UNLOCKED' : defeated ? 'DEFEATED' : 'NOT_DISCOVERED';
   if (floor.guardianState === 'DESCENT_UNLOCKED') bossRoom.resolved = true;
+  const migratedWorld = withLawProgress(world);
 
   const migrated: MazeRunSave = {
-    version: 5, savedAt: Date.now(), migratedFrom: 'FPS_R1',
-    player, world, enemies,
+    version: 6, savedAt: Date.now(), migratedFrom: 'FPS_R1',
+    player, world: migratedWorld, enemies,
     loot: save.loot.map(drop => ({ ...drop, position: { ...drop.position, x: drop.position.x + offsetX, z: drop.position.z + offsetZ }, item: migrateItem(drop.item) })),
     combat: save.combat,
   };
   return migrated;
+}
+
+function withLawProgress(world: DungeonWorldState): DungeonWorldState {
+  let lawProgress = world.floor.lawProgress ?? createEmptyMazeLawProgress();
+  const guardianId = world.floor.guardianId ?? getFloorGuardianDefinition(world.level).id;
+  if (world.floor.guardianState === 'DESCENT_UNLOCKED' && (!lawProgress.draft || lawProgress.draft.guardianId !== guardianId || lawProgress.draft.floorLevel !== world.floor.level)) {
+    lawProgress = { ...lawProgress, draft: createLawDraft(world.floor.seed, guardianId, world.floor.level) };
+  }
+  return { ...world, floor: { ...world.floor, lawProgress } };
 }
 
 const ITEM_NAMES: Record<string, string> = {

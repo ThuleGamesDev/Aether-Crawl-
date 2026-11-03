@@ -258,7 +258,7 @@ describe('FPS-R4B save migration', () => {
     expect(normalizeInventoryGrid(migrated.save!.player.inventory, migrated.save!.player.inventoryGrid).overflowIds.length).toBe(5);
     expect(migrated.save!.player.inventoryGrid).toEqual(loadMazeGame(storage).save!.player.inventoryGrid);
     expect(saveMazeGame(migrated.save!, storage)).toBe(true);
-    expect(JSON.parse(storage.getItem(MAZE_SAVE_KEY)!).version).toBe(5);
+    expect(JSON.parse(storage.getItem(MAZE_SAVE_KEY)!).version).toBe(6);
     expect(loadMazeGame(storage).migrationRequired).toBe(false);
   });
 });

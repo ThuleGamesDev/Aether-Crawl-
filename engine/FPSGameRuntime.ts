@@ -1,4 +1,4 @@
-import type { ClassType, DerivedCharacterStats, DungeonRoom, EquipmentSlot, ItemInstance, PlayerCharacter, StatusApplication, WorldEnemy, WorldLootDrop, WorldProjectile } from '../types';
+import type { ClassType, DerivedCharacterStats, DungeonRoom, EquipmentSlot, ItemInstance, MazeLawDraft, MazeLawId, PlayerCharacter, StatusApplication, WorldEnemy, WorldLootDrop, WorldProjectile } from '../types';
 import type { InputFrame } from './InputSystem';
 import { createDungeonWorld, createFloorEnemies, createRoomOffer, findLookTarget, markExplored, randomSeed, type RoomOffer } from '../world/DungeonWorld';
 import { raycastGrid, hasLineOfSight, isWorldSolid, moveWithEntitySlide, moveWithWallSlide } from '../world/CollisionWorld';
@@ -22,6 +22,9 @@ import type { VisualEvent } from './SceneRenderer';
 import { applyRealtimeStatus, cleanseRealtimeStatuses, hasRealtimeStatus, tickRealtimeStatuses } from '../combat/StatusSystem';
 import { getEnemyVfxSurface, resolveSurfaceEffect, type PixelEffectId } from '../presentation/vfxDefinitions';
 import { calculateDerivedStats } from '../player/DerivedStats';
+import { applyLivingLabyrinth } from '../world/LivingLabyrinth';
+import { createEmptyMazeLawProgress, createLawDraft, openLawDraft, selectMazeLaw } from '../services/lawDraft';
+import { getMazeLaw } from '../data/mazeLaws';
 import { rollItemStatusProc } from '../player/ItemCombatEffects';
 import { consumeUniqueCharge, resolveUniqueTrigger, tickUniqueEffects } from '../player/UniqueEffects';
 import { applySkillUpgrade, getClassSkillUnlockLevel, getRankedAbility, getSkillRank, getSkillUpgradeChoices, isClassSkillSlotUnlocked, normalizeSkillProgression, type SkillUpgradeOption } from '../player/SkillProgression';
@@ -55,6 +58,7 @@ export interface FPSGameSnapshot {
   mapOpen: boolean;
   gameOver: boolean;
   roomOffer: RoomOffer | null;
+  lawOffer: MazeLawDraft | null;
   prompt: string | null;
   targetEnemy: WorldEnemy | null;
   incomingAttacks: Array<{ id: string; name: string; seconds: number; parryable: boolean; direction: 'FRONT' | 'LEFT' | 'RIGHT' | 'BEHIND' }>;
@@ -145,7 +149,8 @@ export class FPSGameRuntime {
       if (this.toastSeconds === 0) this.toast = '';
     }
     if (input.pausePressed) {
-      if (this.levelUpOpen) { this.levelUpOpen = false; this.cancelHeldActions(); }
+      if (this.world.floor.lawProgress?.draft?.open) this.closeLawOffer();
+      else if (this.levelUpOpen) { this.levelUpOpen = false; this.cancelHeldActions(); }
       else if (this.inventoryOpen || this.mapOpen) { this.inventoryOpen = false; this.mapOpen = false; }
       else {
         this.paused = !this.paused;
@@ -162,7 +167,9 @@ export class FPSGameRuntime {
       this.inventoryOpen = false;
       if (this.mapOpen) this.cancelHeldActions();
     }
-    if (this.paused || this.inventoryOpen || this.mapOpen || this.levelUpOpen || this.roomOffer || this.gameOver) return;
+    if (this.paused || this.inventoryOpen || this.mapOpen || this.levelUpOpen || this.roomOffer || this.world.floor.lawProgress?.draft?.open || this.gameOver) return;
+
+    this.tickLawHazards(dt);
 
     this.player = tickUniqueEffects(this.player, dt);
     this.player = { ...this.player, classPassiveState: tickClassPassiveState(this.player.classPassiveState, dt) };
@@ -795,12 +802,13 @@ export class FPSGameRuntime {
       || this.controllerState.parryWindowSeconds <= 0 || !this.isFacingAttacker(enemy)) return false;
     this.controllerState = { ...this.controllerState, parryWindowSeconds: 0, guarding: false };
     const derived = calculateDerivedStats(this.player);
+    const oathBonus = enemy.attackCooldownMultiplier !== undefined && enemy.attackCooldownMultiplier < 1 ? 5 : 0;
     this.player = { ...this.player, stats: {
       ...this.player.stats,
-      stamina: Math.min(derived.maxStamina, (this.player.stats.stamina ?? derived.maxStamina) + 6),
+      stamina: Math.min(derived.maxStamina, (this.player.stats.stamina ?? derived.maxStamina) + 6 + oathBonus),
       staminaRegenDelaySeconds: 0.35,
     } };
-    const poiseDamage = (enemy.maxPoise ?? getEnemyPoiseProfile(enemy)?.maximum ?? 40) * (enemy.isBoss ? 0.3 : 0.36);
+    const poiseDamage = (enemy.maxPoise ?? getEnemyPoiseProfile(enemy)?.maximum ?? 40) * (enemy.isBoss ? 0.3 : 0.36) + (oathBonus ? 8 : 0);
     let result: WorldEnemy | undefined;
     this.enemies = this.enemies.map(candidate => {
       if (candidate.id !== enemy.id || !getEnemyPoiseProfile(candidate)) return candidate;
@@ -883,7 +891,10 @@ export class FPSGameRuntime {
       }
       const derived = calculateDerivedStats(this.player);
       if (derived.lifeOnKill > 0) this.applyPlayerHealing(derived.lifeOnKill, 'LIFE_ON_KILL');
-      const item = rollEnemyDrop(enemy, this.world.level, seededLootRandom(this.world.seed, enemy.id));
+      const rewardRandom = seededLootRandom(this.world.seed, enemy.id);
+      const item = enemy.lawRewardBaseId
+        ? createLootInstance(enemy.lawRewardBaseId, 'law_reward_' + enemy.id, this.world.level, enemy.lawId === 'hall_of_echoes' || enemy.lawId === 'pillars_of_daedalus' ? 'RARE' : 'COMMON', rewardRandom)
+        : rollEnemyDrop(enemy, this.world.level, rewardRandom);
       if (item) {
         this.loot = [...this.loot, { id: item.instanceId, position: { x: enemy.position.x, y: 0, z: enemy.position.z }, item }];
         dropCount += 1;
@@ -899,7 +910,11 @@ export class FPSGameRuntime {
       }
       return rewarded;
     });
-    if (guardianDefeated) this.addToast('The Guardian falls. Descent unlocked; the rest of the floor remains open.');
+    if (guardianDefeated) {
+      this.ensureGuardianDraft();
+      this.persistRun();
+      this.addToast('The Guardian falls. Descent unlocked; the rest of the floor remains open.');
+    }
     else if (dropCount > 0) this.addToast(formatLootDropToast(dropCount));
     else if (changed) this.addToast('Enemy defeated.');
   }
@@ -948,6 +963,13 @@ export class FPSGameRuntime {
     if (target.kind === 'SECRET') { this.attemptGate(target.x, target.z, target.room, true); return; }
     if (target.kind === 'EXIT') {
       if (this.world.floor.guardianState !== 'DESCENT_UNLOCKED') { this.addToast('The floor guardian still seals the descent.'); return; }
+      const progress = this.world.floor.lawProgress ?? createEmptyMazeLawProgress();
+      if (!progress.draft?.selectedLawId) {
+        this.world = { ...this.world, floor: { ...this.world.floor, lawProgress: openLawDraft(progress, this.world.floor.seed, this.world.floor.guardianId ?? getFloorGuardianDefinition(this.world.level).id, this.world.level) } };
+        this.cancelHeldActions();
+        this.persistRun();
+        return;
+      }
       this.advanceFloor();
       return;
     }
@@ -964,17 +986,21 @@ export class FPSGameRuntime {
 
   private attemptGate(x: number, z: number, room: DungeonRoom | undefined, isSecret: boolean): void {
     const useKey = !isSecret && this.world.floor.keys > 0;
+    const brokenThread = isSecret && room?.lawId === 'broken_thread';
+    if (brokenThread && room?.attempted) { this.addToast('The fractured seam has already resisted your search.'); return; }
     if (!useKey && !isSecret && room?.attempted) {
       this.addToast('The lock has already resisted. Find Ariadne’s Token.');
       return;
     }
     const derived = calculateDerivedStats(this.player);
     const stat = isSecret ? derived.dexterity : derived.strength;
-    const success = useKey || this.rollCheck(stat, isSecret ? 15 : 12 + Math.floor(this.world.level / 2));
+    const success = useKey || this.rollCheck(stat, brokenThread ? 19 : isSecret ? 15 : 12 + Math.floor(this.world.level / 2));
     if (!success) {
       if (!isSecret) this.player = { ...this.player, stats: { ...this.player.stats, hp: Math.max(1, this.player.stats.hp - 3) } };
-      if (!isSecret && room) this.world = { ...this.world, floor: { ...this.world.floor, rooms: this.world.floor.rooms.map(candidate => candidate.id === room.id ? { ...candidate, attempted: true } : candidate) } };
-      this.addToast(isSecret ? 'The seam stays hidden.' : 'The lock holds. The strain costs 3 health.');
+      if (brokenThread) this.player = { ...this.player, stats: { ...this.player.stats, hp: Math.max(1, this.player.stats.hp - Math.ceil(this.player.stats.maxHp * 0.1)) } };
+      if ((!isSecret || brokenThread) && room) this.world = { ...this.world, floor: { ...this.world.floor, rooms: this.world.floor.rooms.map(candidate => candidate.id === room.id ? { ...candidate, attempted: true } : candidate) } };
+      this.persistRun();
+      this.addToast(brokenThread ? 'The fractured seam closes. The failed search costs health.' : isSecret ? 'The seam stays hidden.' : 'The lock holds. The strain costs 3 health.');
       return;
     }
     const map = this.world.map.map(row => [...row]);
@@ -983,8 +1009,9 @@ export class FPSGameRuntime {
       ...this.world,
       map,
       worldRevision: this.world.worldRevision + 1,
-      floor: { ...this.world.floor, keys: useKey ? this.world.floor.keys - 1 : this.world.floor.keys, rooms: this.world.floor.rooms.map(candidate => candidate.id === room?.id ? { ...candidate, discovered: true, unlocked: true, visited: true } : candidate) },
+      floor: { ...this.world.floor, keys: useKey ? this.world.floor.keys - 1 : this.world.floor.keys, rooms: this.world.floor.rooms.map(candidate => candidate.id === room?.id ? { ...candidate, discovered: true, unlocked: true, visited: true, ...(brokenThread ? { attempted: true } : {}) } : candidate) },
     };
+    this.persistRun();
     this.addToast(isSecret ? 'Forgotten passage found.' : useKey ? 'Ariadne’s Token used. Treasury opened.' : 'The bronze lock gives way.');
     this.addLog(isSecret ? 'A hidden limestone passage opens.' : useKey ? 'Ariadne’s Token opens a sealed treasury.' : 'The locked gate gives way.');
   }
@@ -1033,6 +1060,19 @@ export class FPSGameRuntime {
       else this.player = { ...this.player, stats: { ...this.player.stats, hp: Math.max(1, hp - Math.ceil(maxHp * 0.12)) } };
     } else if (choiceId === 'force') {
       this.player = { ...this.player, stats: { ...this.player.stats, hp: Math.max(1, hp - Math.ceil(maxHp * 0.18)) } };
+    } else if (choiceId === 'tyche_sacrifice') {
+      const cost = Math.ceil(maxHp * 0.2);
+      if (hp <= cost) { this.addToast('You do not have enough health to offer blood.'); return; }
+      this.player = { ...this.player, stats: { ...this.player.stats, hp: hp - cost } };
+      this.createRoomReward(room, 'vault_rare_' + room.id, 'RARE');
+    } else if (choiceId === 'tyche_disarm') {
+      if (this.rollCheck(this.player.stats.dex, 15 + Math.floor(this.world.level / 2))) this.createRoomReward(room, 'vault_disarm_' + room.id, 'RARE');
+      else {
+        this.player = { ...this.player, stats: { ...this.player.stats, hp: Math.max(1, hp - Math.ceil(maxHp * 0.15)) } };
+        this.addToast('The counterweight snaps shut. The trap costs health.');
+      }
+    } else if (choiceId === 'thread_cache') {
+      this.createRoomReward(room, 'thread_cache_' + room.id, 'RARE');
     } else if (choiceId === 'leave') {
       this.addToast('You leave the cache untouched.');
     }
@@ -1040,26 +1080,119 @@ export class FPSGameRuntime {
     this.world = { ...this.world, floor: { ...this.world.floor, rooms: this.world.floor.rooms.map(candidate => candidate.id === room.id ? { ...candidate, resolved } : candidate) } };
     this.roomOffer = null;
     if (!['leave', 'prepare', 'gear', 'fortune', 'investigate', 'key', 'disarm'].includes(choiceId)) this.addToast('Room resolved.');
+    this.persistRun();
+  }
+
+  private createRoomReward(room: DungeonRoom, sourceId: string, rarity: 'COMMON' | 'RARE'): void {
+    const reward = createLootInstance('kopis', sourceId, this.world.level, rarity, seededLootRandom(this.world.seed, sourceId));
+    this.loot = [...this.loot.filter(drop => drop.id !== reward.instanceId), { id: reward.instanceId, position: { x: room.anchor.x + 0.72, y: 0, z: room.anchor.y + 0.5 }, item: reward }];
+    this.addToast('A rare reward appeared. Press E to collect it.');
   }
 
   private rollCheck(stat: number, difficulty: number): boolean {
     return Math.floor(this.random() * 20) + 1 + Math.floor(stat / 3) >= difficulty;
   }
 
+  private ensureGuardianDraft(): void {
+    const floor = this.world.floor;
+    if (floor.guardianState !== 'DESCENT_UNLOCKED' || !floor.guardianId) return;
+    const progress = floor.lawProgress ?? createEmptyMazeLawProgress();
+    if (progress.draft?.guardianId === floor.guardianId && progress.draft.floorLevel === floor.level) return;
+    const draft = createLawDraft(floor.seed, floor.guardianId, floor.level);
+    this.world = { ...this.world, floor: { ...floor, lawProgress: { ...progress, draft } } };
+  }
+
+  private tickLawHazards(deltaSeconds: number): void {
+    const hazards = this.world.floor.lawHazards ?? [];
+    if (!hazards.length) return;
+    let triggered = false;
+    const next = hazards.map(hazard => {
+      const cooldownRemaining = Math.max(0, hazard.cooldownRemaining - deltaSeconds);
+      if (cooldownRemaining > 0 || Math.hypot(this.player.position.x - hazard.x, this.player.position.z - hazard.z) > hazard.radius) return { ...hazard, cooldownRemaining };
+      triggered = true;
+      this.player = { ...this.player, statusEffects: applyRealtimeStatus(this.player.statusEffects, { statusId: 'POISON', durationSeconds: 2.5, magnitude: hazard.damage, tickIntervalSeconds: 1 }, hazard.id) };
+      this.visualEvents.push({ kind: 'impact', effectId: 'poison_splash', position: { x: hazard.x, y: 0.05, z: hazard.z }, color: '#8fc45a', scale: 0.9, sourceId: hazard.id });
+      return { ...hazard, cooldownRemaining: hazard.cooldownSeconds };
+    });
+    this.world = { ...this.world, floor: { ...this.world.floor, lawHazards: next } };
+    if (triggered) this.addLog('Venom rises from the Serpent’s Bargain pool.');
+  }
+
+  selectLaw(lawId: MazeLawId): boolean {
+    const progress = this.world.floor.lawProgress;
+    const draft = progress?.draft;
+    if (!progress || !draft?.open || draft.selectedLawId || !draft.lawIds.includes(lawId)) return false;
+    if (progress.activeLaws.length >= 3 && !progress.activeLaws.some(law => law.lawId === lawId)) {
+      this.world = { ...this.world, floor: { ...this.world.floor, lawProgress: { ...progress, draft: { ...draft, pendingLawId: lawId } } } };
+      this.persistRun();
+      return true;
+    }
+    return this.commitLawSelection(lawId);
+  }
+
+  replaceLaw(replacementId: MazeLawId): boolean {
+    const progress = this.world.floor.lawProgress;
+    const pendingLawId = progress?.draft?.pendingLawId;
+    if (!progress || !pendingLawId || !progress.draft?.open) return false;
+    const next = selectMazeLaw(progress, pendingLawId, replacementId);
+    if (!next) { this.addToast('That Law cannot replace the selected thread.'); return false; }
+    return this.finishLawSelection(next, pendingLawId);
+  }
+
+  cancelLawReplacement(): void {
+    const progress = this.world.floor.lawProgress;
+    if (!progress?.draft?.pendingLawId) return;
+    this.world = { ...this.world, floor: { ...this.world.floor, lawProgress: { ...progress, draft: { ...progress.draft, pendingLawId: undefined } } } };
+    this.persistRun();
+  }
+
+  closeLawOffer(): void {
+    const progress = this.world.floor.lawProgress;
+    if (!progress?.draft?.open) return;
+    this.cancelHeldActions();
+    this.world = { ...this.world, floor: { ...this.world.floor, lawProgress: { ...progress, draft: { ...progress.draft, open: false, pendingLawId: undefined } } } };
+    this.persistRun();
+  }
+
+  private commitLawSelection(lawId: MazeLawId): boolean {
+    const progress = this.world.floor.lawProgress;
+    if (!progress) return false;
+    const next = selectMazeLaw(progress, lawId);
+    if (!next) { this.addToast('That Law cannot be woven into the current pattern.'); return false; }
+    return this.finishLawSelection(next, lawId);
+  }
+
+  private finishLawSelection(progress: NonNullable<typeof this.world.floor.lawProgress>, lawId: MazeLawId): boolean {
+    this.world = { ...this.world, floor: { ...this.world.floor, lawProgress: progress } };
+    this.cancelHeldActions();
+    this.addLog(getMazeLaw(lawId)?.lawId.replace(/_/g, ' ') + ' woven into the Maze.');
+    this.addToast('The Law is woven. Press E at the descent to continue.');
+    this.persistRun();
+    return true;
+  }
+
   private advanceFloor(): void {
-    const nextWorld = createDungeonWorld(this.world.level + 1, randomSeed());
+    const progress = this.world.floor.lawProgress ?? createEmptyMazeLawProgress();
+    if (!progress.draft?.selectedLawId) { this.addToast('Choose a Law before descending.'); return; }
+    const nextWorldBase = createDungeonWorld(this.world.level + 1, randomSeed());
+    const inheritedProgress = { ...progress, draft: undefined };
+    const nextWorld = applyLivingLabyrinth(nextWorldBase, inheritedProgress);
     const yaw = spawnFacingAngle(nextWorld.map, { x: 1, y: 1 });
     this.world = { ...markExplored(nextWorld, 1.5, 1.5), worldRevision: this.world.worldRevision + 1 };
     this.player = { ...this.player, position: { x: 1.5, y: 0, z: 1.5 }, rotation: { yaw, pitch: this.player.rotation.pitch } };
     this.enemies = createFloorEnemies(this.world).map(initializeEnemyPoise);
     this.projectiles = [];
-    this.loot = [];
+    this.loot = (this.world.floor.lawHazards ?? []).flatMap(hazard => hazard.rewardBaseId ? [{
+      id: 'law_reward_' + hazard.id,
+      position: { x: hazard.x + 0.65, y: 0, z: hazard.z },
+      item: createLootInstance(hazard.rewardBaseId, 'law_reward_' + hazard.id, this.world.level, 'COMMON', seededLootRandom(this.world.seed, hazard.id)),
+    }] : []);
     this.roomOffer = null;
     this.combat.reset();
     this.controllerState = createPlayerControllerState();
     this.addLog('You descend to Labyrinth Floor ' + this.world.level + '.');
     this.addToast('The next depth awaits.');
-    this.save();
+    this.persistRun();
   }
 
   private getLookedAtLoot(): WorldLootDrop | null {
@@ -1107,8 +1240,13 @@ export class FPSGameRuntime {
     if (target.kind === 'DOOR') return 'E  Open door';
     if (target.kind === 'LOCKED') return this.world.floor.keys > 0 ? 'E  Use Ariadne’s Token' : 'E  Force locked gate';
     if (target.kind === 'SECRET') return 'E  Search for a secret';
-    if (target.kind === 'EXIT') return this.world.floor.guardianState === 'DESCENT_UNLOCKED' ? 'E  Descend to Floor ' + (this.world.level + 1) : 'Defeat the floor guardian to unlock descent';
+    if (target.kind === 'EXIT') {
+      if (this.world.floor.guardianState !== 'DESCENT_UNLOCKED') return 'Defeat the floor guardian to unlock descent';
+      return this.world.floor.lawProgress?.draft?.selectedLawId ? 'E  Descend to Floor ' + (this.world.level + 1) : 'E  Weave a Law';
+    }
     if (target.kind === 'ROOM') {
+      if (target.room.lawId === 'vault_of_tyche' && target.room.unlocked) return 'E  Face Tyche’s trial';
+      if (target.room.lawId === 'broken_thread' && target.room.unlocked) return 'E  Search the fractured cache';
       if (target.room.type === 'LOCKED' && target.room.unlocked) return 'E  Claim vault reward';
       if (target.room.type === 'COMBAT' || target.room.type === 'ELITE') return this.enemies.some(enemy => enemy.roomId === target.room.id && enemy.health > 0) ? 'Clear the chamber' : 'Chamber cleared';
       return 'E  ' + target.room.type.toLowerCase().replace(/_/g, ' ');
@@ -1194,10 +1332,15 @@ export class FPSGameRuntime {
   }
 
   save(storage?: KeyValueStorage): boolean {
+    const success = this.persistRun(storage);
+    this.addToast(success ? 'Run saved.' : 'Save failed. Storage is unavailable.');
+    return success;
+  }
+
+  private persistRun(storage?: KeyValueStorage): boolean {
     const save = { player: this.player, world: this.world, enemies: this.enemies, loot: this.loot, combat: this.combat.snapshot() };
     const success = saveMazeGame(save, storage);
     this.lastSaveSucceeded = success;
-    this.addToast(success ? 'Run saved.' : 'Save failed. Storage is unavailable.');
     return success;
   }
 
@@ -1242,7 +1385,7 @@ export class FPSGameRuntime {
   }
 
   getRenderState(): FPSRenderState {
-    return { world: this.world, player: this.player, enemies: this.enemies, projectiles: this.projectiles, loot: this.loot, action: this.combat.action, isMoving: this.isMoving, guarding: this.controllerState.guarding, paused: this.paused || this.inventoryOpen || this.mapOpen || this.levelUpOpen || Boolean(this.roomOffer) || this.gameOver, cameraBob: this.cameraBob, viewmodelEvent: this.viewmodelEvent, viewmodelEventProgress: this.viewmodelEventDuration > 0 ? this.viewmodelEventSeconds / this.viewmodelEventDuration : 0, events: this.visualEvents.splice(0) };
+    return { world: this.world, player: this.player, enemies: this.enemies, projectiles: this.projectiles, loot: this.loot, action: this.combat.action, isMoving: this.isMoving, guarding: this.controllerState.guarding, paused: this.paused || this.inventoryOpen || this.mapOpen || this.levelUpOpen || Boolean(this.roomOffer) || Boolean(this.world.floor.lawProgress?.draft?.open) || this.gameOver, cameraBob: this.cameraBob, viewmodelEvent: this.viewmodelEvent, viewmodelEventProgress: this.viewmodelEventDuration > 0 ? this.viewmodelEventSeconds / this.viewmodelEventDuration : 0, events: this.visualEvents.splice(0) };
   }
 
   private setViewmodelEvent(event: NonNullable<FPSRenderState['viewmodelEvent']>, durationSeconds: number): void {
@@ -1291,7 +1434,8 @@ export class FPSGameRuntime {
       mapOpen: this.mapOpen,
       gameOver: this.gameOver,
       roomOffer: this.roomOffer,
-      prompt: this.paused || this.inventoryOpen || this.mapOpen || this.levelUpOpen || this.roomOffer ? null : this.getPrompt(),
+      lawOffer: this.world.floor.lawProgress?.draft?.open ? this.world.floor.lawProgress.draft : null,
+      prompt: this.paused || this.inventoryOpen || this.mapOpen || this.levelUpOpen || this.roomOffer || this.world.floor.lawProgress?.draft?.open ? null : this.getPrompt(),
       targetEnemy: this.getTargetEnemy(),
       incomingAttacks,
       parryWindowSeconds: this.controllerState.parryWindowSeconds,

@@ -184,6 +184,12 @@ describe('FPS-R2A Greek rebrand and Guardian progression', () => {
     expect(resumed.player.stats.xp).toBe(xpAfterKill);
     expect(resumed.loot).toHaveLength(1);
     resumed.interact();
+    expect(resumed.world.level).toBe(1);
+    const offer = resumed.getSnapshot().lawOffer!;
+    expect(offer.lawIds).toHaveLength(3);
+    expect(resumed.selectLaw(offer.lawIds[0])).toBe(true);
+    expect(resumed.world.level).toBe(1);
+    resumed.interact();
     expect(resumed.world.level).toBe(2);
     expect(resumed.world.floor.guardianId).toBe(FLOOR_GUARDIANS[1].id);
     expect(resumed.world.floor.guardianState).toBe('NOT_DISCOVERED');
@@ -232,7 +238,7 @@ describe('FPS-R2A Greek rebrand and Guardian progression', () => {
     expect(storage.getItem(MAZE_SAVE_KEY)).toBeNull();
     expect(saveMazeGame(migration.save!, storage)).toBe(true);
     expect(storage.getItem(FPS_SAVE_KEY)).toBe(original);
-    expect(loadMazeGame(storage).save?.version).toBe(5);
+    expect(loadMazeGame(storage).save?.version).toBe(6);
 
     const invalid = new MemoryStorage();
     invalid.setItem(MAZE_SAVE_KEY, '{broken-json');
