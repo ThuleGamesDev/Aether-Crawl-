@@ -19,6 +19,10 @@ export function characterInitiative(character: Character): number {
   return Math.max(1, baseInitiative(character.stats.initiative, CLASS_INITIATIVE[character.classType] ?? 10) - load);
 }
 export const enemyInitiative = (enemy: Enemy): number => baseInitiative(enemy.initiative);
+export const initiativeSpeed = (initiative: number): number =>
+  clamp(1 + (initiative - 10) * 0.05, 0.7, 1.5);
+export const initiativeDuration = (baseDurationMs: number, initiative: number): number =>
+  Math.round(clamp(baseDurationMs / initiativeSpeed(initiative), 300, 5000));
 export const normalizePlayerInitiative = (player: Player): Player => ({
   ...player,
   party: player.party.map(character => ({ ...character, stats: {

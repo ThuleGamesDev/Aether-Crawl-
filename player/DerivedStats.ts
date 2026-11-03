@@ -3,6 +3,7 @@ import { getItemAffix } from '../data/itemAffixes';
 import type { DerivedCharacterStats, ItemAffixStat, ItemInstance, ItemTag, PlayerCharacter } from '../types';
 import { getUniqueStatBonuses } from './UniqueEffects';
 import { ACTION_SPEED_RULES } from '../combat/actionSpeed';
+import { STAMINA_RULES } from '../combat/CombatMastery';
 import type { EquipmentSlot } from '../types';
 
 const MAX_STAT = 100_000;
@@ -75,6 +76,9 @@ export function calculateDerivedStats(player: PlayerCharacter): DerivedCharacter
   const maxHealth = clamp((baseMaxHealth + maxHealthFlat) * (1 + maxHealthPercent / 100), 1, MAX_STAT);
   const maxMana = clamp((baseMaxMana + maxManaFlat) * (1 + maxManaPercent / 100), 0, MAX_STAT);
   const armor = clamp((armorBase + armorFlat) * (1 + armorPercent / 100), 0, 100);
+  const baseMaxStamina = Math.max(1, finite(player.stats.baseMaxStamina ?? STAMINA_RULES.defaultMaximum, STAMINA_RULES.defaultMaximum));
+  const maxStamina = clamp(baseMaxStamina + (values.maxStaminaFlat ?? 0), 1, MAX_STAT);
+  const staminaRegenPerSecond = clamp(STAMINA_RULES.baseRegenerationPerSecond * (1 + (values.staminaRegenPercent ?? 0) / 100), 0, MAX_STAT);
 
   return {
     strength: clamp(strength, 0, MAX_STAT),
@@ -82,6 +86,8 @@ export function calculateDerivedStats(player: PlayerCharacter): DerivedCharacter
     intelligence: clamp(intelligence, 0, MAX_STAT),
     maxHealth,
     maxMana,
+    maxStamina,
+    staminaRegenPerSecond,
     armor,
     weaponPower: clamp(weaponPower, 0, MAX_STAT),
     mainHandWeaponPower: clamp(mainHandWeaponPower, 0, MAX_STAT),
@@ -130,6 +136,8 @@ export function compareDerivedStats(before: PlayerCharacter, after: PlayerCharac
     { id: 'armor', label: 'Armor', before: left.armor, after: right.armor },
     { id: 'maxHealth', label: 'Max health', before: left.maxHealth, after: right.maxHealth },
     { id: 'maxMana', label: 'Max mana', before: left.maxMana, after: right.maxMana },
+    { id: 'maxStamina', label: 'Max stamina', before: left.maxStamina, after: right.maxStamina },
+    { id: 'staminaRegenPerSecond', label: 'Stamina regen', before: left.staminaRegenPerSecond, after: right.staminaRegenPerSecond },
     { id: 'movementSpeedMultiplier', label: 'Movement speed', before: left.movementSpeedMultiplier * 100, after: right.movementSpeedMultiplier * 100 },
     { id: 'criticalChance', label: 'Critical chance', before: left.criticalChance * 100, after: right.criticalChance * 100 },
     { id: 'criticalDamageMultiplier', label: 'Critical damage', before: left.criticalDamageMultiplier * 100, after: right.criticalDamageMultiplier * 100 },
