@@ -1121,7 +1121,11 @@ export class FPSGameRuntime {
     if (!removed) return false;
     let item = removed.item;
     if (this.loot.some(drop => drop.id === item.instanceId || drop.item.instanceId === item.instanceId)) {
-      const occupied = new Set([...this.loot.map(drop => drop.id), ...this.loot.map(drop => drop.item.instanceId), ...this.player.inventory.map(candidate => candidate.instanceId)]);
+      const occupied = new Set([
+        ...this.loot.map(drop => drop.id), ...this.loot.map(drop => drop.item.instanceId),
+        ...this.player.inventory.map(candidate => candidate.instanceId),
+        ...Object.values(this.player.equipment).filter((candidate): candidate is ItemInstance => Boolean(candidate)).map(candidate => candidate.instanceId),
+      ]);
       let suffix = 1;
       let instanceId = item.instanceId + '_world_' + suffix++;
       while (occupied.has(instanceId)) instanceId = item.instanceId + '_world_' + suffix++;

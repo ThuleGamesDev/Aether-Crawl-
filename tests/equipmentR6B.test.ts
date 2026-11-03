@@ -8,7 +8,7 @@ import { calculatePlayerDamage } from '../combat/DamageSystem';
 import { offhandVisuals, collectAssetPaths } from '../data/assetRegistry';
 import { ITEM_BASES, ITEM_BASE_BY_ID } from '../data/itemBases';
 import { createUniqueInstance } from '../services/uniqueItems';
-import { createPlayerCharacter, createItemInstance, refreshPlayerDerivedCaps, tryEquipItem } from '../player/PlayerProgression';
+import { createPlayerCharacter, createItemInstance, refreshPlayerDerivedCaps, splitInventoryStack, tryEquipItem } from '../player/PlayerProgression';
 import { PlayerCombat } from '../player/PlayerCombat';
 import { createWeaponPresentationPoseState, getWeaponPresentationPose } from '../presentation/WeaponPresenter';
 import { loadMazeGame, MAZE_SAVE_KEY, saveMazeGame } from '../services/mazeSave';
@@ -145,6 +145,16 @@ describe('R6B canonical equipment rules', () => {
     expect(reservedFailure.ok).toBe(false);
     expect(reservedFailure.errorCode).toBe('INVALID_IDENTITY');
     expect(reservedFailure.player).toBe(dual);
+  });
+
+  it('does not split a stack past the safe inventory instance limit', () => {
+    const base = createPlayerCharacter('PALADIN');
+    const stack = { ...item('healing_draught', 'r6b-full-stack'), quantity: 2 };
+    const inventory = [...Array.from({ length: MAX_INVENTORY_INSTANCES - 1 }, (_, index) => item('healing_draught', 'r6b-full-stack-fill-' + index)), stack];
+    const player = { ...base, inventory, inventoryGrid: syncInventoryGrid(inventory) };
+    expect(splitInventoryStack(player, stack.instanceId)).toBeNull();
+    expect(player.inventory).toHaveLength(MAX_INVENTORY_INSTANCES);
+    expect(player.inventory.at(-1)).toMatchObject({ instanceId: stack.instanceId, quantity: 2 });
   });
 
   it('alternates one-hit melee actions between two one-handed weapons and persists the selected hand', () => {

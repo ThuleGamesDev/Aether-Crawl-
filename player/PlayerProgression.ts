@@ -252,6 +252,7 @@ export function moveInventoryItem(player: PlayerCharacter, instanceId: string, x
 
 /** Splits a stack into two persistent consumable stacks without changing its total quantity. */
 export function splitInventoryStack(player: PlayerCharacter, instanceId: string, reservedIds: readonly string[] = []): PlayerCharacter | null {
+  if (player.inventory.length >= MAX_INVENTORY_INSTANCES) return null;
   const index = player.inventory.findIndex(item => item.instanceId === instanceId);
   if (index < 0) return null;
   const source = player.inventory[index];
