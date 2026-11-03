@@ -138,5 +138,3 @@ export function randomSeed(): number {
   }
   return Math.floor(Math.random() * 4294967296) >>> 0;
 }
-
-\n
