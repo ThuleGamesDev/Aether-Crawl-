@@ -1,4 +1,4 @@
-import type { ClassType, DerivedCharacterStats, DungeonRoom, EquipmentSlot, ItemInstance, MazeLawDraft, MazeLawId, PlayerCharacter, StatusApplication, WorldEnemy, WorldLootDrop, WorldProjectile } from '../types';
+import type { ClassType, DerivedCharacterStats, DungeonRoom, EquipmentSlot, ItemInstance, MazeLawDraft, MazeLawId, MazeLawSynergyId, PlayerCharacter, StatusApplication, WorldEnemy, WorldLootDrop, WorldProjectile } from '../types';
 import type { InputFrame } from './InputSystem';
 import { createDungeonWorld, createFloorEnemies, createRoomOffer, findLookTarget, markExplored, randomSeed, type RoomOffer } from '../world/DungeonWorld';
 import { raycastGrid, hasLineOfSight, isWorldSolid, moveWithEntitySlide, moveWithWallSlide } from '../world/CollisionWorld';
@@ -9,6 +9,7 @@ import { CLASS_ABILITY_LOADOUT, getAbility, getSkillAbilityId } from '../combat/
 import { getEnemyAttackDefinition, isEnemyAttackParryable } from '../data/enemyAttacks';
 import { getEnemyAttackTelegraphDescriptor, getGuardianTelegraphEffect } from '../data/enemyAttackTelegraph';
 import { getFloorGuardianDefinition } from '../data/mazeContent';
+import { getEnemyDefinition } from '../data/enemies';
 import { createPlayerControllerState, updatePlayerController, type PlayerControllerState } from '../player/PlayerController';
 import { PlayerCombat, type ActivePlayerAction } from '../player/PlayerCombat';
 import { addInventoryItem, consumePotion, createPlayerCharacter, grantExperience, moveInventoryItem, refreshPlayerDerivedCaps, removeInventoryUnit, rollEnemyDrop, splitInventoryStack, tryEquipItem, tryUnequipItem } from '../player/PlayerProgression';
@@ -34,6 +35,7 @@ import { isShieldItem } from '../services/equipmentRules';
 import { abilityPoiseDamage, applyEnemyPoiseDamage, enemyAttackContainsPoint, getEnemyPoiseProfile, initializeEnemyPoise, STAMINA_RULES, tickEnemyPoise } from '../combat/CombatMastery';
 import { awardThreadCharge, buildThreadAnchorOffer, closeThreadAnchor as clearOpenThreadAnchor, createAriadneThreadProgress, openThreadAnchor as markThreadAnchorOpen, planAriadneThreadEdit, type ThreadAnchorOffer, type ThreadEditContext } from '../services/ariadneThread';
 import type { AriadneThreadAction } from '../types';
+import { createMazeChronicle, recordMazeChronicleEvent, type MazeChronicleEventInput } from '../services/mazeChronicle';
 
 export interface FPSGameSnapshot {
   player: PlayerCharacter;
@@ -58,6 +60,7 @@ export interface FPSGameSnapshot {
   paused: boolean;
   inventoryOpen: boolean;
   mapOpen: boolean;
+  chronicleOpen: boolean;
   gameOver: boolean;
   roomOffer: RoomOffer | null;
   lawOffer: MazeLawDraft | null;
@@ -95,6 +98,7 @@ export class FPSGameRuntime {
   loot: WorldLootDrop[] = [];
   roomOffer: RoomOffer | null = null;
   private threadOffer: ThreadAnchorOffer | null = null;
+  chronicleOpen = false;
   paused = false;
   inventoryOpen = false;
   mapOpen = false;
@@ -136,6 +140,7 @@ export class FPSGameRuntime {
     this.random = floorRandom(this.world.seed ^ 0xA37E2);
     this.world = markExplored(this.world, this.player.position.x, this.player.position.z);
     this.updateGuardianDiscovery();
+    this.updateVisibleDiscoveries();
     this.gameOver = this.player.stats.hp <= 0;
     this.levelUpOpen = !this.gameOver && (this.player.skillPoints ?? 0) > 0;
     const openThreadId = this.world.floor.threadProgress?.openJunctionId;
@@ -155,7 +160,8 @@ export class FPSGameRuntime {
       if (this.toastSeconds === 0) this.toast = '';
     }
     if (input.pausePressed) {
-      if (this.threadOffer) this.closeThreadAnchor();
+      if (this.chronicleOpen) this.closeMazeChronicle();
+      else if (this.threadOffer) this.closeThreadAnchor();
       else if (this.world.floor.lawProgress?.draft?.open) this.closeLawOffer();
       else if (this.levelUpOpen) { this.levelUpOpen = false; this.cancelHeldActions(); }
       else if (this.inventoryOpen || this.mapOpen) { this.inventoryOpen = false; this.mapOpen = false; }
@@ -164,17 +170,17 @@ export class FPSGameRuntime {
         if (this.paused) this.cancelHeldActions();
       }
     }
-    if (input.inventoryPressed && !this.gameOver && !this.paused && !this.levelUpOpen) {
+    if (input.inventoryPressed && !this.gameOver && !this.paused && !this.levelUpOpen && !this.chronicleOpen) {
       this.inventoryOpen = !this.inventoryOpen;
       this.mapOpen = false;
       if (this.inventoryOpen) this.cancelHeldActions();
     }
-    if (input.mapPressed && !this.gameOver && !this.paused && !this.levelUpOpen) {
+    if (input.mapPressed && !this.gameOver && !this.paused && !this.levelUpOpen && !this.chronicleOpen) {
       this.mapOpen = !this.mapOpen;
       this.inventoryOpen = false;
       if (this.mapOpen) this.cancelHeldActions();
     }
-    if (this.paused || this.inventoryOpen || this.mapOpen || this.levelUpOpen || this.roomOffer || this.threadOffer || this.world.floor.lawProgress?.draft?.open || this.gameOver) return;
+    if (this.paused || this.inventoryOpen || this.mapOpen || this.levelUpOpen || this.roomOffer || this.threadOffer || this.chronicleOpen || this.world.floor.lawProgress?.draft?.open || this.gameOver) return;
 
     this.tickLawHazards(dt);
 
@@ -208,6 +214,7 @@ export class FPSGameRuntime {
     }
     this.world = markExplored(this.world, this.player.position.x, this.player.position.z);
     this.updateGuardianDiscovery();
+    this.updateVisibleDiscoveries();
 
     this.processInput(input);
     const actionUpdate = this.combat.update(dt);
@@ -222,6 +229,7 @@ export class FPSGameRuntime {
     this.enemies = this.enemies.map(enemy => tickEnemyPoise(enemy, dt));
     const enemyUpdate = updateEnemyBrains(this.enemies, this.world.map, this.player, dt);
     this.enemies = enemyUpdate.enemies;
+    this.updateVisibleDiscoveries();
     for (const enemyId of enemyUpdate.telegraphs) {
       const enemy = this.enemies.find(candidate => candidate.id === enemyId);
       if (!enemy?.isBoss) continue;
@@ -989,10 +997,12 @@ export class FPSGameRuntime {
       return;
     }
     if (target.kind === 'ROOM') {
-      const offer = createRoomOffer(target.room);
+      this.discoverRoom(target.room.id);
+      const room = this.world.floor.rooms.find(candidate => candidate.id === target.room.id) ?? target.room;
+      const offer = createRoomOffer(room);
       if (offer) { this.roomOffer = offer; this.cancelHeldActions(); return; }
-      if (target.room.type === 'COMBAT' || target.room.type === 'ELITE') {
-        if (this.enemies.some(enemy => enemy.roomId === target.room.id && enemy.health > 0)) this.addToast('Defeat the enemies in this chamber.');
+      if (room.type === 'COMBAT' || room.type === 'ELITE') {
+        if (this.enemies.some(enemy => enemy.roomId === room.id && enemy.health > 0)) this.addToast('Defeat the enemies in this chamber.');
         else this.addToast('This chamber is clear.');
         return;
       }
@@ -1051,6 +1061,8 @@ export class FPSGameRuntime {
       worldRevision: this.world.worldRevision + 1,
       floor: { ...this.world.floor, threadProgress: plan.progress },
     };
+    this.recordChronicleEvent({ kind: 'THREAD_WOVEN', floor: this.world.level, junctionId: plan.junction.id, routeId: plan.route.id, action,
+      chargeCost: plan.chargeCost ?? choice.cost, healthCost: plan.healthCost ?? choice.healthCost });
     this.enemies = this.enemies.map(enemy => ({ ...enemy, pathStep: undefined, pathTargetCell: undefined, pathRefreshSeconds: 0 }));
     this.threadOffer = null;
     this.cancelHeldActions();
@@ -1112,6 +1124,7 @@ export class FPSGameRuntime {
       worldRevision: this.world.worldRevision + 1,
       floor: { ...this.world.floor, keys: useKey ? this.world.floor.keys - 1 : this.world.floor.keys, rooms: this.world.floor.rooms.map(candidate => candidate.id === room?.id ? { ...candidate, discovered: true, unlocked: true, visited: true, ...(brokenThread ? { attempted: true } : {}) } : candidate) },
     };
+    if (room) this.discoverRoom(room.id);
     this.persistRun();
     this.addToast(isSecret ? 'Forgotten passage found.' : useKey ? 'Ariadne’s Token used. Treasury opened.' : 'The bronze lock gives way.');
     this.addLog(isSecret ? 'A hidden limestone passage opens.' : useKey ? 'Ariadne’s Token opens a sealed treasury.' : 'The locked gate gives way.');
@@ -1265,6 +1278,9 @@ export class FPSGameRuntime {
 
   private finishLawSelection(progress: NonNullable<typeof this.world.floor.lawProgress>, lawId: MazeLawId): boolean {
     this.world = { ...this.world, floor: { ...this.world.floor, lawProgress: progress } };
+    const draft = progress.draft;
+    if (draft) this.recordChronicleEvent({ kind: 'LAW_CHOSEN', floor: draft.floorLevel, lawId, offerId: draft.offerId,
+      ...(draft.replacedLawId ? { replacedLawId: draft.replacedLawId } : {}) });
     this.cancelHeldActions();
     this.addLog(getMazeLaw(lawId)?.lawId.replace(/_/g, ' ') + ' woven into the Maze.');
     this.addToast('The Law is woven. Press E at the descent to continue.');
@@ -1282,7 +1298,7 @@ export class FPSGameRuntime {
     const nextWorld: DungeonWorldState = { ...nextWorldWithLaws, floor: {
       ...nextWorldWithLaws.floor,
       threadProgress: createAriadneThreadProgress(nextWorldWithLaws.floor.threadJunctions ?? [], charges),
-    } };
+    }, mazeChronicle: this.world.mazeChronicle };
     const yaw = spawnFacingAngle(nextWorld.map, { x: 1, y: 1 });
     this.world = { ...markExplored(nextWorld, 1.5, 1.5), worldRevision: this.world.worldRevision + 1 };
     this.player = { ...this.player, position: { x: 1.5, y: 0, z: 1.5 }, rotation: { yaw, pitch: this.player.rotation.pitch } };
@@ -1478,24 +1494,104 @@ export class FPSGameRuntime {
     this.paused = false;
     this.inventoryOpen = false;
     this.mapOpen = false;
+    this.chronicleOpen = false;
     this.levelUpOpen = true;
     this.cancelHeldActions();
   }
 
+  openMazeChronicle(): void {
+    if (this.levelUpOpen || this.roomOffer || this.threadOffer || this.world.floor.lawProgress?.draft?.open) return;
+    this.paused = false;
+    this.inventoryOpen = false;
+    this.mapOpen = false;
+    this.chronicleOpen = true;
+    this.cancelHeldActions();
+  }
+
+  closeMazeChronicle(): void {
+    this.chronicleOpen = false;
+    this.cancelHeldActions();
+  }
+
+  private recordChronicleEvent(event: MazeChronicleEventInput): boolean {
+    const current = this.world.mazeChronicle;
+    const next = recordMazeChronicleEvent(current, event);
+    if (next === current) return false;
+    this.world = { ...this.world, mazeChronicle: next };
+    return true;
+  }
+
+  private discoverRoom(roomId: string): void {
+    const room = this.world.floor.rooms.find(candidate => candidate.id === roomId);
+    if (!room) return;
+    const roomStateChanged = !room.discovered || !room.visited;
+    if (roomStateChanged) {
+      this.world = { ...this.world, floor: { ...this.world.floor, rooms: this.world.floor.rooms.map(candidate => candidate.id === roomId ? { ...candidate, discovered: true, visited: true } : candidate) } };
+    }
+    let changed = false;
+    if (room.type !== 'NORMAL') changed = this.recordChronicleEvent({ kind: 'ROOM_FAMILY_DISCOVERED', floor: this.world.level, familyId: room.type }) || changed;
+    const lawIds = room.lawIds ?? (room.lawId ? [room.lawId] : []);
+    for (const lawId of lawIds) if (this.world.floor.manifestedLawIds?.includes(lawId)) {
+      changed = this.recordChronicleEvent({ kind: 'LAW_MANIFESTED', floor: this.world.level, lawId }) || changed;
+    }
+    if (room.synergyId && this.world.floor.manifestedSynergyIds?.includes(room.synergyId)) {
+      changed = this.recordChronicleEvent({ kind: 'SYNERGY_MANIFESTED', floor: this.world.level, synergyId: room.synergyId }) || changed;
+    }
+    if (changed || roomStateChanged) this.persistRun();
+  }
+
+  private updateVisibleDiscoveries(): void {
+    let changed = false;
+    for (const enemy of this.enemies) {
+      if (enemy.health <= 0 || Math.hypot(enemy.position.x - this.player.position.x, enemy.position.z - this.player.position.z) > 8
+        || !hasLineOfSight(this.world.map, this.player.position.x, this.player.position.z, enemy.position.x, enemy.position.z, 0.2)) continue;
+      if (getEnemyDefinition(enemy.definitionId) || enemy.definitionId === this.world.floor.guardianId) {
+        changed = this.recordChronicleEvent({ kind: 'ENEMY_FAMILY_DISCOVERED', floor: this.world.level, familyId: enemy.definitionId }) || changed;
+      }
+      if (enemy.lawId && this.world.floor.manifestedLawIds?.includes(enemy.lawId)) {
+        changed = this.recordChronicleEvent({ kind: 'LAW_MANIFESTED', floor: this.world.level, lawId: enemy.lawId }) || changed;
+      }
+      const room = enemy.roomId ? this.world.floor.rooms.find(candidate => candidate.id === enemy.roomId) : undefined;
+      if (room?.synergyId && this.world.floor.manifestedSynergyIds?.includes(room.synergyId)) {
+        changed = this.recordChronicleEvent({ kind: 'SYNERGY_MANIFESTED', floor: this.world.level, synergyId: room.synergyId }) || changed;
+      }
+    }
+    for (const hazard of this.world.floor.lawHazards ?? []) {
+      if (Math.hypot(hazard.x - this.player.position.x, hazard.z - this.player.position.z) > 7
+        || !hasLineOfSight(this.world.map, this.player.position.x, this.player.position.z, hazard.x, hazard.z, 0.1)) continue;
+      if (this.world.floor.manifestedLawIds?.includes(hazard.lawId)) {
+        changed = this.recordChronicleEvent({ kind: 'LAW_MANIFESTED', floor: this.world.level, lawId: hazard.lawId }) || changed;
+      }
+      if (hazard.synergyId && this.world.floor.manifestedSynergyIds?.includes(hazard.synergyId)) {
+        changed = this.recordChronicleEvent({ kind: 'SYNERGY_MANIFESTED', floor: this.world.level, synergyId: hazard.synergyId as MazeLawSynergyId }) || changed;
+      }
+    }
+    if (changed) this.persistRun();
+  }
+
   private updateGuardianDiscovery(): void {
     const floor = this.world.floor;
-    if (!floor.guardianId || floor.guardianState !== 'NOT_DISCOVERED') return;
+    if (!floor.guardianId) return;
+    if (floor.guardianState !== 'NOT_DISCOVERED') {
+      if (floor.guardianState !== undefined && this.recordChronicleEvent({ kind: 'ROOM_FAMILY_DISCOVERED', floor: this.world.level, familyId: 'BOSS' })) this.persistRun();
+      return;
+    }
     const guardian = this.enemies.find(enemy => enemy.definitionId === floor.guardianId && enemy.health > 0);
     if (!guardian) return;
     const distance = Math.hypot(guardian.position.x - this.player.position.x, guardian.position.z - this.player.position.z);
     if (distance > 8 || !hasLineOfSight(this.world.map, this.player.position.x, this.player.position.z, guardian.position.x, guardian.position.z, 0.2)) return;
-    this.world = { ...this.world, floor: { ...floor, guardianState: 'ALIVE' } };
+    const bossRoom = floor.rooms.find(room => room.type === 'BOSS');
+    this.world = { ...this.world, floor: { ...floor, guardianState: 'ALIVE', rooms: floor.rooms.map(room => room.type === 'BOSS' ? { ...room, discovered: true, visited: true } : room) } };
+    this.recordChronicleEvent({ kind: 'ROOM_FAMILY_DISCOVERED', floor: this.world.level, familyId: 'BOSS' });
+    const bossLawIds = bossRoom?.lawIds ?? (bossRoom?.lawId ? [bossRoom.lawId] : []);
+    for (const lawId of bossLawIds) if (this.world.floor.manifestedLawIds?.includes(lawId)) this.recordChronicleEvent({ kind: 'LAW_MANIFESTED', floor: this.world.level, lawId });
+    this.persistRun();
     this.addLog(getFloorGuardianDefinition(this.world.level).entranceLine);
     this.addToast(getFloorGuardianDefinition(this.world.level).entranceLine);
   }
 
   getRenderState(): FPSRenderState {
-    return { world: this.world, player: this.player, enemies: this.enemies, projectiles: this.projectiles, loot: this.loot, action: this.combat.action, isMoving: this.isMoving, guarding: this.controllerState.guarding, paused: this.paused || this.inventoryOpen || this.mapOpen || this.levelUpOpen || Boolean(this.roomOffer) || Boolean(this.threadOffer) || Boolean(this.world.floor.lawProgress?.draft?.open) || this.gameOver, cameraBob: this.cameraBob, viewmodelEvent: this.viewmodelEvent, viewmodelEventProgress: this.viewmodelEventDuration > 0 ? this.viewmodelEventSeconds / this.viewmodelEventDuration : 0, events: this.visualEvents.splice(0) };
+    return { world: this.world, player: this.player, enemies: this.enemies, projectiles: this.projectiles, loot: this.loot, action: this.combat.action, isMoving: this.isMoving, guarding: this.controllerState.guarding, paused: this.paused || this.inventoryOpen || this.mapOpen || this.levelUpOpen || Boolean(this.roomOffer) || Boolean(this.threadOffer) || this.chronicleOpen || Boolean(this.world.floor.lawProgress?.draft?.open) || this.gameOver, cameraBob: this.cameraBob, viewmodelEvent: this.viewmodelEvent, viewmodelEventProgress: this.viewmodelEventDuration > 0 ? this.viewmodelEventSeconds / this.viewmodelEventDuration : 0, events: this.visualEvents.splice(0) };
   }
 
   private setViewmodelEvent(event: NonNullable<FPSRenderState['viewmodelEvent']>, durationSeconds: number): void {
@@ -1542,11 +1638,12 @@ export class FPSGameRuntime {
       paused: this.paused,
       inventoryOpen: this.inventoryOpen,
       mapOpen: this.mapOpen,
+      chronicleOpen: this.chronicleOpen,
       gameOver: this.gameOver,
       roomOffer: this.roomOffer,
       lawOffer: this.world.floor.lawProgress?.draft?.open ? this.world.floor.lawProgress.draft : null,
       threadOffer: this.threadOffer,
-      prompt: this.paused || this.inventoryOpen || this.mapOpen || this.levelUpOpen || this.roomOffer || this.threadOffer || this.world.floor.lawProgress?.draft?.open ? null : this.getPrompt(),
+      prompt: this.paused || this.inventoryOpen || this.mapOpen || this.levelUpOpen || this.roomOffer || this.threadOffer || this.chronicleOpen || this.world.floor.lawProgress?.draft?.open ? null : this.getPrompt(),
       targetEnemy: this.getTargetEnemy(),
       incomingAttacks,
       parryWindowSeconds: this.controllerState.parryWindowSeconds,
@@ -1590,10 +1687,12 @@ function cloneWorld(world: DungeonWorldState): DungeonWorldState {
     explored: world.explored.map(row => [...row]),
     floor: {
       ...world.floor,
-      rooms: world.floor.rooms.map(room => ({ ...room, anchor: { ...room.anchor }, cells: room.cells.map(cell => ({ ...cell })), gate: room.gate ? { ...room.gate } : undefined })),
+      rooms: world.floor.rooms.map(room => ({ ...room, anchor: { ...room.anchor }, cells: room.cells.map(cell => ({ ...cell })), gate: room.gate ? { ...room.gate } : undefined,
+        ...(room.lawIds ? { lawIds: [...room.lawIds] } : {}) })),
       ...(world.floor.architectureRooms ? { architectureRooms: world.floor.architectureRooms.map(room => ({ ...room, cells: room.cells.map(cell => ({ ...cell })), landmarkIds: [...room.landmarkIds] })) } : {}),
       visitedCells: [...world.floor.visitedCells], pendingEffects: [...world.floor.pendingEffects],
     },
+    mazeChronicle: world.mazeChronicle ? { ...world.mazeChronicle, events: world.mazeChronicle.events.map(event => ({ ...event })) } : createMazeChronicle(),
   };
 }
 

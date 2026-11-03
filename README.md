@@ -53,6 +53,7 @@ npm run build
 - [R6A implementation notes](docs/R6A_IMPLEMENTATION.md) describe the new FPS labyrinth topology, room architecture, torch placement, lighting, save compatibility, and technical verification.
 - [R6D1 implementation notes](docs/R6D1_IMPLEMENTATION.md) describe the Loom of Fate and Living Labyrinth Laws.
 - [R6D2 implementation notes](docs/R6D2_IMPLEMENTATION.md) describe prepared Thread Anchors, safe spatial edits, charge persistence, and save migration.
+- [R6D3 implementation notes](docs/R6D3_IMPLEMENTATION.md) describe the three bounded Law synergies, the run-local Maze Chronicle, Minotaur inheritance data contract, and version-8 save migration.
 - [FPS-R1 architecture](docs/FPS_R1_ARCHITECTURE.md) and [FPS-R1 migration audit](docs/AETHER_CRAWL_FPS_R1_MIGRATION_AUDIT.md) are historical foundation documents; their former title, art direction, and R1 Guardian model are not current gameplay canon.
 
 The former party and initiative-based game path remains as inactive historical source with isolated tests. The active application imports the solo FPS runtime only.

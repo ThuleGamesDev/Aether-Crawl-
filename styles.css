@@ -400,8 +400,18 @@ canvas {
 .fps-law-card > span:not(.fps-law-category) { display: grid; gap: 3px; color: #b9b1a5; font-size: 11px; line-height: 1.45; }
 .fps-law-card b { color: #e5d5b9; font-size: 10px; text-transform: uppercase; letter-spacing: .08em; }
 .fps-law-category { width: fit-content; border: 1px solid #735c41; color: #d0ad73; padding: 3px 7px; font-size: 9px; letter-spacing: .13em; }
+.fps-law-warning { align-self: end; color: rgba(227,202,157,.52); filter: blur(.28px); font: italic 9px Georgia,serif; letter-spacing: .04em; }
 .fps-law-capacity { color: #aaa092; font-size: 11px; line-height: 1.5; }
 .fps-law-replacement { display: grid; gap: 10px; }
+.fps-chronicle-panel { display: grid; gap: 18px; }
+.fps-chronicle-section { display: grid; gap: 8px; }
+.fps-chronicle-section h3 { margin: 0; color: #e9cc8b; font: bold 15px Georgia,serif; }
+.fps-chronicle-laws, .fps-chronicle-events { display: grid; gap: 7px; margin: 0; padding: 0; list-style: none; }
+.fps-chronicle-laws li, .fps-chronicle-events li { display: grid; gap: 5px; border: 1px solid #4b4034; background: rgba(13,12,12,.58); padding: 9px 11px; }
+.fps-chronicle-laws strong, .fps-chronicle-events strong { color: #e9d5ad; font: bold 11px Georgia,serif; text-transform: capitalize; }
+.fps-chronicle-laws span, .fps-chronicle-events li > span:last-child { color: #b8ad9c; font-size: 10px; line-height: 1.45; }
+.fps-chronicle-floor { color: #9b805a; font: 8px ui-monospace,monospace; letter-spacing: .12em; }
+.fps-chronicle-note { margin: 0; color: #938778; font-size: 9px; line-height: 1.5; }
 .fps-thread-offer-resource { display: flex; justify-content: space-between; align-items: center; gap: 12px; border: 1px solid rgba(86,216,206,.34); background: rgba(26,72,68,.16); padding: 10px 12px; color: #9ad9d1; font: 9px ui-monospace, monospace; letter-spacing: .12em; }
 .fps-thread-offer-resource strong { color: #d3f4ed; font-size: 13px; }
 .fps-thread-choices { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 10px; }
@@ -489,8 +499,8 @@ canvas {
   .fps-top-actions { position: absolute; top: 0; right: 0; max-width: 38vw; gap: 4px; }
   .fps-top-actions button { min-height: 40px; padding: 4px 6px; font-size: 8px; }
   .fps-top-actions button:nth-child(1) { display: none; }
-  .fps-top-actions button:nth-child(2) { display: none; }
-  .fps-top-actions button:nth-child(4) { display: block; }
+  .fps-top-actions button:nth-child(3) { display: none; }
+  .fps-top-actions button:nth-child(5) { display: block; }
   .fps-action-bar { gap: 3px; margin-right: 122px; }
   .fps-action-bar { justify-content: flex-start; max-width: calc(100vw - 128px); }
   .fps-action-card { min-width: 72px; flex-basis: 72px; padding: 5px; }

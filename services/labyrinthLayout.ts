@@ -81,7 +81,7 @@ export function generateLabyrinthLayout(mapSize: number, seed: number, level: nu
       id: `arch_${level}_${seed >>> 0}_${nodes.length}`,
       cells: roomCells,
       roomShape,
-      combatSuitability: isEntry ? 'LIMITED' : level >= 2 && row === 1 && column === 1 ? 'NONE' : 'SUITABLE',
+      combatSuitability: isEntry ? 'LIMITED' : threadEnabled && row === 1 && column === 1 ? 'NONE' : 'SUITABLE',
       lightingTheme: lightingFor(roomShape, row, column),
       landmarkIds: landmarksFor(roomShape),
     };

@@ -60,6 +60,10 @@ Merged in PR #26. Implements the saved three-card choice after every Guardian an
 
 Implements deterministic prepared route junctions on floors 2–5, two Thread Charges to start, a cap of three, Guardian charge rewards, and one transactionally validated reveal/seal choice per anchor. Map reachability, protected rooms/gates, nearby actors, floor state, and charges are checked before the map changes. Version-6 expeditions migrate in memory to version 7 without floor regeneration. See [R6D2 implementation notes](R6D2_IMPLEMENTATION.md).
 
+## FPS-R6D3 — Living Labyrinth synergies, Minotaur inheritance contract, and Chronicle
+
+Implemented in the R6D3 PR. Adds three explicit, bounded Law pairings (Echo-Pack, Ares Pillar Arena, Venom Nest), a 64-event run-local discovery Chronicle, and a data-only Minotaur inheritance plan capped at three Laws and three derived modifiers. Version-7 expeditions migrate in memory to version 8 with an empty Chronicle and unchanged floor/Thread state. Also resolves two confirmed R6D2 review findings: closed doors no longer count as walkable for Thread reachability, and the center chamber remains combat-eligible on later floors outside the Thread range. See [R6D3 implementation notes](R6D3_IMPLEMENTATION.md).
+
 ## FPS-R6 — Floors 1–5 Action-RPG Vertical Slice & Quality Pass
 
 Next: carry out the user's first-person playtest of floors 1–5 across movement, enemy telegraphs, loot, class progression, room events, save/load, Guardian arenas, and Thread Anchors. Keep content expansion bounded until the full progression loop is integrated.

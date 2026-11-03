@@ -222,7 +222,7 @@ describe('R6B first-person equipment presentation', () => {
   });
 });
 
-describe('R6D2 v4 to v7 migration and paperdoll', () => {
+describe('R6D2 v4 to v8 migration and paperdoll', () => {
   it('maps old armor/accessories by base metadata, preserves unique and unknown items, and is idempotent after saving', () => {
     const uniqueAmulet = createUniqueInstance('ariadnes_thread', 'v4-unique-amulet', 2);
     const { legacy, storage } = emptyLegacySave(uniqueAmulet);
@@ -233,7 +233,7 @@ describe('R6D2 v4 to v7 migration and paperdoll', () => {
     expect(migrated.migratedFromR4B).toBe(true);
     expect(migrated.migrationRequired).toBe(true);
     expect(storage.getItem(MAZE_SAVE_KEY)).toBe(source);
-    expect(migrated.save?.version).toBe(7);
+    expect(migrated.save?.version).toBe(8);
     expect(migrated.save?.player.equipment.head?.instanceId).toBe('v4-helm');
     expect(migrated.save?.player.equipment.neck).toMatchObject({ instanceId: uniqueAmulet.instanceId, uniqueEffectId: 'ariadnes_thread', rarity: 'UNIQUE' });
     expect(migrated.save?.player.inventory.map(entry => entry.instanceId)).toEqual(expect.arrayContaining(['v4-unknown', 'v4-bag-ring']));
