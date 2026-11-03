@@ -42,5 +42,3 @@ function isValidArchitectureRooms(value: unknown, map: number[][], isPosition: (
   }
   return true;
 }
-
-\n
