@@ -185,7 +185,7 @@ export function validateItemInstance(value: unknown, requireBaseId = true): Item
   } else if (!ITEM_BASE_BY_ID[value.baseId]) warnings.push('Unknown baseId; legacy numeric fields are used safely.');
   else if (ITEM_BASE_BY_ID[value.baseId].type !== value.type) errors.push('Item type does not match its base definition.');
   if (typeof value.name !== 'string' || typeof value.description !== 'string') errors.push('Missing item display data.');
-  if (!['WEAPON', 'ARMOR', 'POTION', 'SCROLL', 'SHIELD', 'ACCESSORY'].includes(value.type)) errors.push('Unknown item type.');
+  if (!['WEAPON', 'ARMOR', 'POTION', 'SCROLL', 'SHIELD', 'ACCESSORY', 'MATERIAL'].includes(value.type)) errors.push('Unknown item type.');
   if (!Number.isFinite(value.value) || value.value < 0) errors.push('Item value must be finite and non-negative.');
   if (!Number.isInteger(value.quantity) || value.quantity < 1) errors.push('Item quantity must be a positive integer.');
   if (!Number.isInteger(value.itemLevel) || value.itemLevel < 1) errors.push('Item level must be a positive integer.');
@@ -206,7 +206,7 @@ export function validateItemInstance(value: unknown, requireBaseId = true): Item
       if (value.rarity !== 'UNIQUE' || value.baseId !== unique?.baseId) errors.push('Unique effect does not match its unique base and rarity.');
     }
   } else if (value.rarity === 'UNIQUE') errors.push('Unique items require a registered effect ID.');
-  if (value.consumableEffect !== undefined && value.consumableEffect !== 'HEALTH' && value.consumableEffect !== 'MANA') errors.push('Unknown consumable effect.');
+  if (value.consumableEffect !== undefined && value.consumableEffect !== 'HEALTH' && value.consumableEffect !== 'MANA' && value.consumableEffect !== 'ANTIDOTE') errors.push('Unknown consumable effect.');
   return { valid: errors.length === 0, errors, warnings: [...new Set(warnings)] };
 }
 
@@ -253,11 +253,11 @@ export function normalizeLegacyItem(item: ItemInstance): ItemInstance {
   };
 }
 
-export function consumableEffect(item: ItemInstance): 'HEALTH' | 'MANA' | null {
+export function consumableEffect(item: ItemInstance): 'HEALTH' | 'MANA' | 'ANTIDOTE' | null {
   if (item.type !== 'POTION') return null;
   const base = getItemBase(item.baseId);
   if (base?.consumableEffect) return base.consumableEffect;
-  if (item.consumableEffect === 'HEALTH' || item.consumableEffect === 'MANA') return item.consumableEffect;
+  if (item.consumableEffect === 'HEALTH' || item.consumableEffect === 'MANA' || item.consumableEffect === 'ANTIDOTE') return item.consumableEffect;
   if (item.id === 'potion_mp' || item.id === 'room_mana' || item.baseId === 'nectar_flask') return 'MANA';
   if (item.id === 'potion_hp' || item.id === 'room_health' || item.baseId === 'healing_draught') return 'HEALTH';
   return null;
@@ -289,3 +289,4 @@ function safeRandom(random: RandomSource): number {
 function randomIndex(random: RandomSource, length: number): number { return Math.floor(safeRandom(random) * Math.max(1, length)); }
 function isRecord(value: unknown): value is Record<string, any> { return Boolean(value && typeof value === 'object' && !Array.isArray(value)); }
 
+\n

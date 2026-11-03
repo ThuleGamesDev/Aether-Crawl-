@@ -390,6 +390,21 @@ canvas {
 .fps-room-choice:hover { border-color: #ba8652; background: #2c211a; }
 .fps-room-choice strong { color: #eddec9; font: bold 13px Georgia, serif; }
 .fps-room-choice span { color: #b5aa9a; font-size: 10px; }
+
+.fps-law-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.fps-law-card { display: grid; align-content: start; gap: 10px; min-height: 286px; border: 1px solid #67503a; background: linear-gradient(155deg, #29221d, #181615); color: #e9dfd0; padding: 14px; text-align: left; cursor: pointer; }
+.fps-law-card:hover, .fps-law-card:focus-visible { border-color: #d3a75f; background: linear-gradient(155deg, #33271d, #1a1715); outline: 2px solid #d3a75f; outline-offset: 1px; }
+.fps-law-card strong { text-transform: capitalize; color: #f3d18a; font: bold 17px Georgia, serif; }
+.fps-law-card > span:not(.fps-law-category) { display: grid; gap: 3px; color: #b9b1a5; font-size: 11px; line-height: 1.45; }
+.fps-law-card b { color: #e5d5b9; font-size: 10px; text-transform: uppercase; letter-spacing: .08em; }
+.fps-law-category { width: fit-content; border: 1px solid #735c41; color: #d0ad73; padding: 3px 7px; font-size: 9px; letter-spacing: .13em; }
+.fps-law-capacity { color: #aaa092; font-size: 11px; line-height: 1.5; }
+.fps-law-replacement { display: grid; gap: 10px; }
+
+@media (max-width: 760px) {
+  .fps-law-cards { grid-template-columns: 1fr; }
+  .fps-law-card { min-height: 0; }
+}
 .fps-map-wrap { display: grid; justify-items: center; gap: 14px; }
 .fps-map-grid { display: grid; width: min(100%, 500px); aspect-ratio: 1; border: 2px solid #5a4c3c; background: #111; gap: 1px; padding: 2px; }
 .fps-map-cell { display: block; min-width: 0; min-height: 0; background: #282522; }

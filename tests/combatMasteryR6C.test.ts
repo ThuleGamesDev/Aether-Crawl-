@@ -42,6 +42,24 @@ class MemoryStorage implements KeyValueStorage {
 }
 
 describe('R6C combat mastery', () => {
+  it('counts down phase locks for bosses outside the poise pilot', () => {
+    const warden = enemy({
+      definitionId: 'guardian_threadbound_warden',
+      attackSetId: 'threadbound_warden',
+      isBoss: true,
+      state: 'RECOVER',
+      stateTimer: 0.72,
+      phaseTransitionLockSeconds: 0.72,
+    });
+    let current = warden;
+    for (let step = 0; step < 15; step += 1) {
+      current = tickEnemyPoise(current, 0.05);
+      current = updateEnemyBrains([current], openMap(), createPlayerCharacter('BARBARIAN'), 0.05).enemies[0];
+    }
+    expect(current.phaseTransitionLockSeconds).toBe(0);
+    expect(current.state).not.toBe('RECOVER');
+  });
+
   it('charges heavy attacks before cooldown, keeps class skills and spells usable at zero stamina, and shows the cost', () => {
     const heavy = getAbility('barbarian_heavy_strike')!;
     expect(abilityTooltip(heavy)).toContain('18 stamina');

@@ -35,6 +35,9 @@ export const ITEM_BASES: readonly ItemBaseDefinition[] = [
   { baseId: 'labyrinth_spear', id: 'labyrinth_spear', name: 'Labyrinth Long Spear', description: 'A long ash spear balanced for a two-handed thrust.', type: 'WEAPON', value: 6, icon: '↗', visualType: 'spear', tags: ['WEAPON', 'PHYSICAL', 'MELEE', 'TWO_HANDED'], equipmentSlots: ['mainHand'], twoHanded: true, requiredLevel: 4 },
   { baseId: 'healing_draught', id: 'healing_draught', name: 'Healing Draught', description: 'A bitter herbal drink that restores health.', type: 'POTION', value: 30, consumableEffect: 'HEALTH', icon: '◉', tags: ['CONSUMABLE'], equipmentSlots: [], requiredLevel: 1, legacyIds: ['potion_hp', 'room_health'] },
   { baseId: 'nectar_flask', id: 'nectar_flask', name: 'Nectar Flask', description: 'A sacred draught that restores magical focus.', type: 'POTION', value: 30, consumableEffect: 'MANA', icon: '◈', tags: ['CONSUMABLE'], equipmentSlots: [], requiredLevel: 1, legacyIds: ['potion_mp', 'room_mana', 'mana_potion'] },
+  { baseId: 'antidote_flask', id: 'antidote_flask', name: 'Antidote Flask', description: 'A bitter resin that draws venom from the blood.', type: 'POTION', value: 1, consumableEffect: 'ANTIDOTE', icon: '✚', tags: ['CONSUMABLE'], equipmentSlots: [], requiredLevel: 1 },
+  { baseId: 'bronze_hound_tooth', id: 'bronze_hound_tooth', name: 'Bronze Hound Tooth', description: 'A curved tooth with a bronze sheen, prized by palace armorers.', type: 'MATERIAL', value: 8, icon: '⌁', tags: ['MATERIAL'], equipmentSlots: [], requiredLevel: 1 },
+  { baseId: 'styx_soul_essence', id: 'styx_soul_essence', name: 'Styx Soul Essence', description: 'A cold mote gathered where a Stygian Shade dissolved.', type: 'MATERIAL', value: 12, icon: '◈', tags: ['MATERIAL'], equipmentSlots: [], requiredLevel: 1 },
 ] satisfies readonly ItemBaseDefinition[];
 
 const itemBaseIndex = Object.create(null) as Record<string, ItemBaseDefinition>;

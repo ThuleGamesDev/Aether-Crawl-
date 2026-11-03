@@ -1,6 +1,6 @@
 import { FLOOR_ENEMY_ROSTERS, getFloorGuardianDefinition } from '../data/mazeContent';
 import { enemyDefinitions } from '../data/enemies';
-import { TileType, type FloorState, type WorldEnemy } from '../types';
+import { TileType, type FloorState, type MazeLawSpawn, type WorldEnemy } from '../types';
 import { floorRandom } from '../services/floorRandom';
 import { canOccupyWorldPosition, isWorldSolid } from './CollisionWorld';
 
@@ -9,7 +9,8 @@ export function spawnFloorEnemies(map: number[][], floor: FloorState, playerPosi
   const random = floorRandom(floor.seed ^ 0xE11E5);
   const occupied = new Set<string>();
   const enemies: WorldEnemy[] = [];
-  const make = (definitionId: string, x: number, z: number, roomId?: string, guardian = false) => {
+  const oathActive = floor.lawProgress?.activeLaws.some(law => law.lawId === 'oath_of_ares') === true;
+  const make = (definitionId: string, x: number, z: number, roomId?: string, guardian = false, lawSpawn?: MazeLawSpawn) => {
     const definition = definitions.get(guardian ? 'skeleton_warrior' : definitionId);
     const collisionRadius = guardian ? 0.42 : definitionId === 'giant_rat' ? 0.22 : 0.28;
     const worldX = x + 0.5, worldZ = z + 0.5;
@@ -25,7 +26,7 @@ export function spawnFloorEnemies(map: number[][], floor: FloorState, playerPosi
     enemies.push({
       id: 'enemy_' + floor.level + '_' + (floor.seed >>> 0) + '_' + id + '_' + enemies.length,
       definitionId: id,
-      name: guardianDefinition?.name ?? definition.fpsName,
+      name: guardianDefinition?.name ?? lawSpawn?.displayName ?? definition.fpsName,
       visualId: guardianDefinition?.visualId ?? definition.fpsVisualId,
       position: { x: worldX, y: 0, z: worldZ },
       collisionRadius,
@@ -49,6 +50,8 @@ export function spawnFloorEnemies(map: number[][], floor: FloorState, playerPosi
       rewardGranted: false,
       roomId: roomId ?? (guardian ? floor.rooms.find(room => room.type === 'BOSS')?.id : undefined),
       lootTier: guardian ? 'GUARDIAN' : floor.rooms.find(room => room.id === roomId)?.type === 'ELITE' ? 'ELITE' : 'NORMAL',
+      ...(lawSpawn ? { lawId: lawSpawn.lawId, ...(lawSpawn.rewardBaseId ? { lawRewardBaseId: lawSpawn.rewardBaseId } : {}) } : {}),
+      ...(!guardian && oathActive ? { attackCooldownMultiplier: 0.82 } : {}),
       isBoss: guardian,
     });
     return true;
@@ -98,5 +101,20 @@ export function spawnFloorEnemies(map: number[][], floor: FloorState, playerPosi
     const definition = eligible[Math.floor(random() * eligible.length)];
     if (definition) make(definition.id, cell.x, cell.z);
   }
+  for (const lawSpawn of (floor.lawSpawns ?? []).slice(0, 5)) {
+    const room = floor.rooms.find(candidate => candidate.id === lawSpawn.roomId);
+    if (!room) continue;
+    const candidates = room.cells.slice().sort((a, b) => stableHash(`${floor.seed}|${lawSpawn.lawId}|${a.x},${a.y}`) - stableHash(`${floor.seed}|${lawSpawn.lawId}|${b.x},${b.y}`));
+    let spawned = 0;
+    for (const cell of candidates) {
+      const reward = spawned === 0 ? lawSpawn : { ...lawSpawn, rewardBaseId: undefined };
+      if (make(lawSpawn.definitionId, cell.x, cell.y, room.id, false, reward)) spawned += 1;
+      if (spawned >= lawSpawn.count) break;
+    }
+  }
   return enemies;
 }
+
+function stableHash(value: string): number { let hash = 2166136261; for (let index = 0; index < value.length; index += 1) hash = Math.imul(hash ^ value.charCodeAt(index), 16777619); return hash >>> 0; }
+
+\n

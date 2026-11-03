@@ -90,7 +90,7 @@ export function updateEnemyBrains(enemies: WorldEnemy[], map: number[][], player
         const attack = getEnemyAttackDefinition(next.attackSetId, next.activeAttackId, next.phase ?? 1);
         next.state = 'RECOVER';
         next.stateTimer = attack?.recoverySeconds ?? 0.62;
-        next.attackCooldown = attack?.cooldownSeconds ?? 1.25;
+        next.attackCooldown = (attack?.cooldownSeconds ?? 1.25) * Math.max(0.7, Math.min(1, next.attackCooldownMultiplier ?? 1));
         next.lastAttackId = next.activeAttackId;
         const set = getEnemyAttackSet(next.attackSetId, next.phase ?? 1);
         next.attackIndex = set.length > 1 ? ((next.attackIndex ?? 0) + 1) % set.length : 0;

@@ -10,6 +10,7 @@ import { getClassSkill } from '../data/classSkillKits';
 import { isValidEffectiveActionSpeedMultiplier } from '../combat/actionSpeed';
 import { isDualWieldLoadout, isTwoHandedItem, validateEquipmentLoadout } from './equipmentRules';
 import { getEnemyAttackSet, LEGACY_ENEMY_ATTACK_ALIASES } from '../data/enemyAttacks';
+import { isMazeLawId } from '../data/mazeLaws';
 
 export const FPS_SAVE_KEY = 'aether_crawl_fps_r1_save_v1';
 export const FPS_SAVE_VERSION = 1;
@@ -172,6 +173,9 @@ function isWorldEnemy(value: unknown): value is WorldEnemy {
     && (value.pathStep === undefined || isRecord(value.pathStep) && Number.isInteger(value.pathStep.x) && Number.isInteger(value.pathStep.y))
     && (value.telegraphPosition === undefined || isRecord(value.telegraphPosition) && Number.isFinite(value.telegraphPosition.x) && Number.isFinite(value.telegraphPosition.y) && Number.isFinite(value.telegraphPosition.z))
     && (value.lootTier === undefined || ['NORMAL', 'ELITE', 'GUARDIAN'].includes(value.lootTier))
+    && (value.lawId === undefined || isMazeLawId(value.lawId))
+    && (value.lawRewardBaseId === undefined || typeof value.lawRewardBaseId === 'string' && Boolean(getItemBase(value.lawRewardBaseId)))
+    && (value.attackCooldownMultiplier === undefined || Number.isFinite(value.attackCooldownMultiplier) && value.attackCooldownMultiplier >= 0.7 && value.attackCooldownMultiplier <= 1)
     && typeof value.rewardGranted === 'boolean' && typeof value.isBoss === 'boolean';
 }
 
@@ -182,7 +186,7 @@ function isWorldLoot(value: unknown, requireBaseId = false): value is WorldLootD
 
 function isItemInstance(value: unknown, requireBaseId = false): value is ItemInstance {
   const rarities = ['COMMON', 'MAGIC', 'RARE', 'UNIQUE'];
-  const types = ['WEAPON', 'ARMOR', 'POTION', 'SCROLL', 'SHIELD', 'ACCESSORY'];
+  const types = ['WEAPON', 'ARMOR', 'POTION', 'SCROLL', 'SHIELD', 'ACCESSORY', 'MATERIAL'];
   return isRecord(value) && typeof value.instanceId === 'string' && typeof value.id === 'string' && typeof value.name === 'string'
     && typeof value.description === 'string' && types.includes(value.type) && Number.isFinite(value.value) && value.value >= 0
     && Number.isInteger(value.quantity) && value.quantity >= 1 && Number.isInteger(value.itemLevel) && value.itemLevel >= 1
@@ -190,7 +194,7 @@ function isItemInstance(value: unknown, requireBaseId = false): value is ItemIns
     && (!requireBaseId || typeof value.baseId === 'string' && value.baseId.length > 0)
     && (value.baseId === undefined || typeof value.baseId === 'string' && value.baseId.length > 0)
     && (!value.baseId || !getItemBase(value.baseId) || getItemBase(value.baseId)!.type === value.type)
-    && (value.consumableEffect === undefined || value.consumableEffect === 'HEALTH' || value.consumableEffect === 'MANA')
+    && (value.consumableEffect === undefined || value.consumableEffect === 'HEALTH' || value.consumableEffect === 'MANA' || value.consumableEffect === 'ANTIDOTE')
     && value.affixes.every(affix => isRecord(affix) && typeof affix.id === 'string' && Number.isFinite(affix.value) && (affix.tier === undefined || Number.isInteger(affix.tier) && affix.tier >= 1))
     && (value.uniqueEffectId === undefined || typeof value.uniqueEffectId === 'string');
 }

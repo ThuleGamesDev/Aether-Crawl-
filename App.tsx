@@ -16,6 +16,8 @@ import { classPassiveStackSummary } from './player/ClassPassives';
 import { getClassSkillUnlockLevel, getRankedAbility, getSkillRank } from './player/SkillProgression';
 import { isDualWieldLoadout, isShieldItem } from './services/equipmentRules';
 import { abilityStaminaCost } from './combat/CombatMastery';
+import { getMazeLaw } from './data/mazeLaws';
+import type { MazeLawId, MazeLawProgress } from './types';
 
 const CLASS_IDS = Object.keys(CLASSES) as ClassType[];
 const App: React.FC = () => {
@@ -35,7 +37,7 @@ const App: React.FC = () => {
     const result = loadMazeGame();
     setHasSave(Boolean(result.save));
     if (result.invalid) setSaveWarning('A saved expedition is invalid or unavailable. Existing save data has not been overwritten.');
-    else if (result.migrationRequired) setSaveWarning((result.migratedFromR1 ? 'An FPS-R1' : result.migratedFromR4B ? 'An FPS-R4B' : result.migratedFromR4A ? 'An FPS-R4A' : 'An FPS-R2A') + ' expedition is ready to migrate when you continue. Its original save is preserved until the new save is written.');
+    else if (result.migrationRequired) setSaveWarning((result.migratedFromR1 ? 'An FPS-R1' : result.migratedFromR6C ? 'An R6C' : result.migratedFromR4B ? 'An FPS-R4B' : result.migratedFromR4A ? 'An FPS-R4A' : 'An FPS-R2A') + ' expedition is ready to migrate when you continue. Its original save is preserved until the new save is written.');
     try {
       const savedSensitivity = Number(window.localStorage.getItem('aether_fps_mouse_sensitivity'));
       if (Number.isFinite(savedSensitivity) && savedSensitivity >= 0.001 && savedSensitivity <= 0.006) setMouseSensitivity(savedSensitivity);
@@ -50,6 +52,7 @@ const App: React.FC = () => {
     paused: snapshot.paused,
     levelUpOpen: snapshot.levelUpOpen,
     roomOfferOpen: Boolean(snapshot.roomOffer),
+    lawOfferOpen: Boolean(snapshot.lawOffer),
     gameOver: snapshot.gameOver,
   }));
 
@@ -303,7 +306,7 @@ const App: React.FC = () => {
         <div className="fps-target-health"><i style={{ width: Math.max(0, target.health / target.maxHealth * 100) + '%' }} /></div>
         {target.maxPoise !== undefined && target.maxPoise > 0 && <><div className="fps-target-meter-label"><span>POISE</span><b>{Math.ceil(target.poise ?? target.maxPoise)}/{Math.ceil(target.maxPoise)}</b></div><div className="fps-target-poise"><i style={{ width: Math.max(0, Math.min(100, (target.poise ?? target.maxPoise) / target.maxPoise * 100)) + '%' }} /></div></>}
       </div>}
-      {snapshot.incomingAttacks.length > 0 && <div className="fps-attack-read" role="status" aria-label="Incoming attacks">
+      {snapshot.incomingAttacks.length > 0 && <div className="fps-attack-read" role="region" aria-live="off" aria-label="Incoming attacks">
         {snapshot.incomingAttacks.map(attack => <div key={attack.id} className={attack.parryable ? 'fps-attack-parryable' : 'fps-attack-unparryable'}><b>{attack.direction}</b><strong>{attack.name}</strong><span>{attack.parryable ? 'Q PARRY' : 'DODGE / BLOCK'} · {attack.seconds.toFixed(1)}s</span></div>)}
       </div>}
       {snapshot.prompt && <div className="fps-interact-prompt">{snapshot.prompt}</div>}
@@ -327,8 +330,8 @@ const App: React.FC = () => {
                 : 'Unlock · Lv ' + (skill.unlockLevel ?? '?');
             const availability = !skill.unlocked ? 'Locked'
               : snapshot.skillCooldowns[index] > 0 ? snapshot.skillCooldowns[index].toFixed(1) + 's cooldown'
-                : skill.ability.staminaCost ? skill.ability.staminaCost + ' STA · ' + skill.effectiveManaCost.toFixed(skill.effectiveManaCost % 1 ? 1 : 0) + ' MP'
-                  : skill.effectiveManaCost.toFixed(skill.effectiveManaCost % 1 ? 1 : 0) + ' MP · Ready';
+                : (skill.ability.staminaCost ? skill.ability.staminaCost + ' STA · ' : '')
+                  + skill.effectiveManaCost.toFixed(skill.effectiveManaCost % 1 ? 1 : 0) + ' MP · Ready';
             return <button key={skill.ability.id} className={'fps-action-card fps-skill-card' + (!skill.unlocked ? ' fps-skill-locked' : '')} title={tooltip} disabled={!skill.unlocked} onMouseEnter={() => setSkillDetailsIndex(index)} onFocus={() => setSkillDetailsIndex(index)} onClick={() => { setSkillDetailsIndex(index); inputRef.current?.triggerSkill(index + 1); }}><kbd>{index + 1}</kbd><strong>{skill.ability.name}</strong><small>{slotLabel}</small><small className={snapshot.skillCooldowns[index] > 0 ? 'fps-cooldown-active' : ''}>{availability}</small></button>;
           })}
         </div>
@@ -383,6 +386,28 @@ const App: React.FC = () => {
         <div className="fps-room-choices">{snapshot.roomOffer.choices.map(choice => <button key={choice.id} className="fps-room-choice" onClick={() => { runtime.resolveRoomChoice(choice.id); refreshSnapshot(); }}><strong>{choice.label}</strong><span>{choice.detail}</span></button>)}</div>
       </Overlay>}
 
+      {snapshot.lawOffer && <Overlay title="The Loom of Fate" onClose={() => { runtime.closeLawOffer(); refreshSnapshot(); }} className="fps-overlay-panel-wide">
+        <p className="fps-overlay-copy">Every victory rewrites the Maze.</p>
+        {snapshot.lawOffer.pendingLawId ? <LawReplacementPanel
+          progress={snapshot.world.floor.lawProgress!}
+          pendingLawId={snapshot.lawOffer.pendingLawId}
+          onReplace={lawId => { runtime.replaceLaw(lawId); refreshSnapshot(); }}
+          onBack={() => { runtime.cancelLawReplacement(); refreshSnapshot(); }}
+        /> : <>
+          <div className="fps-law-cards">{snapshot.lawOffer.lawIds.map(lawId => {
+            const law = getMazeLaw(lawId)!;
+            return <button key={law.lawId} className="fps-law-card" onClick={() => { runtime.selectLaw(law.lawId); refreshSnapshot(); }}>
+              <span className="fps-law-category">{law.category}</span><strong>{law.lawId.replace(/_/g, ' ')}</strong>
+              <span><b>What changes</b>{law.whatChanges}</span>
+              <span><b>Danger</b>{law.danger}</span>
+              <span><b>Reward</b>{law.reward}</span>
+            </button>;
+          })}</div>
+          <p className="fps-law-capacity">Choose one Law. It changes a future floor; your current floor remains open until you descend.</p>
+          <div className="fps-overlay-actions"><button className="fps-button" onClick={() => { runtime.closeLawOffer(); refreshSnapshot(); }}>Return to the Floor</button></div>
+        </>}
+      </Overlay>}
+
       {snapshot.gameOver && <Overlay title="Lost to the Labyrinth" onClose={returnToMenu}>
         <p className="fps-overlay-copy">Floor {snapshot.world.level} · Level {player.stats.level}. Your run can be saved before leaving.</p>
         <div className="fps-overlay-actions"><button className="fps-button fps-button-primary" onClick={saveRun}>Save Run</button><button className="fps-button" onClick={returnToMenu}>Main Menu</button></div>
@@ -404,6 +429,19 @@ const DungeonMap: React.FC<{ snapshot: FPSGameSnapshot }> = ({ snapshot }) => <d
     return <i className={'fps-map-cell ' + className} key={x + ':' + z} />;
   }))}
 </div><p className="fps-muted">Unexplored rooms stay hidden. The cyan marker is your position; the gold marker is the floor exit.</p></div>;
+
+const LawReplacementPanel: React.FC<{ progress: MazeLawProgress; pendingLawId: MazeLawId; onReplace: (lawId: MazeLawId) => void; onBack: () => void }> = ({ progress, pendingLawId, onReplace, onBack }) => {
+  const ordered = [...progress.activeLaws].sort((a, b) => a.acquiredOrder - b.acquiredOrder);
+  const oldest = ordered[0]?.lawId;
+  return <div className="fps-law-replacement">
+    <p className="fps-overlay-copy">Your pattern holds three active Laws. Choose one to replace with <strong>{pendingLawId.replace(/_/g, ' ')}</strong>. The oldest Law is marked, but the choice is yours.</p>
+    <div className="fps-room-choices">{ordered.map(active => <button key={active.lawId} className="fps-room-choice" onClick={() => onReplace(active.lawId)}>
+      <strong>{active.lawId.replace(/_/g, ' ')}{active.lawId === oldest ? ' · Oldest' : ''}</strong>
+      <span>{getMazeLaw(active.lawId)?.whatChanges ?? 'This Law shapes future Labyrinth floors.'}</span>
+    </button>)}</div>
+    <div className="fps-overlay-actions"><button className="fps-button" onClick={onBack}>Back to the Three Laws</button></div>
+  </div>;
+};
 
 const CompactMinimap: React.FC<{ snapshot: FPSGameSnapshot; onOpen: () => void }> = ({ snapshot, onOpen }) => <button className="fps-mini-map-button" aria-label="Open dungeon map" onClick={onOpen}>
   <span>MAP</span>

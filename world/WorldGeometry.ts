@@ -37,11 +37,43 @@ export class WorldGeometry {
     this.addWalls(world, assets);
     this.addExit(world, assets);
     this.addProps(world, assets);
+    this.addLawHazards(world);
   }
 
   updateLighting(elapsedSeconds: number): void {
     for (const source of this.flickeringLights) {
       source.light.intensity = source.baseIntensity * (0.93 + Math.sin(elapsedSeconds * 7.1 + source.phase) * 0.035 + Math.sin(elapsedSeconds * 13.7 + source.phase * 1.7) * 0.02);
+    }
+  }
+
+  private addLawHazards(world: DungeonWorldState): void {
+    for (const hazard of world.floor.lawHazards ?? []) {
+      const poolGeometry = new THREE.CircleGeometry(hazard.radius, 24);
+      const poolMaterial = new THREE.MeshBasicMaterial({ color: 0x5d9b4e, transparent: true, opacity: 0.34, depthWrite: false, side: THREE.DoubleSide });
+      const pool = new THREE.Mesh(poolGeometry, poolMaterial);
+      pool.rotation.x = -Math.PI / 2;
+      pool.position.set(hazard.x, 0.035, hazard.z);
+      pool.name = 'LawHazard_' + hazard.id;
+      const ringGeometry = new THREE.RingGeometry(hazard.radius * 0.72, hazard.radius * 0.82, 24);
+      const ringMaterial = new THREE.MeshBasicMaterial({ color: 0xa4ce64, transparent: true, opacity: 0.58, depthWrite: false, side: THREE.DoubleSide });
+      const ring = new THREE.Mesh(ringGeometry, ringMaterial);
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.set(hazard.x, 0.045, hazard.z);
+      ring.name = 'LawHazardRing_' + hazard.id;
+      this.group.add(pool, ring);
+      this.ownedGeometries.push(poolGeometry, ringGeometry);
+      this.ownedMaterials.push(poolMaterial, ringMaterial);
+    }
+    for (const room of world.floor.rooms.filter(candidate => candidate.lawId === 'oath_of_ares')) {
+      const geometry = new THREE.RingGeometry(0.2, 0.3, 8);
+      const material = new THREE.MeshBasicMaterial({ color: 0xb34c3d, transparent: true, opacity: 0.74, depthWrite: false, side: THREE.DoubleSide });
+      const sigil = new THREE.Mesh(geometry, material);
+      sigil.rotation.x = -Math.PI / 2;
+      sigil.position.set(room.anchor.x + 0.5, 0.05, room.anchor.y + 0.5);
+      sigil.name = 'AresLawSigil_' + room.id;
+      this.group.add(sigil);
+      this.ownedGeometries.push(geometry);
+      this.ownedMaterials.push(material);
     }
   }
 

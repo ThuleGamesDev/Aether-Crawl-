@@ -26,7 +26,7 @@ export function animateEnemySprite(sprite: THREE.Sprite, enemy: WorldEnemy, elap
   const gait = Math.sin(phase);
   let bob = 0;
   let scaleX = baseWidth, scaleY = baseHeight, tilt = 0;
-  let tint = '#ffffff';
+  let tint = enemy.lawId === 'bronze_hounds' ? '#c89d59' : '#ffffff';
   let opacity = 1;
   if (moving) {
     bob = Math.max(0, gait) * (rat ? 0.055 : 0.035);

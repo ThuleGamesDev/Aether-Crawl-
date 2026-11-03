@@ -9,7 +9,8 @@ const baseIcon: Readonly<Record<string, ItemIconKind>> = Object.freeze({
   labyrinth_bow: 'bow', oracle_staff: 'staff', asclepiad_staff: 'hammer', chthonic_staff: 'staff', pankration_wraps: 'armor',
   aspis: 'shield', guardian_aspis: 'shield', linothorax: 'armor', bronze_cuirass: 'armor', cretan_pelt: 'armor', greaves: 'armor',
   lamia_veil: 'armor', laurel_circlet: 'ring', ares_votive: 'amulet', chthonic_seal: 'amulet', threadbound_seal: 'amulet',
-  serpent_ring: 'ring', bronze_signet: 'ring', threaded_amulet: 'amulet', healing_draught: 'potion', nectar_flask: 'potion',
+  serpent_ring: 'ring', bronze_signet: 'ring', threaded_amulet: 'amulet', healing_draught: 'potion', nectar_flask: 'potion', antidote_flask: 'potion',
+  bronze_hound_tooth: 'dagger', styx_soul_essence: 'amulet',
 });
 
 export const ITEM_ICON_PIXELS: Readonly<Record<ItemIconKind, readonly ItemIconPixel[]>> = {

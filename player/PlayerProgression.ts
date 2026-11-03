@@ -179,9 +179,13 @@ export function consumePotion(player: PlayerCharacter, instanceId: string): Play
   if (!effect) return null;
   const derived = calculateDerivedStats(player);
   const stats = { ...player.stats };
+  let statusEffects = player.statusEffects;
   if (effect === 'MANA') {
     if (stats.mp >= derived.maxMana) return null;
     stats.mp = Math.min(derived.maxMana, stats.mp + item.value);
+  } else if (effect === 'ANTIDOTE') {
+    statusEffects = player.statusEffects.filter(status => status.statusId !== 'POISON');
+    if (statusEffects.length === player.statusEffects.length) return null;
   } else {
     if (stats.hp >= derived.maxHealth) return null;
     stats.hp = Math.min(derived.maxHealth, stats.hp + item.value);
@@ -189,7 +193,7 @@ export function consumePotion(player: PlayerCharacter, instanceId: string): Play
   const inventory = [...player.inventory];
   if (item.quantity > 1) inventory[index] = { ...item, quantity: item.quantity - 1 };
   else inventory.splice(index, 1);
-  return { ...player, stats, inventory, inventoryGrid: syncInventoryGrid(inventory, player.inventoryGrid) };
+  return { ...player, stats, statusEffects, inventory, inventoryGrid: syncInventoryGrid(inventory, player.inventoryGrid) };
 }
 
 export interface AddInventoryItemResult {

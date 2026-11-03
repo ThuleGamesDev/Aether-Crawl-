@@ -50,7 +50,11 @@ Merged to `main` via PR #24. Adds canonical equipment slots, validated shield/fo
 
 ## FPS-R6C — Combat mastery: stamina, parry, poise, and enemy reads
 
-Implemented on `codex/maze-of-the-minotaur-fps-r6c`, prepared as a focused pull request. Adds bounded stamina and recovery rules, collision-aware dodge windows, explicit shield-parry attacks, pilot-enemy poise breaks, and readable incoming-attack cues for the Cretan Cave Rat, Bronze Revenant, Bull-Cult Enforcer, and Bronze Gatekeeper. Version-5 saves remain compatible through optional validated fields. See [R6C implementation notes](R6C_IMPLEMENTATION.md).
+Merged into `main` via PR #25. Adds bounded stamina and recovery rules, collision-aware dodge windows, explicit shield-parry attacks, pilot-enemy poise breaks, and readable incoming-attack cues for the Cretan Cave Rat, Bronze Revenant, Bull-Cult Enforcer, and Bronze Gatekeeper. Version-5 saves remain compatible through optional validated fields. See [R6C implementation notes](R6C_IMPLEMENTATION.md).
+
+## FPS-R6D1 — Loom of Fate and Living Labyrinth Laws
+
+Implements the saved three-card choice after every Guardian and nine functional Laws that reshape future room plans, creature spawns, hazards, combat cadence, and rewards. The active set is capped at three with an explicit replacement choice; version-5 expeditions migrate to version 6. Prepared as a focused pull request. See [R6D1 implementation notes](R6D1_IMPLEMENTATION.md).
 
 ## FPS-R6 — Floors 1–5 Action-RPG Vertical Slice & Quality Pass
 

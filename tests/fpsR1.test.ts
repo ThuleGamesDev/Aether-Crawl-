@@ -356,6 +356,10 @@ describe('FPS-R1 solo runtime', () => {
     runtime.enemies = runtime.enemies.map(enemy => enemy.id === guardian.id ? { ...enemy, health: 0, state: 'DEAD', stateTimer: 1.1 } : enemy);
     runtime.update(0.05, emptyInput());
     runtime.interact();
+    expect(runtime.world.level).toBe(oldLevel);
+    const offer = runtime.getSnapshot().lawOffer!;
+    expect(runtime.selectLaw(offer.lawIds[0])).toBe(true);
+    runtime.interact();
     expect(runtime.world.level).toBe(oldLevel + 1);
     expect(runtime.world.worldRevision).toBeGreaterThan(oldRevision);
   });

@@ -5,6 +5,7 @@ import { TileType, type DungeonRoom, type FloorState, type PlayerCharacter } fro
 import { isWorldSolid } from './CollisionWorld';
 import { spawnFloorEnemies } from './EnemySpawner';
 import { getFloorGuardianDefinition } from '../data/mazeContent';
+import { createEmptyMazeLawProgress } from '../services/lawDraft';
 
 export interface DungeonWorldState {
   level: number;
@@ -39,6 +40,7 @@ export function createDungeonWorld(level: number, seed = randomSeed()): DungeonW
   const generated = generateDungeon(biome, seed, level, { mapSize: 23, guardianArenaRadius: 3, topology: 'ARCHITECTURAL' });
   generated.floor!.guardianId = getFloorGuardianDefinition(level).id;
   generated.floor!.guardianState = 'NOT_DISCOVERED';
+  generated.floor!.lawProgress = createEmptyMazeLawProgress();
   const explored = generated.map.map(row => row.map(() => false));
   explored[1][1] = true;
   return { level, seed: seed >>> 0, biome, map: generated.map, decorations: generated.decorations, floor: generated.floor!, explored, worldRevision: 1 };
@@ -68,9 +70,10 @@ export function findLookTarget(world: DungeonWorldState, player: PlayerCharacter
     seen.add(key);
     const tile = world.map[z]?.[x];
     if (tile === undefined) return null;
-    const room = world.floor.rooms.find(candidate => !candidate.resolved && candidate.type !== 'NORMAL' && candidate.type !== 'BOSS' && (candidate.type !== 'LOCKED' || candidate.unlocked) && candidate.type !== 'SECRET' && (
-      (candidate.gate && candidate.gate.x === x && candidate.gate.y === z) ||
-      (!candidate.gate && candidate.anchor.x === x && candidate.anchor.y === z)
+    const room = world.floor.rooms.find(candidate => !candidate.resolved && candidate.type !== 'NORMAL' && candidate.type !== 'BOSS' && (candidate.type !== 'LOCKED' || candidate.unlocked) && (candidate.type !== 'SECRET' || candidate.unlocked) && (
+      (candidate.gate && candidate.gate.x === x && candidate.gate.y === z && (candidate.type !== 'SECRET' || !candidate.unlocked)) ||
+      (!candidate.gate && candidate.anchor.x === x && candidate.anchor.y === z) ||
+      (candidate.type === 'SECRET' && candidate.unlocked && candidate.cells.some(cell => cell.x === x && cell.y === z))
     ));
     if (room) return { kind: 'ROOM', room, x, z };
     if (tile === TileType.DOOR) return { kind: 'DOOR', x, z };
@@ -83,6 +86,14 @@ export function findLookTarget(world: DungeonWorldState, player: PlayerCharacter
 }
 
 export function createRoomOffer(room: DungeonRoom): RoomOffer | null {
+  if (room.lawId === 'vault_of_tyche' && room.type === 'LOCKED' && room.unlocked && !room.resolved) return { roomId: room.id, title: 'Vault of Tyche', description: 'A sealed cache opens behind a bronze counterweight. Choose how to pay the price.', choices: [
+    { id: 'tyche_disarm', label: 'Disarm the Counterweight', detail: 'A failed attempt costs health; success guarantees a rare item.' },
+    { id: 'tyche_sacrifice', label: 'Offer Blood to Tyche', detail: 'Lose 20% of your health and claim a rare item.' },
+  ] };
+  if (room.lawId === 'broken_thread' && room.type === 'SECRET' && room.unlocked && !room.resolved) return { roomId: room.id, title: 'Broken Thread Cache', description: 'The fractured branch hides a rare cache beyond the secret seam.', choices: [
+    { id: 'thread_cache', label: 'Claim the Rare Cache', detail: 'Take a guaranteed rare item from the hidden branch.' },
+    { id: 'leave', label: 'Leave the Cache', detail: 'Leave without disturbing the hidden chamber.' },
+  ] };
   if (room.type === 'TREASURE') return { roomId: room.id, title: 'Forgotten Chamber', description: 'Choose what to carry onward through the Labyrinth.', choices: [
     { id: 'gear', label: 'Claim Equipment', detail: 'Take a piece of equipment.' },
     { id: 'supplies', label: 'Take Supplies', detail: 'Find healing supplies instead.' },
@@ -127,3 +138,5 @@ export function randomSeed(): number {
   }
   return Math.floor(Math.random() * 4294967296) >>> 0;
 }
+
+\n

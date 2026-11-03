@@ -107,7 +107,7 @@ describe('R5C save, input, and hotpath hardening', () => {
     expect(runtime.save(storage)).toBe(true);
     const loaded = loadMazeGame(storage);
     expect(loaded.invalid).toBe(false);
-    expect(loaded.save?.version).toBe(5);
+    expect(loaded.save?.version).toBe(6);
     expect(loaded.save?.combat?.action).toEqual(active);
 
     const resumed = new FPSGameRuntime('BARBARIAN', loaded.save!);

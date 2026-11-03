@@ -58,11 +58,11 @@ export interface Item {
   baseId?: string;
   name: string;
   description: string;
-  type: 'WEAPON' | 'ARMOR' | 'POTION' | 'SCROLL' | 'SHIELD' | 'ACCESSORY';
+  type: 'WEAPON' | 'ARMOR' | 'POTION' | 'SCROLL' | 'SHIELD' | 'ACCESSORY' | 'MATERIAL';
   value: number; // damage, armor, heal amount, or stat boost
   armorWeight?: 'LIGHT' | 'MEDIUM' | 'HEAVY';
   statBonus?: 'STR' | 'DEX' | 'INT' | 'HP' | 'MP'; // For accessories
-  consumableEffect?: 'HEALTH' | 'MANA';
+  consumableEffect?: 'HEALTH' | 'MANA' | 'ANTIDOTE';
   icon?: string; 
   isEquipped?: boolean;
   quantity: number;
@@ -330,6 +330,59 @@ export interface SaveData {
 
 
 export type DungeonRoomType = 'NORMAL' | 'COMBAT' | 'ELITE' | 'TREASURE' | 'SHRINE' | 'TRAP' | 'SECRET' | 'REST' | 'LOCKED' | 'EVENT' | 'BOSS_ANTECHAMBER' | 'BOSS';
+export type MazeLawId = 'hall_of_echoes' | 'vault_of_tyche' | 'pillars_of_daedalus' | 'bronze_hounds' | 'arachnes_kin' | 'shades_of_styx' | 'oath_of_ares' | 'serpents_bargain' | 'broken_thread';
+export type MazeLawCategory = 'ROOM' | 'CREATURE' | 'CURSE';
+export interface MazeLawDraft {
+  version: 1;
+  offerId: string;
+  guardianId: string;
+  floorLevel: number;
+  poolVersion: number;
+  lawIds: [MazeLawId, MazeLawId, MazeLawId];
+  open: boolean;
+  selectedLawId?: MazeLawId;
+  pendingLawId?: MazeLawId;
+  replacedLawId?: MazeLawId;
+}
+export interface ActiveMazeLaw {
+  lawId: MazeLawId;
+  selectedAtFloor: number;
+  acquiredOrder: number;
+  firstManifestedFloor: number | null;
+  lastManifestedFloor: number | null;
+  manifestationCount: number;
+}
+export interface MazeLawChoiceRecord {
+  offerId: string;
+  lawId: MazeLawId;
+  replacedLawId?: MazeLawId;
+  floorLevel: number;
+}
+export interface MazeLawProgress {
+  version: 1;
+  activeLaws: ActiveMazeLaw[];
+  choiceHistory: MazeLawChoiceRecord[];
+  draft?: MazeLawDraft;
+}
+export interface MazeLawSpawn {
+  lawId: MazeLawId;
+  roomId: string;
+  definitionId: string;
+  count: number;
+  displayName?: string;
+  rewardBaseId?: string;
+}
+export interface MazeLawHazard {
+  id: string;
+  lawId: MazeLawId;
+  x: number;
+  z: number;
+  radius: number;
+  damage: number;
+  cooldownSeconds: number;
+  cooldownRemaining: number;
+  rewardBaseId?: string;
+}
 export type ArchitecturalRoomShape = 'ENTRY_HALL' | 'HALL' | 'GALLERY' | 'CROSSROADS' | 'PILLARED_HALL' | 'ROTUNDA' | 'GUARDIAN_ARENA' | 'WIDE_PASSAGE' | 'NARROW_PASSAGE';
 export type ArchitecturalCombatSuitability = 'NONE' | 'LIMITED' | 'SUITABLE';
 export type ArchitecturalLightingTheme = 'AMBER' | 'NEUTRAL' | 'COOL' | 'CHTHONIC';
@@ -359,6 +412,7 @@ export interface DungeonRoom {
   unlocked?: boolean;
   shrine?: 'blood' | 'aether' | 'fortune';
   hazardId?: string;
+  lawId?: MazeLawId;
 }
 export interface FloorState {
   version: 1;
@@ -375,6 +429,10 @@ export interface FloorState {
   /** R2A required descent guardian; optional only while reading a legacy R1 floor for migration. */
   guardianId?: string | null;
   guardianState?: 'NOT_DISCOVERED' | 'ALIVE' | 'DEFEATED' | 'DESCENT_UNLOCKED';
+  lawProgress?: MazeLawProgress;
+  lawSpawns?: MazeLawSpawn[];
+  lawHazards?: MazeLawHazard[];
+  manifestedLawIds?: MazeLawId[];
 }
 
 /** Player-owned state for the active solo action-RPG runtime. */
@@ -412,7 +470,7 @@ export type LegacyEquipmentLoadout = Record<LegacyEquipmentSlot, ItemInstance | 
 export type ItemRarity = 'COMMON' | 'MAGIC' | 'RARE' | 'UNIQUE';
 
 export type ItemTag = 'WEAPON' | 'PHYSICAL' | 'SPELL' | 'MELEE' | 'PROJECTILE' | 'BOW' | 'DAGGER' | 'STAFF' | 'TWO_HANDED'
-  | 'ARMOR' | 'SHIELD' | 'ACCESSORY' | 'RING' | 'AMULET' | 'FOCUS' | 'DIVINE_SIGIL' | 'CONSUMABLE';
+  | 'ARMOR' | 'SHIELD' | 'ACCESSORY' | 'RING' | 'AMULET' | 'FOCUS' | 'DIVINE_SIGIL' | 'CONSUMABLE' | 'MATERIAL';
 
 /** Immutable authored base; item instances store its stable baseId and rolled modifiers. */
 export interface ItemBaseDefinition extends Omit<Item, 'isEquipped' | 'quantity' | 'baseId'> {
@@ -593,6 +651,9 @@ export interface WorldEnemy {
   rewardGranted: boolean;
   roomId?: string;
   lootTier?: 'NORMAL' | 'ELITE' | 'GUARDIAN';
+  lawId?: MazeLawId;
+  lawRewardBaseId?: string;
+  attackCooldownMultiplier?: number;
   isBoss: boolean;
 }
 
