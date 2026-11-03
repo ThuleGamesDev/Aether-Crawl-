@@ -159,7 +159,7 @@ describe('R6D1 deterministic Law draft and Living Labyrinth', () => {
     expect(shouldReleasePointerLockForUi({ inventoryOpen: false, mapOpen: false, paused: false, levelUpOpen: false, roomOfferOpen: false, lawOfferOpen: true, gameOver: false })).toBe(true);
   });
 
-  it('migrates an R6C v5 save to v6 without losing items or rerolling a defeated Guardian draft', () => {
+  it('migrates an R6C v5 save to v7 without losing items or rerolling a defeated Guardian draft', () => {
     const runtime = new FPSGameRuntime('BARBARIAN');
     const storage = new MemoryStorage();
     const guardianId = runtime.world.floor.guardianId!;
@@ -178,7 +178,7 @@ describe('R6D1 deterministic Law draft and Living Labyrinth', () => {
     const result = loadMazeGame(storage);
     expect(result.invalid).toBe(false);
     expect(result.migratedFromR6C).toBe(true);
-    expect(result.save?.version).toBe(6);
+    expect(result.save?.version).toBe(7);
     expect(result.save?.world.floor.lawProgress?.draft?.lawIds).toEqual(draft.lawIds);
     const migratedIds = [...result.save!.player.inventory, ...Object.values(result.save!.player.equipment).filter(Boolean), ...result.save!.loot.map(drop => drop.item)].map(item => item!.instanceId).sort();
     expect(migratedIds).toEqual(itemIds);

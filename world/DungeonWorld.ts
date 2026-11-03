@@ -19,6 +19,7 @@ export interface DungeonWorldState {
 }
 
 export type LookTarget =
+  | { kind: 'THREAD_ANCHOR'; junctionId: string; x: number; z: number }
   | { kind: 'DOOR' | 'LOCKED' | 'SECRET' | 'EXIT'; x: number; z: number; room?: DungeonRoom }
   | { kind: 'ROOM'; room: DungeonRoom; x: number; z: number };
 
@@ -70,6 +71,9 @@ export function findLookTarget(world: DungeonWorldState, player: PlayerCharacter
     seen.add(key);
     const tile = world.map[z]?.[x];
     if (tile === undefined) return null;
+    const threadAnchor = (world.floor.threadJunctions ?? []).find(junction => junction.anchorPosition.x === x && junction.anchorPosition.y === z
+      && !world.floor.threadProgress?.anchorStates.some(state => state.junctionId === junction.id && state.used));
+    if (threadAnchor && (tile === TileType.EMPTY || tile === TileType.EXIT || tile === TileType.DOOR)) return { kind: 'THREAD_ANCHOR', junctionId: threadAnchor.id, x, z };
     const room = world.floor.rooms.find(candidate => !candidate.resolved && candidate.type !== 'NORMAL' && candidate.type !== 'BOSS' && (candidate.type !== 'LOCKED' || candidate.unlocked) && (candidate.type !== 'SECRET' || candidate.unlocked) && (
       (candidate.gate && candidate.gate.x === x && candidate.gate.y === z && (candidate.type !== 'SECRET' || !candidate.unlocked)) ||
       (!candidate.gate && candidate.anchor.x === x && candidate.anchor.y === z) ||

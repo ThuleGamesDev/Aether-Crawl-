@@ -25,7 +25,7 @@ describe('R3B mythic VFX definitions and runtime', () => {
   it('registers the twelve required families with valid static atlas frames and lifetimes', () => {
     const required = [
       'bronze_slash', 'dory_thrust', 'aspis_impact', 'blood_hit', 'arachne_venom', 'web_snare',
-      'promethean_flame', 'stone_shockwave', 'oracle_spark', 'chthonic_bolt', 'guardian_sigil', 'guardian_death',
+      'promethean_flame', 'stone_shockwave', 'oracle_spark', 'chthonic_bolt', 'guardian_sigil', 'guardian_death', 'ariadne_thread',
     ];
     for (const id of required) expect(VFX_DEFINITIONS[id as keyof typeof VFX_DEFINITIONS], id).toBeDefined();
     for (const definition of Object.values(VFX_DEFINITIONS)) {

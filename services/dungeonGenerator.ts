@@ -4,6 +4,7 @@ import { buildFloorPlan } from './dungeonPlan';
 import { decorateLabyrinthLayout, generateLabyrinthLayout } from './labyrinthLayout';
 import { MAP_SIZE } from '../constants';
 import { BiomeId, DungeonData, Position, TileType } from '../types';
+import { createAriadneThreadProgress } from './ariadneThread';
 
 export interface DungeonGenerationOptions {
   /** Used by the FPS runtime only; legacy callers keep their original 12x12 footprint. */
@@ -22,7 +23,9 @@ export const generateDungeon = (_biome: BiomeId = 'dungeon', seed = Math.floor(M
 
   if (options.topology === 'ARCHITECTURAL') {
     const layout = generateLabyrinthLayout(mapSize, seed, level, arenaRadius);
-    const floor = buildFloorPlan(layout.map, layout.decorations, level, _biome, seed, true, arenaRadius, layout.architectureRooms);
+    const floor = buildFloorPlan(layout.map, layout.decorations, level, _biome, seed, true, arenaRadius, layout.architectureRooms, layout.threadJunctions);
+    floor.threadJunctions = layout.threadJunctions;
+    floor.threadProgress = createAriadneThreadProgress(layout.threadJunctions);
     decorateLabyrinthLayout(layout.map, layout.decorations, layout.architectureRooms, floor, seed);
     return { map: layout.map, decorations: layout.decorations, floor };
   }

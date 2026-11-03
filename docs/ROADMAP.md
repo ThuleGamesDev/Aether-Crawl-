@@ -54,11 +54,15 @@ Merged into `main` via PR #25. Adds bounded stamina and recovery rules, collisio
 
 ## FPS-R6D1 — Loom of Fate and Living Labyrinth Laws
 
-Implements the saved three-card choice after every Guardian and nine functional Laws that reshape future room plans, creature spawns, hazards, combat cadence, and rewards. The active set is capped at three with an explicit replacement choice; version-5 expeditions migrate to version 6. Prepared as a focused pull request. See [R6D1 implementation notes](R6D1_IMPLEMENTATION.md).
+Merged in PR #26. Implements the saved three-card choice after every Guardian and nine functional Laws that reshape future room plans, creature spawns, hazards, combat cadence, and rewards. The active set is capped at three with an explicit replacement choice; version-5 expeditions migrate to version 6. See [R6D1 implementation notes](R6D1_IMPLEMENTATION.md).
+
+## FPS-R6D2 — Ariadne's Thread: anchors and spatial maze editing
+
+Implements deterministic prepared route junctions on floors 2–5, two Thread Charges to start, a cap of three, Guardian charge rewards, and one transactionally validated reveal/seal choice per anchor. Map reachability, protected rooms/gates, nearby actors, floor state, and charges are checked before the map changes. Version-6 expeditions migrate in memory to version 7 without floor regeneration. See [R6D2 implementation notes](R6D2_IMPLEMENTATION.md).
 
 ## FPS-R6 — Floors 1–5 Action-RPG Vertical Slice & Quality Pass
 
-Next: carry out the user's first-person playtest of floors 1–5 across movement, enemy telegraphs, loot, class progression, room events, save/load, and Guardian arenas. Keep content expansion bounded until the full progression loop is integrated.
+Next: carry out the user's first-person playtest of floors 1–5 across movement, enemy telegraphs, loot, class progression, room events, save/load, Guardian arenas, and Thread Anchors. Keep content expansion bounded until the full progression loop is integrated.
 
 ## Later
 

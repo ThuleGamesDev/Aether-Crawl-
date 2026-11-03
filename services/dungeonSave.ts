@@ -1,5 +1,6 @@
 import type { ArchitecturalRoom, FloorState, Position } from '../types';
 import { validateLawHazard, validateLawProgress, validateLawSpawn, validLawId } from '../world/LivingLabyrinth';
+import { validateAriadneThreadFloor } from './ariadneThread';
 const roomTypes = new Set(['NORMAL','COMBAT','ELITE','TREASURE','SHRINE','TRAP','SECRET','REST','LOCKED','EVENT','BOSS_ANTECHAMBER','BOSS']);
 const architectureShapes = new Set(['ENTRY_HALL','HALL','GALLERY','CROSSROADS','PILLARED_HALL','ROTUNDA','GUARDIAN_ARENA','WIDE_PASSAGE','NARROW_PASSAGE']);
 const combatSuitabilities = new Set(['NONE','LIMITED','SUITABLE']);
@@ -16,6 +17,8 @@ export function isValidFloorState(value: unknown, map: number[][]): value is Flo
     if (r.lawId !== undefined && !validLawId(r.lawId)) return false;
     ids.add(r.id); }
   if (f.architectureRooms !== undefined && !isValidArchitectureRooms(f.architectureRooms, map, pos)) return false;
+  if (f.threadJunctions !== undefined && !Array.isArray(f.threadJunctions)) return false;
+  if (!validateAriadneThreadFloor(f.threadJunctions ?? [], f.threadProgress, map, f.architectureRooms ?? [], f.rooms)) return false;
   const roomIds = new Set(ids);
   if (f.lawProgress !== undefined && !validateLawProgress(f.lawProgress)) return false;
   if (f.lawSpawns !== undefined && (!Array.isArray(f.lawSpawns) || f.lawSpawns.length > 5 || !f.lawSpawns.every(spawn => validateLawSpawn(spawn, roomIds)) || f.lawSpawns.reduce((sum, spawn) => sum + spawn.count, 0) > 5)) return false;
@@ -37,7 +40,8 @@ function isValidArchitectureRooms(value: unknown, map: number[][], isPosition: (
       || !room.cells.every(isPosition) || new Set(room.cells.map(cell => `${cell.x},${cell.y}`)).size !== room.cells.length
       || !Array.isArray(room.landmarkIds) || room.landmarkIds.length > 32
       || !room.landmarkIds.every(id => typeof id === 'string' && /^[a-z][a-z0-9_]{0,63}$/.test(id))
-      || room.roomArchetype !== undefined && (typeof room.roomArchetype !== 'string' || room.roomArchetype.length > 48)) return false;
+      || room.roomArchetype !== undefined && (typeof room.roomArchetype !== 'string' || room.roomArchetype.length > 48)
+      || room.threadJunctionId !== undefined && (typeof room.threadJunctionId !== 'string' || !/^thread_[a-z0-9_]{1,96}$/.test(room.threadJunctionId))) return false;
     roomIds.add(room.id);
   }
   return true;

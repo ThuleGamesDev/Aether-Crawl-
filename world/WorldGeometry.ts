@@ -37,6 +37,7 @@ export class WorldGeometry {
     this.addWalls(world, assets);
     this.addExit(world, assets);
     this.addProps(world, assets);
+    this.addThreadAnchors(world);
     this.addLawHazards(world);
   }
 
@@ -207,11 +208,14 @@ export class WorldGeometry {
   private addProps(world: DungeonWorldState, assets: AssetManager): void {
     const ids = ['amphora', 'brokenAmphora', 'labyrinthTablet', 'offeringAltar', 'chthonicAltar', 'columnFragment', 'oilBowl'] as const;
     const materials = new Map<(typeof ids)[number], THREE.SpriteMaterial>();
-    for (const id of ids) {
+    const spriteMaterial = (id: (typeof ids)[number]): THREE.SpriteMaterial => {
+      const existing = materials.get(id);
+      if (existing) return existing;
       const material = new THREE.SpriteMaterial({ map: assets.propTexture(id), transparent: true, alphaTest: 0.08, depthTest: true, depthWrite: false });
       materials.set(id, material);
       this.ownedMaterials.push(material);
-    }
+      return material;
+    };
     const architectural = Boolean(world.floor.architectureRooms?.length);
     world.decorations.forEach((row, z) => row.forEach((decoration, x) => {
       if (decoration <= 0) return;
@@ -234,7 +238,7 @@ export class WorldGeometry {
           : decoration === DungeonDecoration.OFFERING_ALTAR ? this.roomThemes.get(`${x},${z}`) === 'CHTHONIC' ? 'chthonicAltar' : 'offeringAltar'
                 : decoration === DungeonDecoration.COLUMN_FRAGMENT ? 'columnFragment' : 'oilBowl'
         : legacyId;
-      const prop = new THREE.Sprite(materials.get(id)!);
+      const prop = new THREE.Sprite(spriteMaterial(id));
       prop.center.set(0.5, 0);
       const scale = id === 'offeringAltar' || id === 'chthonicAltar' || id === 'columnFragment' ? 0.76 : id === 'oilBowl' ? 0.48 : 0.62;
       prop.scale.set(scale, scale * (id === 'columnFragment' ? 1.35 : 1), 1);
@@ -243,6 +247,28 @@ export class WorldGeometry {
       this.group.add(prop);
       if (architectural && id === 'oilBowl') this.addLocalLight(world, x + 0.5, 0.55, z + 0.5, x, z);
     }));
+  }
+
+  private addThreadAnchors(world: DungeonWorldState): void {
+    for (const junction of world.floor.threadJunctions ?? []) {
+      const used = world.floor.threadProgress?.anchorStates.some(state => state.junctionId === junction.id && state.used) ?? false;
+      const color = used ? 0x8c795b : 0x56d8ce;
+      const ringGeometry = new THREE.RingGeometry(0.2, 0.34, 8);
+      const ringMaterial = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: used ? 0.42 : 0.88, side: THREE.DoubleSide, depthWrite: false });
+      const ring = new THREE.Mesh(ringGeometry, ringMaterial);
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.set(junction.anchorPosition.x + 0.5, 0.045, junction.anchorPosition.y + 0.5);
+      ring.name = 'ThreadAnchorRing_' + junction.id;
+
+      const knotGeometry = new THREE.OctahedronGeometry(0.12, 0);
+      const knotMaterial = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: used ? 0.5 : 0.96 });
+      const knot = new THREE.Mesh(knotGeometry, knotMaterial);
+      knot.position.set(junction.anchorPosition.x + 0.5, 0.24, junction.anchorPosition.y + 0.5);
+      knot.name = 'ThreadAnchor_' + junction.id;
+      this.group.add(ring, knot);
+      this.ownedGeometries.push(ringGeometry, knotGeometry);
+      this.ownedMaterials.push(ringMaterial, knotMaterial);
+    }
   }
 
   private addWallMountedProp(world: DungeonWorldState, assets: AssetManager, id: 'wallTorch' | 'frescoPanel' | 'bullRelief', x: number, z: number): void {

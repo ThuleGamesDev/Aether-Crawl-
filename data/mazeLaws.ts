@@ -12,6 +12,8 @@ export interface MazeLawDefinition {
   reward: string;
   trigger: string;
   modifier: Readonly<Record<string, string | number | boolean | undefined>>;
+  /** Additive rules data for Thread route edits; omitted laws leave the base cost unchanged. */
+  threadEffect?: { revealChargeDelta: number; revealHealthCostPercent: number };
   maxStack: 1;
 }
 
@@ -25,7 +27,7 @@ export const MAZE_LAWS: readonly MazeLawDefinition[] = Object.freeze([
   { lawId: 'shades_of_styx', category: 'CREATURE', prerequisites: [], incompatibilities: [], spawnBudgetChange: { enemies: 1, hazards: 0 }, visualCue: 'STYGIAN_SHADE', whatChanges: 'A chamber draws one additional Stygian Shade.', danger: 'The shade pursues through narrow passages.', reward: 'Its defeat yields a soul essence.', trigger: 'COMBAT_ROOM_SPAWN', modifier: { enemy: 'specter', count: 1, reward: 'styx_soul_essence' }, maxStack: 1 },
   { lawId: 'oath_of_ares', category: 'CURSE', prerequisites: [], incompatibilities: [], spawnBudgetChange: { enemies: 0, hazards: 0 }, visualCue: 'ARES_RED_SIGIL', whatChanges: 'Ordinary enemies recover faster and attack more often.', danger: 'Shorter recovery leaves less time between attacks.', reward: 'Parrying a marked attack restores extra stamina and damages poise.', trigger: 'ENEMY_ATTACK_CYCLE', modifier: { attackCooldownMultiplier: 0.82, parryStaminaBonus: 5, poiseDamageBonus: 8 }, maxStack: 1 },
   { lawId: 'serpents_bargain', category: 'CURSE', prerequisites: [], incompatibilities: [], spawnBudgetChange: { enemies: 0, hazards: 1 }, visualCue: 'POISON_MIST', whatChanges: 'A venom pool forms in a side chamber and periodically poisons nearby pilgrims.', danger: 'Standing in the marked pool applies poison.', reward: 'An antidote flask waits beside the pool.', trigger: 'PLAYER_ENTERS_HAZARD', modifier: { hazard: 'POISON_ZONE', damage: 2, cooldownSeconds: 4, reward: 'antidote_flask' }, maxStack: 1 },
-  { lawId: 'broken_thread', category: 'CURSE', prerequisites: [], incompatibilities: [], spawnBudgetChange: { enemies: 0, hazards: 0 }, visualCue: 'FRACTURED_SECRET_SEAM', whatChanges: 'A hidden branch opens into a richer but harder secret cache.', danger: 'The seam is harder to find and one failed attempt costs health.', reward: 'Opening the branch guarantees a rare item.', trigger: 'SECRET_GATE_ATTEMPT', modifier: { secret: true, difficulty: 19, attempts: 1, failureDamagePercent: 0.1, rareDrop: true }, maxStack: 1 },
+  { lawId: 'broken_thread', category: 'CURSE', prerequisites: [], incompatibilities: [], spawnBudgetChange: { enemies: 0, hazards: 0 }, visualCue: 'FRACTURED_SECRET_SEAM', whatChanges: 'A hidden branch opens into a richer but harder secret cache. Revealing a passage costs no Thread Charge.', danger: 'The seam is harder to find; a failed secret search or passage reveal costs health.', reward: 'Opening the branch guarantees a rare item.', trigger: 'SECRET_GATE_ATTEMPT', modifier: { secret: true, difficulty: 19, attempts: 1, failureDamagePercent: 0.1, rareDrop: true }, threadEffect: { revealChargeDelta: -1, revealHealthCostPercent: 0.05 }, maxStack: 1 },
 ]);
 
 export const MAZE_LAW_POOL_VERSION = 1;

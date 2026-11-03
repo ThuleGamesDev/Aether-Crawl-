@@ -1,4 +1,4 @@
-import { DungeonDecoration, TileType, type ArchitecturalRoom, type BiomeId, type DungeonRoom, type DungeonRoomType, type FloorState, type Position } from '../types';
+import { DungeonDecoration, TileType, type AriadneThreadJunction, type ArchitecturalRoom, type BiomeId, type DungeonRoom, type DungeonRoomType, type FloorState, type Position } from '../types';
 import { floorRandom } from './floorRandom';
 export const cellKey = (p: Position) => `${p.x},${p.y}`;
 export const isClosedTile = (tile: number) => tile === TileType.WALL || tile === TileType.DOOR || tile === TileType.LOCKED || tile === TileType.SECRET;
@@ -26,9 +26,13 @@ function pathToExit(map: number[][]): Position[] {
 }
 const hazardFor: Record<BiomeId, string> = { dungeon: 'trap_corridor', moss: 'toxic_spores', catacombs: 'mana_mist', frost: 'frostbound_draft', gilded: 'trap_corridor', obsidian: 'arcane_surge' };
 /** Adds bounded gameplay anchors to the existing maze. Gates only replace previously solid side pockets. */
-export function buildFloorPlan(map: number[][], decorations: number[][], level: number, biome: BiomeId, seed: number, carve = true, guardianArenaRadius = 0, architectureRooms: ArchitecturalRoom[] = []): FloorState {
+export function buildFloorPlan(map: number[][], decorations: number[][], level: number, biome: BiomeId, seed: number, carve = true, guardianArenaRadius = 0, architectureRooms: ArchitecturalRoom[] = [], threadJunctions: AriadneThreadJunction[] = []): FloorState {
   const random = floorRandom(seed ^ 0xAEC20), rooms: DungeonRoom[] = [];
   const main = pathToExit(map), reachable = reachableCells(map), mainKeys = new Set(main.map(cellKey)), used = new Set<string>(['1,1']);
+  // Thread anchors occupy a quiet chamber; ordinary room placement cannot put an encounter or reward on top of one.
+  for (const room of architectureRooms) if (room.threadJunctionId) for (const cell of room.cells) used.add(cellKey(cell));
+  // Prepared route cells stay reserved from room gates and special-room placement.
+  for (const junction of threadJunctions) for (const cell of [...junction.revealRoute.cells, ...junction.sealRoute.cells]) used.add(cellKey(cell));
   const add = (type: DungeonRoomType, anchor: Position, cells: Position[] = [anchor], gate?: Position) => {
     const room: DungeonRoom = { id: `floor_${level}_${seed >>> 0}_${rooms.length}`, type, anchor: { ...anchor }, cells, ...(gate ? { gate } : {}), discovered: false, visited: false, resolved: false };
     rooms.push(room);
