@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { BiomeId, ItemInstance, WeaponVisualType } from '../types';
 import { createCombatEffectTexture, createEnemyTexture, createPixelTexture, createWeaponTexture } from './PixelArtRenderer';
-import { biomeVisuals, enemyVisuals, mythicVfxAtlasPath, propVisuals, shieldVisual, weaponVisuals } from '../data/assetRegistry';
+import { biomeVisuals, enemyVisuals, mythicVfxAtlasPath, offhandVisuals, propVisuals, shieldVisual, weaponVisuals, type OffHandVisualType } from '../data/assetRegistry';
 import { CHARACTER_RIG_MANIFEST } from '../data/characterRigs';
 import { VFX_DEFINITIONS, type PixelEffectId } from './vfxDefinitions';
 import vfxAtlasManifest from '../data/generated/mythicVfxAtlas.json';
@@ -50,6 +50,17 @@ export class AssetManager {
     const key = 'weapon:' + weaponType + ':' + classId;
     let texture = this.textures.get(key);
     if (!texture) { texture = createWeaponTexture(weaponType, classId); this.textures.set(key, texture); this.loadLocal(texture, weaponVisuals[weaponType]); }
+    return texture;
+  }
+
+  offhandTexture(handType: OffHandVisualType): THREE.CanvasTexture {
+    const key = 'offhand:' + handType;
+    let texture = this.textures.get(key);
+    if (!texture) {
+      texture = createPixelTexture('loot', 'dungeon');
+      this.textures.set(key, texture);
+      this.loadLocal(texture, offhandVisuals[handType]);
+    }
     return texture;
   }
 

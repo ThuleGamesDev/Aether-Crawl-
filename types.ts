@@ -398,16 +398,22 @@ export interface SoloCharacterStats {
   armor: number;
 }
 
-export type EquipmentSlot = 'weapon' | 'armor' | 'offhand' | 'accessory';
+export type EquipmentSlot = 'mainHand' | 'offHand' | 'head' | 'torso' | 'arms' | 'legs' | 'feet' | 'neck' | 'ring1' | 'ring2' | 'divineSigil';
+export type EquipmentLoadout = Record<EquipmentSlot, ItemInstance | null>;
+/** R1–R4 saves use this shape and are converted before the active runtime receives them. */
+export type LegacyEquipmentSlot = 'weapon' | 'armor' | 'offhand' | 'accessory';
+export type LegacyEquipmentLoadout = Record<LegacyEquipmentSlot, ItemInstance | null>;
 export type ItemRarity = 'COMMON' | 'MAGIC' | 'RARE' | 'UNIQUE';
 
 export type ItemTag = 'WEAPON' | 'PHYSICAL' | 'SPELL' | 'MELEE' | 'PROJECTILE' | 'BOW' | 'DAGGER' | 'STAFF' | 'TWO_HANDED'
-  | 'ARMOR' | 'SHIELD' | 'ACCESSORY' | 'RING' | 'AMULET' | 'CONSUMABLE';
+  | 'ARMOR' | 'SHIELD' | 'ACCESSORY' | 'RING' | 'AMULET' | 'FOCUS' | 'DIVINE_SIGIL' | 'CONSUMABLE';
 
 /** Immutable authored base; item instances store its stable baseId and rolled modifiers. */
 export interface ItemBaseDefinition extends Omit<Item, 'isEquipped' | 'quantity' | 'baseId'> {
   baseId: string;
   tags: ItemTag[];
+  /** Explicit compatible slots; rings may use either ring slot and one-handed weapons may use either hand. */
+  equipmentSlots: EquipmentSlot[];
   requiredLevel: number;
   twoHanded?: boolean;
   legacyIds?: string[];
@@ -503,7 +509,7 @@ export interface PlayerCharacter {
   position: Vector3Like;
   rotation: { yaw: number; pitch: number };
   stats: SoloCharacterStats;
-  equipment: Record<EquipmentSlot, ItemInstance | null>;
+  equipment: EquipmentLoadout;
   inventory: ItemInstance[];
   /** Persisted 10×5 bag positions; items without a position remain safe in overflow storage. */
   inventoryGrid?: InventoryGridPlacement[];
@@ -518,6 +524,8 @@ export interface PlayerCharacter {
   classPassiveState?: ClassPassiveState;
   statusEffects: ActiveStatus[];
 }
+
+export type LegacyPlayerCharacter = Omit<PlayerCharacter, 'equipment'> & { equipment: LegacyEquipmentLoadout };
 
 export interface InventoryGridPlacement {
   instanceId: string;
@@ -584,6 +592,8 @@ export interface DerivedCharacterStats {
   maxMana: number;
   armor: number;
   weaponPower: number;
+  mainHandWeaponPower: number;
+  offHandWeaponPower: number;
   physicalDamageFlat: number;
   physicalDamageMultiplier: number;
   spellDamageFlat: number;

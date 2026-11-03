@@ -3,8 +3,10 @@ import { getAbilityDamageType, type AbilityDefinition } from './AbilityRegistry'
 import { hasLineOfSight } from '../world/CollisionWorld';
 import { enemyDamageTakenMultiplier, incomingDamageMultiplier, outgoingDamageMultiplier, statusMagnitude } from './StatusSystem';
 import { calculateDerivedStats } from '../player/DerivedStats';
+import { getWeaponPowerForSlot } from '../player/DerivedStats';
+import type { EquipmentSlot } from '../types';
 
-export function calculatePlayerDamage(player: PlayerCharacter, ability: AbilityDefinition, multiplier = 1, criticalRoll = 1): number {
+export function calculatePlayerDamage(player: PlayerCharacter, ability: AbilityDefinition, multiplier = 1, criticalRoll = 1, weaponSlot: Extract<EquipmentSlot, 'mainHand' | 'offHand'> = 'mainHand'): number {
   const derived = calculateDerivedStats(player);
   const statusBonus = player.statusEffects
     .filter(status => status.statusId === 'prepared_damage')
@@ -20,7 +22,8 @@ export function calculatePlayerDamage(player: PlayerCharacter, ability: AbilityD
   const projectileMultiplier = ability.kind === 'PROJECTILE' ? derived.projectileDamageMultiplier : 1;
   const precisionMultiplier = ability.kind === 'PROJECTILE' ? 1 + Math.min(0.35, statusMagnitude(player.statusEffects, 'PRECISION')) : 1;
   const bloodOathMultiplier = damageType === 'PHYSICAL' ? 1 + Math.min(0.5, Math.max(0, statusMagnitude(player.statusEffects, 'BLOOD_OATH'))) : 1;
-  const baseDamage = finite(ability.damage) + stat * 0.62 + derived.weaponPower + finite(player.stats.damageBonus) + finite(statusBonus) + flatDamage;
+  const weaponPower = ability.kind === 'MELEE' ? getWeaponPowerForSlot(player, weaponSlot) : derived.weaponPower;
+  const baseDamage = finite(ability.damage) + stat * 0.62 + weaponPower + finite(player.stats.damageBonus) + finite(statusBonus) + flatDamage;
   const critical = Number.isFinite(criticalRoll) && criticalRoll >= 0 && criticalRoll < derived.criticalChance
     ? derived.criticalDamageMultiplier : 1;
   const safeMultiplier = Number.isFinite(multiplier) ? clamp(multiplier, 0.25, 2) : 1;

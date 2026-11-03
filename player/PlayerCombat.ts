@@ -3,6 +3,8 @@ import { CLASS_ABILITY_LOADOUT, getAbility, getAbilityDamageType, type AbilityDe
 import { calculateDerivedStats } from './DerivedStats';
 import { actionSpeedMultiplier } from '../combat/StatusSystem';
 import { combineActionSpeedMultipliers } from '../combat/actionSpeed';
+import { isDualWieldLoadout } from '../services/equipmentRules';
+import type { EquipmentSlot } from '../types';
 
 export type PlayerActionPhase = 'WINDUP' | 'ACTIVE' | 'RECOVERY';
 
@@ -21,6 +23,8 @@ export interface ActivePlayerAction {
   classPassiveResolved?: boolean;
   classPassiveMultiplier?: number;
   classMeleeRecorded?: boolean;
+  /** Captured hand for one melee hit sequence; weapon effects are still resolved once per hit. */
+  weaponSlot?: Extract<EquipmentSlot, 'mainHand' | 'offHand'>;
 }
 
 export interface PlayerActionStart {
@@ -32,21 +36,24 @@ export interface PlayerActionStart {
 export interface PlayerCombatSaveState {
   cooldowns: Record<string, number>;
   action: ActivePlayerAction | null;
+  nextMeleeWeaponSlot?: Extract<EquipmentSlot, 'mainHand' | 'offHand'>;
 }
 
 export class PlayerCombat {
   private readonly cooldowns = new Map<string, number>();
   private activeAction: ActivePlayerAction | null = null;
+  private nextMeleeWeaponSlot: Extract<EquipmentSlot, 'mainHand' | 'offHand'> = 'mainHand';
 
   get action(): ActivePlayerAction | null { return this.activeAction ? { ...this.activeAction } : null; }
 
   snapshot(): PlayerCombatSaveState {
-    return { cooldowns: Object.fromEntries(this.cooldowns), action: this.action };
+    return { cooldowns: Object.fromEntries(this.cooldowns), action: this.action, nextMeleeWeaponSlot: this.nextMeleeWeaponSlot };
   }
 
   restore(state?: PlayerCombatSaveState): void {
     this.reset();
     if (!state) return;
+    this.nextMeleeWeaponSlot = state.nextMeleeWeaponSlot === 'offHand' ? 'offHand' : 'mainHand';
     for (const [id, cooldown] of Object.entries(state.cooldowns)) if (cooldown > 0) this.cooldowns.set(id, cooldown);
     if (!state.action) return;
     const actionAlreadyStarted = state.action.phase !== 'WINDUP';
@@ -64,6 +71,9 @@ export class PlayerCombat {
 
   getCooldown(abilityId: string): number { return Math.max(0, this.cooldowns.get(abilityId) ?? 0); }
 
+  /** Cancels an in-flight animation/action after an equipment transaction while preserving its cooldown. */
+  cancelActiveAction(): void { this.activeAction = null; }
+
   start(player: PlayerCharacter, abilityId: string, chargeSeconds = 0): PlayerActionStart {
     if (this.activeAction) return { player, ability: null, error: 'Recovering from the current action.' };
     const ability = getAbility(abilityId);
@@ -78,12 +88,17 @@ export class PlayerCombat {
       ? 1 + Math.max(0, Math.min(0.65, (chargeSeconds - ability.chargeMinSeconds) * 0.45))
       : 1;
     this.cooldowns.set(abilityId, ability.cooldownSeconds * derived.cooldownMultiplier);
+    let weaponSlot: Extract<EquipmentSlot, 'mainHand' | 'offHand'> = 'mainHand';
+    if (ability.kind === 'MELEE' && isDualWieldLoadout(player.equipment)) {
+      weaponSlot = this.nextMeleeWeaponSlot;
+      this.nextMeleeWeaponSlot = weaponSlot === 'mainHand' ? 'offHand' : 'mainHand';
+    }
     this.activeAction = {
       abilityId, phase: 'WINDUP', remainingSeconds: ability.windupSeconds / speedMultiplier,
       damageMultiplier: chargeScale, speedMultiplier,
       hitIndex: 0, hitCount: Math.max(1, Math.min(8, Math.floor(ability.activeHitCount ?? 1))), nextHitSeconds: 0,
       classPassiveResolved: false, classPassiveMultiplier: 1,
-      classMeleeRecorded: false,
+      classMeleeRecorded: false, weaponSlot,
     };
     return { player: { ...player, stats: { ...player.stats, mp: player.stats.mp - manaCost } }, ability };
   }
@@ -133,6 +148,7 @@ export class PlayerCombat {
   reset(): void {
     this.cooldowns.clear();
     this.activeAction = null;
+    this.nextMeleeWeaponSlot = 'mainHand';
   }
 
   setClassPassiveResult(multiplier: number): void {

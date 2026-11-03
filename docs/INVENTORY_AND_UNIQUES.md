@@ -1,5 +1,7 @@
 # FPS-R4B — Inventory, character stats, uniques, and loot UX
 
+> Historical R4B snapshot. The current equipment slots, first-person viewmodels, and save contract are documented in [R6B implementation](R6B_IMPLEMENTATION.md); R6B replaces the four-slot/version-4 contract described below with eleven canonical slots and save version 5.
+
 R4B extends the R4A item model and its derived-stat pipeline. It adds a positional bag, safe overflow storage, eight authored unique effects, item-specific dungeon drops, and a dedicated character-stats screen. The game remains a solo, real-time first-person action RPG; React renders controls and state, while `FPSGameRuntime` owns gameplay changes.
 
 ## Existing item and save contract

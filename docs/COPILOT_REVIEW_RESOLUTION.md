@@ -21,3 +21,7 @@
 ## R5C code commit
 
 The fixes above, except the already-merged PR #16 correction, are in the [R5C implementation commit](https://github.com/ThuleGamesDev/Aether-Crawl-/commit/20876957f000802728db79bad54a2bc8531fa02a).
+
+## R6A review carried into R6B
+
+R6A was audited against `main` at `c20406dcf8b5b963265108028eba505ce19227b8` (merged PR #23). Its review summary left one finding open: `WorldGeometry.addProps` created sprite materials for wall-mounted `wallTorch`, `frescoPanel`, and `bullRelief` even though those props are rendered through the mesh path. R6B removes those unused entries from the sprite material cache. The exit's separate bull-relief material remains in use. `tests/assetRegistry.test.ts` verifies that registered paths exist, and `tests/labyrinthR6A.test.ts` exercises the retained room-prop path.

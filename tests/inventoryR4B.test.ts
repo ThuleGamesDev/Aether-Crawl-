@@ -4,6 +4,7 @@ import { compareDerivedStats, calculateDerivedStats } from '../player/DerivedSta
 import { INVENTORY_GRID_HEIGHT, INVENTORY_GRID_WIDTH, itemFootprint, moveInventoryGridItem, normalizeInventoryGrid, validateInventoryGrid } from '../services/inventoryGrid';
 import { getItemBase } from '../data/itemBases';
 import { createUniqueInstance } from '../services/uniqueItems';
+import { getItemEquipmentSlots } from '../services/equipmentRules';
 import { resolveUniqueTrigger, tickUniqueEffects, consumeUniqueCharge, getUniqueStatBonuses } from '../player/UniqueEffects';
 import { UNIQUE_ITEMS } from '../data/uniqueItems';
 import { createEnemyDrop, validateItemInstance } from '../services/itemization';
@@ -31,7 +32,8 @@ function weapon(baseId: string, id: string, quantity = 1): ItemInstance {
 function withUnique(effectId: string, classId: PlayerCharacter['classId'] = 'BARBARIAN'): PlayerCharacter {
   const player = createPlayerCharacter(classId);
   const item = createUniqueInstance(effectId, 'equipped_' + effectId, 1);
-  const slot = item.type === 'WEAPON' ? 'weapon' : item.type === 'ARMOR' ? 'armor' : item.type === 'SHIELD' ? 'offhand' : 'accessory';
+  const slot = getItemEquipmentSlots(item)[0];
+  if (!slot) throw new Error('Unique fixture has no compatible slot.');
   return { ...player, equipment: { ...player.equipment, [slot]: item } };
 }
 
@@ -118,14 +120,14 @@ describe('FPS-R4B inventory grid and transactions', () => {
 
   it('equip and unequip transactions preserve the shield when a two-handed weapon takes the slot', () => {
     const player = createPlayerCharacter('PALADIN');
-    const shield = player.equipment.offhand!;
+    const shield = player.equipment.offHand!;
     const twoHander = weapon('labrys', 'compare_labrys');
     const withWeapon = { ...player, inventory: [twoHander] };
     const delta = compareDerivedStats(withWeapon, equipItem(withWeapon, twoHander.instanceId)).find(row => row.id === 'weaponPower');
     expect(delta?.delta).toBeGreaterThan(0);
     const equipped = equipItem(withWeapon, twoHander.instanceId);
-    expect(equipped.equipment.weapon?.instanceId).toBe(twoHander.instanceId);
-    expect(equipped.equipment.offhand).toBeNull();
+    expect(equipped.equipment.mainHand?.instanceId).toBe(twoHander.instanceId);
+    expect(equipped.equipment.offHand).toBeNull();
     expect(equipped.inventory.some(item => item.instanceId === shield.instanceId)).toBe(true);
     expect(calculateDerivedStats(equipped).weaponPower).toBeGreaterThan(calculateDerivedStats(player).weaponPower);
   });
@@ -171,10 +173,12 @@ describe('FPS-R4B mythic uniques and loot policy', () => {
     expect(resolveUniqueTrigger(incompatible, 'stygian_seal', 'SOUL_SKILL_CAST').activated).toBe(false);
     expect(getUniqueStatBonuses(incompatible)).toEqual({});
     const forged = withUnique('ariadnes_thread');
-    forged.equipment.accessory = { ...forged.equipment.accessory!, rarity: 'RARE' };
+    const uniqueSlot = getItemEquipmentSlots(forged.equipment.neck!)[0];
+    const uniqueItem = forged.equipment[uniqueSlot]!;
+    forged.equipment[uniqueSlot] = { ...uniqueItem, rarity: 'RARE' };
     expect(getUniqueStatBonuses(forged)).toEqual({});
     expect(resolveUniqueTrigger(forged, 'ariadnes_thread', 'DODGE_SUCCESS').activated).toBe(false);
-    expect(validateItemInstance(forged.equipment.accessory).valid).toBe(false);
+    expect(validateItemInstance(forged.equipment[uniqueSlot]).valid).toBe(false);
   });
 
   it('consumes a single temporary projectile charge and expires unused charges', () => {
@@ -219,8 +223,8 @@ describe('FPS-R4B mythic uniques and loot policy', () => {
   });
 });
 
-describe('FPS-R4B save-v4 migration', () => {
-  it('migrates R4A version 3 to deterministic version 4 without replacing the old save or losing items', () => {
+describe('FPS-R4B save migration', () => {
+  it('migrates R4A version 3 to version 5 without replacing the old save or losing items', () => {
     const runtime = new FPSGameRuntime('PALADIN');
     const inventory = Array.from({ length: 55 }, (_, index) => potion('legacy_v3_item_' + index, index + 1));
     const unique = createUniqueInstance('artemis_mark', 'legacy_v3_world_unique', 3);
@@ -230,6 +234,13 @@ describe('FPS-R4B save-v4 migration', () => {
     expect(runtime.save(storage)).toBe(true);
     const r4a = JSON.parse(storage.getItem(MAZE_SAVE_KEY)!) as Record<string, any>;
     r4a.version = 3;
+    const canonicalEquipment = r4a.player.equipment;
+    r4a.player.equipment = {
+      weapon: canonicalEquipment.mainHand,
+      armor: canonicalEquipment.torso,
+      offhand: canonicalEquipment.offHand,
+      accessory: canonicalEquipment.ring1 ?? canonicalEquipment.ring2 ?? canonicalEquipment.neck ?? null,
+    };
     delete r4a.player.inventoryGrid;
     delete r4a.player.uniqueEffectStates;
     const original = JSON.stringify(r4a);
@@ -247,7 +258,7 @@ describe('FPS-R4B save-v4 migration', () => {
     expect(normalizeInventoryGrid(migrated.save!.player.inventory, migrated.save!.player.inventoryGrid).overflowIds.length).toBe(5);
     expect(migrated.save!.player.inventoryGrid).toEqual(loadMazeGame(storage).save!.player.inventoryGrid);
     expect(saveMazeGame(migrated.save!, storage)).toBe(true);
-    expect(JSON.parse(storage.getItem(MAZE_SAVE_KEY)!).version).toBe(4);
+    expect(JSON.parse(storage.getItem(MAZE_SAVE_KEY)!).version).toBe(5);
     expect(loadMazeGame(storage).migrationRequired).toBe(false);
   });
 });

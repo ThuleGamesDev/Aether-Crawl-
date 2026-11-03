@@ -173,7 +173,7 @@ export class WorldGeometry {
   }
 
   private addProps(world: DungeonWorldState, assets: AssetManager): void {
-    const ids = ['amphora', 'brokenAmphora', 'labyrinthTablet', 'offeringAltar', 'chthonicAltar', 'columnFragment', 'oilBowl', 'wallTorch', 'frescoPanel', 'bullRelief'] as const;
+    const ids = ['amphora', 'brokenAmphora', 'labyrinthTablet', 'offeringAltar', 'chthonicAltar', 'columnFragment', 'oilBowl'] as const;
     const materials = new Map<(typeof ids)[number], THREE.SpriteMaterial>();
     for (const id of ids) {
       const material = new THREE.SpriteMaterial({ map: assets.propTexture(id), transparent: true, alphaTest: 0.08, depthTest: true, depthWrite: false });

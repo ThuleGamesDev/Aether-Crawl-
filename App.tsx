@@ -33,7 +33,7 @@ const App: React.FC = () => {
     const result = loadMazeGame();
     setHasSave(Boolean(result.save));
     if (result.invalid) setSaveWarning('A saved expedition is invalid or unavailable. Existing save data has not been overwritten.');
-    else if (result.migrationRequired) setSaveWarning((result.migratedFromR1 ? 'An FPS-R1' : result.migratedFromR4A ? 'An FPS-R4A' : 'An FPS-R2A') + ' expedition is ready to migrate when you continue. Its original save is preserved until the new save is written.');
+    else if (result.migrationRequired) setSaveWarning((result.migratedFromR1 ? 'An FPS-R1' : result.migratedFromR4B ? 'An FPS-R4B' : result.migratedFromR4A ? 'An FPS-R4A' : 'An FPS-R2A') + ' expedition is ready to migrate when you continue. Its original save is preserved until the new save is written.');
     try {
       const savedSensitivity = Number(window.localStorage.getItem('aether_fps_mouse_sensitivity'));
       if (Number.isFinite(savedSensitivity) && savedSensitivity >= 0.001 && savedSensitivity <= 0.006) setMouseSensitivity(savedSensitivity);
@@ -82,7 +82,9 @@ const App: React.FC = () => {
           ? 'FPS-R1 progress migrated into the Labyrinth. The original save remains preserved.'
           : result.migratedFromR4A
             ? 'FPS-R4A item data moved to the expanded inventory safely. Your saved items were preserved.'
-            : 'FPS-R2A item data migrated successfully. Your items and Guardian rewards were preserved.');
+            : result.migratedFromR4B
+              ? 'FPS-R4B equipment moved into the expanded loadout safely. Your saved items were preserved.'
+              : 'FPS-R2A item data migrated successfully. Your items and Guardian rewards were preserved.');
       } else setMigrationNotice('Migration is ready, but the updated save could not be written. The original save is still intact.');
     } else setMigrationNotice('');
     runtimeRef.current = runtime;
@@ -278,8 +280,8 @@ const App: React.FC = () => {
       <footer className="fps-bottom-hud">
         <div className="fps-hud-hint">WASD MOVE · MOUSE LOOK · CLICK VIEW TO CAPTURE</div>
         <div className="fps-action-bar" aria-label="Combat actions">
-          <div className="fps-action-card" title={abilityTooltip(primary)}><kbd>LMB</kbd><strong>{primary.name}</strong><small>{player.equipment.weapon?.name ?? 'Unarmed'}</small><small className={snapshot.primaryCooldown > 0 ? 'fps-cooldown-active' : ''}>{snapshot.primaryCooldown > 0 ? snapshot.primaryCooldown.toFixed(1) + 's cooldown' : primary.kind === 'MELEE' ? 'Melee · Ready' : primary.kind === 'PROJECTILE' ? 'Projectile · Ready' : 'Area · Ready'}</small></div>
-          <div className={'fps-action-card' + (snapshot.guarding ? ' fps-guarding' : '')} title={abilityTooltip(secondary)}><kbd>RMB</kbd><strong>{secondary.name}</strong><small>{snapshot.guarding ? 'Aspis Guard · Active' : snapshot.secondaryCooldown > 0 ? snapshot.secondaryCooldown.toFixed(1) + 's cooldown' : secondary.chargeMinSeconds ? 'Hold to charge' : player.equipment.offhand?.type === 'SHIELD' ? 'Tap Bash · Hold Guard' : 'Ready'}</small></div>
+          <div className="fps-action-card" title={abilityTooltip(primary)}><kbd>LMB</kbd><strong>{primary.name}</strong><small>{player.equipment.mainHand?.name ?? 'Unarmed'}</small><small className={snapshot.primaryCooldown > 0 ? 'fps-cooldown-active' : ''}>{snapshot.primaryCooldown > 0 ? snapshot.primaryCooldown.toFixed(1) + 's cooldown' : primary.kind === 'MELEE' ? 'Melee · Ready' : primary.kind === 'PROJECTILE' ? 'Projectile · Ready' : 'Area · Ready'}</small></div>
+          <div className={'fps-action-card' + (snapshot.guarding ? ' fps-guarding' : '')} title={abilityTooltip(secondary)}><kbd>RMB</kbd><strong>{secondary.name}</strong><small>{snapshot.guarding ? 'Aspis Guard · Active' : snapshot.secondaryCooldown > 0 ? snapshot.secondaryCooldown.toFixed(1) + 's cooldown' : secondary.chargeMinSeconds ? 'Hold to charge' : player.equipment.offHand?.type === 'SHIELD' ? 'Tap Bash · Hold Guard' : 'Ready'}</small></div>
           {skills.map((skill, index) => {
             if (!skill) return <div key={'empty-skill-' + index} className="fps-action-card fps-action-card-empty" title={'Skill slot ' + (index + 1) + ' is empty'}><kbd>{index + 1}</kbd><strong>Empty</strong><small>Skill slot</small></div>;
             const tooltip = skill.unlocked
@@ -326,8 +328,8 @@ const App: React.FC = () => {
       {snapshot.inventoryOpen && <Overlay title="Inventory & Equipment" onClose={closeOverlay} className="fps-overlay-panel-wide">
         <InventoryPanel
           player={player}
-          onEquip={instanceId => { runtime.equip(instanceId); refreshSnapshot(); }}
-          onUnequip={slot => { runtime.unequip(slot); refreshSnapshot(); }}
+          onEquip={instanceId => { const result = runtime.equip(instanceId); refreshSnapshot(); return result; }}
+          onUnequip={slot => { const result = runtime.unequip(slot); refreshSnapshot(); return result; }}
           onUse={instanceId => { runtime.useItem(instanceId); refreshSnapshot(); }}
           onMove={(instanceId, x, y) => { const moved = runtime.moveItem(instanceId, x, y); if (moved) refreshSnapshot(); return moved; }}
           onSplit={instanceId => { const split = runtime.splitItem(instanceId); if (split) refreshSnapshot(); return split; }}

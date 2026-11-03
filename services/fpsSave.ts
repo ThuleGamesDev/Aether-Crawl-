@@ -1,4 +1,4 @@
-import type { ClassPassiveState, FloorState, ItemInstance, PlayerCharacter, WorldEnemy, WorldLootDrop } from '../types';
+import type { ClassPassiveState, FloorState, ItemInstance, LegacyPlayerCharacter, PlayerCharacter, WorldEnemy, WorldLootDrop } from '../types';
 import type { DungeonWorldState } from '../world/DungeonWorld';
 import { isWorldSolid } from '../world/CollisionWorld';
 import type { PlayerCombatSaveState } from '../player/PlayerCombat';
@@ -8,6 +8,7 @@ import { calculateDerivedStats } from '../player/DerivedStats';
 import { getItemBase } from '../data/itemBases';
 import { getClassSkill } from '../data/classSkillKits';
 import { isValidEffectiveActionSpeedMultiplier } from '../combat/actionSpeed';
+import { isDualWieldLoadout, isTwoHandedItem, validateEquipmentLoadout } from './equipmentRules';
 
 export const FPS_SAVE_KEY = 'aether_crawl_fps_r1_save_v1';
 export const FPS_SAVE_VERSION = 1;
@@ -15,7 +16,8 @@ export const FPS_SAVE_VERSION = 1;
 export interface FPSRunSave {
   version: 1;
   savedAt: number;
-  player: PlayerCharacter;
+  /** The standalone R1 envelope and legacy R1–R4 maze saves retain the four-slot schema. */
+  player: LegacyPlayerCharacter;
   world: DungeonWorldState;
   enemies: WorldEnemy[];
   loot: WorldLootDrop[];
@@ -64,12 +66,13 @@ function defaultStorage(): KeyValueStorage | null {
   catch { return null; }
 }
 
-export function isFPSRunSave(value: unknown, allowDerivedCaps = false, requireBaseId = false): value is FPSRunSave {
+export function isFPSRunSave(value: unknown, allowDerivedCaps = false, requireBaseId = false, equipmentSchema: 'legacy' | 'canonical' = 'legacy'): value is FPSRunSave {
   if (!isRecord(value) || value.version !== FPS_SAVE_VERSION || !Number.isFinite(value.savedAt)) return false;
-  if (!isPlayerCharacter(value.player, allowDerivedCaps, requireBaseId) || !isDungeonWorld(value.world)) return false;
+  if (!isPlayerCharacter(value.player, allowDerivedCaps, requireBaseId, equipmentSchema) || !isDungeonWorld(value.world)) return false;
   if (!Array.isArray(value.enemies) || !value.enemies.every(isWorldEnemy)) return false;
   if (!Array.isArray(value.loot) || !value.loot.every((drop: unknown) => isWorldLoot(drop, requireBaseId))) return false;
   if (value.combat !== undefined && !isPlayerCombatSaveState(value.combat)) return false;
+  if (equipmentSchema === 'canonical' && value.combat?.action?.weaponSlot === 'offHand' && !isDualWieldLoadout(value.player.equipment as PlayerCharacter['equipment'])) return false;
   if (!isPositionInDungeon(value.world, value.player.position) || !value.enemies.every(enemy => isPositionInDungeon(value.world, enemy.position)) || !value.loot.every(drop => isPositionInDungeon(value.world, drop.position))) return false;
   return true;
 }
@@ -78,7 +81,7 @@ function isRecord(value: unknown): value is Record<string, any> {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value));
 }
 
-function isPlayerCharacter(value: unknown, allowDerivedCaps = false, requireBaseId = false): value is PlayerCharacter {
+function isPlayerCharacter(value: unknown, allowDerivedCaps = false, requireBaseId = false, equipmentSchema: 'legacy' | 'canonical' = 'legacy'): boolean {
   if (!isRecord(value) || typeof value.id !== 'string' || typeof value.name !== 'string') return false;
   if (!['BARBARIAN', 'PALADIN', 'SORCERER', 'ROGUE', 'RANGER', 'CLERIC', 'MONK', 'NECROMANCER'].includes(value.classId)) return false;
   if (!isRecord(value.position) || !Number.isFinite(value.position.x) || !Number.isFinite(value.position.y) || !Number.isFinite(value.position.z)) return false;
@@ -89,8 +92,14 @@ function isPlayerCharacter(value: unknown, allowDerivedCaps = false, requireBase
   if (value.stats.maxHp <= 0 || value.stats.hp < 0 || value.stats.hp > value.stats.maxHp || value.stats.maxMp < 0 || value.stats.mp < 0 || value.stats.mp > value.stats.maxMp || value.stats.level < 1 || !Number.isInteger(value.stats.level) || value.stats.xp < 0) return false;
   if (!Array.isArray(value.inventory) || !value.inventory.every((item: unknown) => isItemInstance(item, requireBaseId))) return false;
   if (!isRecord(value.equipment)) return false;
-  const slotTypes: Record<string, string> = { weapon: 'WEAPON', armor: 'ARMOR', offhand: 'SHIELD', accessory: 'ACCESSORY' };
-  if (!Object.entries(slotTypes).every(([slot, type]) => value.equipment[slot] === null || isItemInstance(value.equipment[slot], requireBaseId) && value.equipment[slot].type === type)) return false;
+  if (equipmentSchema === 'canonical') {
+    if (!validateEquipmentLoadout(value.equipment)) return false;
+    if (!Object.values(value.equipment).every(item => item === null || isItemInstance(item, requireBaseId))) return false;
+  } else {
+    const slotTypes: Record<string, string> = { weapon: 'WEAPON', armor: 'ARMOR', offhand: 'SHIELD', accessory: 'ACCESSORY' };
+    if (Object.keys(value.equipment).length !== 4 || !Object.entries(slotTypes).every(([slot, type]) => slot in value.equipment
+      && (value.equipment[slot] === null || isItemInstance(value.equipment[slot], requireBaseId) && value.equipment[slot].type === type))) return false;
+  }
   const classId = value.classId as PlayerCharacter['classId'];
   const allowedSkills = new Set(CLASS_ABILITY_LOADOUT[classId].skillSlots.filter((id): id is string => Boolean(id)));
   if (!Array.isArray(value.skills) || value.skills.length > 4
@@ -109,7 +118,10 @@ function isPlayerCharacter(value: unknown, allowDerivedCaps = false, requireBase
     if (value.stats.hp > derived.maxHealth || value.stats.mp > derived.maxMana) return false;
     const equipped = Object.values(value.equipment) as Array<ItemInstance | null>;
     if (equipped.some(item => item && item.quantity !== 1)) return false;
-    if (isTwoHanded(value.equipment.weapon) && value.equipment.offhand) return false;
+    if (equipmentSchema === 'legacy') {
+      const legacyEquipment = value.equipment as Record<string, ItemInstance | null>;
+      if (isTwoHandedItem(legacyEquipment.weapon) && legacyEquipment.offhand) return false;
+    }
   }
   return true;
 }
@@ -184,7 +196,9 @@ function isPlayerCombatSaveState(value: unknown): value is PlayerCombatSaveState
       && (value.action.nextHitSeconds === undefined || Number.isFinite(value.action.nextHitSeconds) && value.action.nextHitSeconds >= 0 && value.action.nextHitSeconds <= 2)
       && (value.action.classPassiveResolved === undefined || typeof value.action.classPassiveResolved === 'boolean')
       && (value.action.classPassiveMultiplier === undefined || Number.isFinite(value.action.classPassiveMultiplier) && value.action.classPassiveMultiplier >= 0.25 && value.action.classPassiveMultiplier <= 2.5)
-      && (value.action.classMeleeRecorded === undefined || typeof value.action.classMeleeRecorded === 'boolean'));
+      && (value.action.classMeleeRecorded === undefined || typeof value.action.classMeleeRecorded === 'boolean')
+      && (value.action.weaponSlot === undefined || value.action.weaponSlot === 'mainHand' || value.action.weaponSlot === 'offHand'))
+    && (value.nextMeleeWeaponSlot === undefined || value.nextMeleeWeaponSlot === 'mainHand' || value.nextMeleeWeaponSlot === 'offHand');
 }
 
 function isClassPassiveState(value: unknown, classId: PlayerCharacter['classId']): value is ClassPassiveState {
@@ -213,12 +227,6 @@ function isClassPassiveState(value: unknown, classId: PlayerCharacter['classId']
     && value.remainingSeconds >= 0 && value.remainingSeconds <= 4 && value.cooldownRemaining >= 0 && value.cooldownRemaining <= 10
     && (value.charges === 0 || value.charges === 1) && (value.charges === 0 || value.remainingSeconds > 0 && value.stacks === 0);
   return false;
-}
-
-function isTwoHanded(item: ItemInstance | null | undefined): boolean {
-  if (!item) return false;
-  return Boolean(getItemBase(item.baseId)?.twoHanded)
-    || item.visualType === 'bow' || item.visualType === 'axe' || item.visualType === 'staff';
 }
 
 function isPositionInDungeon(world: DungeonWorldState, position: { x: number; y: number; z: number }): boolean {

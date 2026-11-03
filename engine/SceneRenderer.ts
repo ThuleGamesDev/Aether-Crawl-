@@ -137,11 +137,13 @@ export class SceneRenderer {
     guarding: boolean;
     paused: boolean;
     cameraBob: number;
+    viewmodelEvent?: 'DODGE' | 'HIT_RECOIL' | 'ITEM_USE' | null;
+    viewmodelEventProgress?: number;
     deltaSeconds: number;
     elapsedSeconds: number;
     events: VisualEvent[];
   }): void {
-    const { world, player, enemies, projectiles, loot, action, isMoving, guarding, paused, cameraBob, deltaSeconds, elapsedSeconds, events } = args;
+    const { world, player, enemies, projectiles, loot, action, isMoving, guarding, paused, cameraBob, viewmodelEvent, viewmodelEventProgress, deltaSeconds, elapsedSeconds, events } = args;
     this.elapsedSeconds = elapsedSeconds;
     if (world.worldRevision !== this.worldRevision) {
       this.clearEnemyVisuals();
@@ -156,7 +158,7 @@ export class SceneRenderer {
     this.geometry.updateLighting(elapsedSeconds);
     this.camera.position.set(player.position.x, 1.52 + cameraBob, player.position.z);
     this.camera.rotation.set(player.rotation.pitch, -player.rotation.yaw - Math.PI / 2, 0, 'YXZ');
-    this.weapon.update(player, action, isMoving, guarding, elapsedSeconds);
+    this.weapon.update(player, action, isMoving, guarding, elapsedSeconds, viewmodelEvent, viewmodelEventProgress);
     this.syncEnemies(enemies, world, deltaSeconds);
     this.syncProjectiles(projectiles);
     this.syncLoot(loot);

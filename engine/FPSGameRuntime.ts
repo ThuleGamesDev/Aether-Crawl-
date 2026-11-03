@@ -11,7 +11,7 @@ import { getEnemyAttackTelegraphDescriptor, getGuardianTelegraphEffect } from '.
 import { getFloorGuardianDefinition } from '../data/mazeContent';
 import { createPlayerControllerState, updatePlayerController, type PlayerControllerState } from '../player/PlayerController';
 import { PlayerCombat, type ActivePlayerAction } from '../player/PlayerCombat';
-import { addInventoryItem, consumePotion, createPlayerCharacter, equipItem, grantExperience, moveInventoryItem, refreshPlayerDerivedCaps, removeInventoryUnit, rollEnemyDrop, splitInventoryStack, unequipItem } from '../player/PlayerProgression';
+import { addInventoryItem, consumePotion, createPlayerCharacter, grantExperience, moveInventoryItem, refreshPlayerDerivedCaps, removeInventoryUnit, rollEnemyDrop, splitInventoryStack, tryEquipItem, tryUnequipItem } from '../player/PlayerProgression';
 import { floorRandom } from '../services/floorRandom';
 import { createLootInstance } from '../services/itemization';
 import { spawnFacingAngle } from '../services/firstPerson';
@@ -26,6 +26,7 @@ import { rollItemStatusProc } from '../player/ItemCombatEffects';
 import { consumeUniqueCharge, resolveUniqueTrigger, tickUniqueEffects } from '../player/UniqueEffects';
 import { applySkillUpgrade, getClassSkillUnlockLevel, getRankedAbility, getSkillRank, getSkillUpgradeChoices, isClassSkillSlotUnlocked, normalizeSkillProgression, type SkillUpgradeOption } from '../player/SkillProgression';
 import { normalizeClassPassiveState, recordClassBlock, recordClassDodge, recordClassHealing, recordClassKill, recordClassMeleeAction, recordMarkedPreyHit, resolveClassPassiveAction, tickClassPassiveState } from '../player/ClassPassives';
+import type { EquipmentTransactionResult } from '../services/equipmentRules';
 
 export interface FPSGameSnapshot {
   player: PlayerCharacter;
@@ -69,6 +70,8 @@ export interface FPSRenderState {
   guarding: boolean;
   paused: boolean;
   cameraBob: number;
+  viewmodelEvent: 'DODGE' | 'HIT_RECOIL' | 'ITEM_USE' | null;
+  viewmodelEventProgress: number;
   events: VisualEvent[];
 }
 
@@ -97,6 +100,9 @@ export class FPSGameRuntime {
   private visualEvents: VisualEvent[] = [];
   private lastSaveSucceeded: boolean | null = null;
   private levelUpOpen = false;
+  private viewmodelEvent: FPSRenderState['viewmodelEvent'] = null;
+  private viewmodelEventSeconds = 0;
+  private viewmodelEventDuration = 0;
 
   constructor(classId: ClassType, save?: Pick<MazeRunSave, 'player' | 'world' | 'enemies' | 'loot' | 'combat'>) {
     if (save) {
@@ -124,6 +130,10 @@ export class FPSGameRuntime {
   update(deltaSeconds: number, input: InputFrame): void {
     const dt = Math.max(0, Math.min(0.05, deltaSeconds));
     this.elapsedSeconds += dt;
+    if (this.viewmodelEventSeconds > 0) {
+      this.viewmodelEventSeconds = Math.max(0, this.viewmodelEventSeconds - dt);
+      if (this.viewmodelEventSeconds === 0) this.viewmodelEvent = null;
+    }
     if (input.secondaryCanceled) this.cancelHeldActions();
     if (this.toastSeconds > 0) {
       this.toastSeconds = Math.max(0, this.toastSeconds - dt);
@@ -158,6 +168,7 @@ export class FPSGameRuntime {
     this.isMoving = movement.isMoving;
     this.cameraBob = movement.cameraBob;
     if (movement.dodgeStarted) {
+      this.setViewmodelEvent('DODGE', 0.22);
       this.player = recordClassDodge(this.player);
       const unique = resolveUniqueTrigger(this.player, 'ariadnes_thread', 'DODGE_SUCCESS');
       if (unique.activated) {
@@ -325,7 +336,7 @@ export class FPSGameRuntime {
     const perHitMultiplier = ability.damagePerHitMultiplier ?? (hitCount > 1 ? 1 / hitCount : 1);
     damageMultiplier *= perHitMultiplier;
     if (ability.kind === 'PROJECTILE' && (ability.projectileCount ?? 1) > 1) damageMultiplier *= Math.max(0.1, Math.min(1, ability.damagePerProjectileMultiplier ?? 1));
-    const damage = ability.damage > 0 ? calculatePlayerDamage(this.player, ability, damageMultiplier, this.random()) : 0;
+    const damage = ability.damage > 0 ? calculatePlayerDamage(this.player, ability, damageMultiplier, this.random(), action.weaponSlot ?? 'mainHand') : 0;
 
     if (hitIndex === 0 && ability.selfStatuses?.length) {
       for (const status of ability.selfStatuses) {
@@ -421,7 +432,7 @@ export class FPSGameRuntime {
       const derived = calculateDerivedStats(this.player);
       const speed = (ability.projectileSpeed ?? 10) * derived.projectileSpeedMultiplier;
       const fan = count > 1 ? Math.max(0, Math.min(0.55, ability.projectileSpreadRadians ?? 0)) : 0;
-      const lateral = this.player.equipment.weapon?.visualType === 'bow' ? 0 : 0.2;
+      const lateral = this.player.equipment.mainHand?.visualType === 'bow' ? 0 : 0.2;
       for (let index = 0; index < count; index += 1) {
         const offset = count === 1 ? 0 : -fan + 2 * fan * index / (count - 1);
         const direction = projectileDirection(this.player.rotation.yaw + offset, this.player.rotation.pitch);
@@ -610,6 +621,7 @@ export class FPSGameRuntime {
         if (!owner) continue;
         const damage = calculateIncomingDamage(owner, this.player, blocked);
         this.player = { ...this.player, stats: { ...this.player.stats, hp: Math.max(0, this.player.stats.hp - damage) } };
+        if (damage > 0) this.setViewmodelEvent('HIT_RECOIL', 0.2);
         if (blocked) { this.resolveUniqueBlock(owner, damage); this.recordClassPassiveBlock(); }
         if (impact.statusEffect && !blocked) this.player = { ...this.player, statusEffects: applyRealtimeStatus(this.player.statusEffects, impact.statusEffect, impact.abilityId) };
         if (impact.healOwnerRatio) this.enemies = this.enemies.map(enemy => enemy.id === owner.id ? { ...enemy, health: Math.min(enemy.maxHealth, enemy.health + Math.ceil(damage * impact.healOwnerRatio!)) } : enemy);
@@ -719,7 +731,10 @@ export class FPSGameRuntime {
     }
     const blocked = this.controllerState.guarding && this.isFacingAttacker(enemy);
     const damage = attack.damageMultiplier > 0 ? Math.max(1, Math.round(calculateIncomingDamage(enemy, this.player, blocked) * attack.damageMultiplier)) : 0;
-    if (damage > 0) this.player = { ...this.player, stats: { ...this.player.stats, hp: Math.max(0, this.player.stats.hp - damage) } };
+    if (damage > 0) {
+      this.player = { ...this.player, stats: { ...this.player.stats, hp: Math.max(0, this.player.stats.hp - damage) } };
+      this.setViewmodelEvent('HIT_RECOIL', 0.2);
+    }
     if (blocked && damage > 0) { this.resolveUniqueBlock(enemy, damage); this.recordClassPassiveBlock(); }
     if (attack.statusEffect && !blocked) this.player = { ...this.player, statusEffects: applyRealtimeStatus(this.player.statusEffects, attack.statusEffect, attack.id) };
     const statusEffect = statusVfxEffect(attack.statusEffect?.statusId);
@@ -1049,8 +1064,14 @@ export class FPSGameRuntime {
     return null;
   }
 
-  equip(instanceId: string): void {
-    this.player = equipItem(this.player, instanceId);
+  equip(instanceId: string): EquipmentTransactionResult {
+    const reservedIds = this.loot.flatMap(drop => [drop.id, drop.item.instanceId]);
+    const result = tryEquipItem(this.player, instanceId, reservedIds);
+    if (!result.ok) { this.addToast(result.message ?? 'That item could not be equipped.'); return result; }
+    this.combat.cancelActiveAction();
+    this.player = result.player;
+    this.addToast('Equipped ' + (this.player.equipment[result.slot!]?.name ?? 'item') + '.');
+    return result;
   }
 
   /** Cancels held charge/guard input when the game yields to an overlay or browser state change. */
@@ -1075,14 +1096,22 @@ export class FPSGameRuntime {
     return true;
   }
 
-  unequip(slot: EquipmentSlot): void {
-    this.player = unequipItem(this.player, slot);
+  unequip(slot: EquipmentSlot): EquipmentTransactionResult {
+    const equippedName = this.player.equipment[slot]?.name ?? 'item';
+    const reservedIds = this.loot.flatMap(drop => [drop.id, drop.item.instanceId]);
+    const result = tryUnequipItem(this.player, slot, reservedIds);
+    if (!result.ok) { this.addToast(result.message ?? 'That item could not be unequipped.'); return result; }
+    this.combat.cancelActiveAction();
+    this.player = result.player;
+    this.addToast('Unequipped ' + equippedName + '.');
+    return result;
   }
 
   useItem(instanceId: string): void {
     const next = consumePotion(this.player, instanceId);
     if (!next) { this.addToast('That item cannot be used now.'); return; }
     this.player = next;
+    this.setViewmodelEvent('ITEM_USE', 0.3);
     this.addToast('Potion used.');
   }
 
@@ -1092,7 +1121,11 @@ export class FPSGameRuntime {
     if (!removed) return false;
     let item = removed.item;
     if (this.loot.some(drop => drop.id === item.instanceId || drop.item.instanceId === item.instanceId)) {
-      const occupied = new Set([...this.loot.map(drop => drop.id), ...this.loot.map(drop => drop.item.instanceId), ...this.player.inventory.map(candidate => candidate.instanceId)]);
+      const occupied = new Set([
+        ...this.loot.map(drop => drop.id), ...this.loot.map(drop => drop.item.instanceId),
+        ...this.player.inventory.map(candidate => candidate.instanceId),
+        ...Object.values(this.player.equipment).filter((candidate): candidate is ItemInstance => Boolean(candidate)).map(candidate => candidate.instanceId),
+      ]);
       let suffix = 1;
       let instanceId = item.instanceId + '_world_' + suffix++;
       while (occupied.has(instanceId)) instanceId = item.instanceId + '_world_' + suffix++;
@@ -1157,7 +1190,13 @@ export class FPSGameRuntime {
   }
 
   getRenderState(): FPSRenderState {
-    return { world: this.world, player: this.player, enemies: this.enemies, projectiles: this.projectiles, loot: this.loot, action: this.combat.action, isMoving: this.isMoving, guarding: this.controllerState.guarding, paused: this.paused || this.inventoryOpen || this.mapOpen || this.levelUpOpen || Boolean(this.roomOffer) || this.gameOver, cameraBob: this.cameraBob, events: this.visualEvents.splice(0) };
+    return { world: this.world, player: this.player, enemies: this.enemies, projectiles: this.projectiles, loot: this.loot, action: this.combat.action, isMoving: this.isMoving, guarding: this.controllerState.guarding, paused: this.paused || this.inventoryOpen || this.mapOpen || this.levelUpOpen || Boolean(this.roomOffer) || this.gameOver, cameraBob: this.cameraBob, viewmodelEvent: this.viewmodelEvent, viewmodelEventProgress: this.viewmodelEventDuration > 0 ? this.viewmodelEventSeconds / this.viewmodelEventDuration : 0, events: this.visualEvents.splice(0) };
+  }
+
+  private setViewmodelEvent(event: NonNullable<FPSRenderState['viewmodelEvent']>, durationSeconds: number): void {
+    this.viewmodelEvent = event;
+    this.viewmodelEventSeconds = durationSeconds;
+    this.viewmodelEventDuration = durationSeconds;
   }
 
   getSnapshot(): FPSGameSnapshot {

@@ -113,12 +113,12 @@ describe('FPS-R4A itemization core', () => {
     expect(calculatePlayerDamage(basePlayer, cleave, 1, 0.07)).toBeCloseTo(calculatePlayerDamage(basePlayer, cleave, 1, 0.99));
     expect(calculatePlayerDamage(withWeapon, cleave, 1, 0.07)).toBeGreaterThan(calculatePlayerDamage(withWeapon, cleave, 1, 0.99));
     const bronzeArmor = makeItem('bronze_cuirass', 'medium-bronze');
-    expect(calculateDerivedStats({ ...basePlayer, equipment: { ...basePlayer.equipment, armor: bronzeArmor } }).movementSpeedMultiplier).toBeCloseTo(0.96);
+    expect(calculateDerivedStats({ ...basePlayer, equipment: { ...basePlayer.equipment, torso: bronzeArmor } }).movementSpeedMultiplier).toBeCloseTo(0.96);
     const once = refreshPlayerDerivedCaps(withWeapon);
     const twice = refreshPlayerDerivedCaps(once);
     expect(twice.stats.maxHp).toBe(once.stats.maxHp);
     expect(twice.stats.baseMaxHp).toBe(once.stats.baseMaxHp);
-    expect(unequipItem(withWeapon, 'armor').stats.armor).toBe(0);
+    expect(unequipItem(withWeapon, 'torso').stats.armor).toBe(0);
   });
 
   it('clamps pathological affixes and ignores unknown, negative, or out-of-range modifiers', () => {
@@ -128,7 +128,7 @@ describe('FPS-R4A itemization core', () => {
       { id: 'affix_scorching_t1', value: -999, tier: 1 },
       { id: 'not_in_registry', value: 50_000 },
     ]);
-    const derived = calculateDerivedStats({ ...player, equipment: { ...player.equipment, weapon: pathological } });
+    const derived = calculateDerivedStats({ ...player, equipment: { ...player.equipment, mainHand: pathological } });
     expect(Number.isFinite(derived.spellDamageMultiplier)).toBe(true);
     expect(derived.spellDamageMultiplier).toBe(1);
     expect(derived.fireChance).toBe(0);
@@ -141,10 +141,10 @@ describe('FPS-R4A itemization core', () => {
     const player = createPlayerCharacter('PALADIN');
     const stack = createItemInstance({ id: 'labrys', name: 'Labrys', description: 'Two-handed axe.', type: 'WEAPON', value: 5, visualType: 'axe', quantity: 3 }, 'labrys-stack');
     const equipped = equipItem({ ...player, inventory: [stack] }, stack.instanceId);
-    expect(equipped.equipment.weapon?.quantity).toBe(1);
+    expect(equipped.equipment.mainHand?.quantity).toBe(1);
     expect(equipped.inventory[0].quantity).toBe(2);
-    expect(equipped.inventory[0].instanceId).not.toBe(equipped.equipment.weapon?.instanceId);
-    expect(equipped.equipment.offhand).toBeNull();
+    expect(equipped.inventory[0].instanceId).not.toBe(equipped.equipment.mainHand?.instanceId);
+    expect(equipped.equipment.offHand).toBeNull();
     const shield = equipped.inventory.find(item => item.type === 'SHIELD');
     if (shield) expect(equipItem(equipped, shield.instanceId)).toBe(equipped);
   });
@@ -171,7 +171,7 @@ describe('FPS-R4A itemization core', () => {
       { id: 'affix_economical_t1', value: 4, tier: 1 },
       { id: 'affix_wandering_t1', value: 4, tier: 1 },
     ]);
-    const geared = refreshPlayerDerivedCaps({ ...player, equipment: { ...player.equipment, accessory: charm } });
+    const geared = refreshPlayerDerivedCaps({ ...player, equipment: { ...player.equipment, ring1: charm } });
     const combat = new PlayerCombat();
     const started = combat.start(geared, 'sorcerer_fireburst');
     expect(started.error).toBeUndefined();
@@ -183,7 +183,7 @@ describe('FPS-R4A itemization core', () => {
     const movementInput = inputFrame({ movement: { forward: 1, strafe: 0, turn: 0 } });
     let base = createPlayerCharacter('BARBARIAN');
     let baseState = createPlayerControllerState();
-    let faster: PlayerCharacter = { ...base, equipment: { ...base.equipment, accessory: charm } };
+    let faster: PlayerCharacter = { ...base, equipment: { ...base.equipment, ring1: charm } };
     let fasterState = createPlayerControllerState();
     for (let index = 0; index < 6; index += 1) {
       const baseStep = updatePlayerController(base, baseState, movementInput, map, 0.05);
@@ -208,7 +208,7 @@ describe('FPS-R4A itemization core', () => {
       { id: 'affix_bloodletting_t1', value: 9, tier: 1 },
       { id: 'affix_gaping_t1', value: 18, tier: 1 },
     ]);
-    const procStats = calculateDerivedStats({ ...procPlayer, equipment: { ...procPlayer.equipment, accessory: statusCharm } });
+    const procStats = calculateDerivedStats({ ...procPlayer, equipment: { ...procPlayer.equipment, ring1: statusCharm } });
     expect(rollItemStatusProc(procStats, () => 0.08)?.statusId).toBe('BLEED');
     expect(rollItemStatusProc(procStats, () => 0.99)).toBeNull();
 
@@ -220,7 +220,7 @@ describe('FPS-R4A itemization core', () => {
       runtime.player = refreshPlayerDerivedCaps({
         ...runtime.player,
         position: { x: 2.5, y: 0, z: 2.5 },
-        equipment: { ...runtime.player.equipment, accessory: ring },
+        equipment: { ...runtime.player.equipment, ring1: ring },
         stats: { ...runtime.player.stats, hp: 4 },
       });
       runtime.enemies = [makeEnemy({
@@ -277,12 +277,19 @@ describe('FPS-R4A itemization core', () => {
     const shield = makeItem('aspis', 'old-aspis', [], 1);
     runtime.player = refreshPlayerDerivedCaps({
       ...runtime.player,
-      equipment: { ...runtime.player.equipment, armor, offhand: shield },
+      equipment: { ...runtime.player.equipment, torso: armor, offHand: shield },
       stats: { ...runtime.player.stats, armor: 5 },
     });
     expect(runtime.save(storage)).toBe(true);
     const v2 = JSON.parse(storage.getItem(MAZE_SAVE_KEY)!) as Record<string, any>;
     v2.version = 2;
+    const canonicalEquipment = v2.player.equipment;
+    v2.player.equipment = {
+      weapon: canonicalEquipment.mainHand,
+      armor: canonicalEquipment.torso,
+      offhand: canonicalEquipment.offHand,
+      accessory: canonicalEquipment.ring1 ?? canonicalEquipment.ring2 ?? canonicalEquipment.neck ?? null,
+    };
     v2.player.inventory.push(v2.player.equipment.weapon);
     v2.player.equipment.weapon = makeItem('labrys', 'old-labrys', [], 1);
     delete v2.player.stats.baseMaxHp;
@@ -299,14 +306,14 @@ describe('FPS-R4A itemization core', () => {
     expect(loaded.migratedFromR2A).toBe(true);
     expect(loaded.migrationRequired).toBe(true);
     expect(storage.getItem(MAZE_SAVE_KEY)).toBe(original);
-    expect(loaded.save?.player.equipment.armor?.instanceId).toBe('old-linen');
-    expect(loaded.save?.player.equipment.offhand).toBeNull();
+    expect(loaded.save?.player.equipment.torso?.instanceId).toBe('old-linen');
+    expect(loaded.save?.player.equipment.offHand).toBeNull();
     expect(loaded.save?.player.inventory.some(item => item.instanceId === 'old-aspis')).toBe(true);
     expect(loaded.save?.player.inventory.some(item => item.instanceId === 'player_paladin_paladin_weapon_start' && item.baseId === 'dory_spear')).toBe(true);
     expect(loaded.save?.player.stats.armor).toBe(3);
     expect(loaded.save?.player.stats.baseArmor).toBe(0);
     expect(saveMazeGame(loaded.save!, storage)).toBe(true);
     expect(loadMazeGame(storage).migrationRequired).toBe(false);
-    expect(JSON.parse(storage.getItem(MAZE_SAVE_KEY)!).version).toBe(4);
+    expect(JSON.parse(storage.getItem(MAZE_SAVE_KEY)!).version).toBe(5);
   });
 });

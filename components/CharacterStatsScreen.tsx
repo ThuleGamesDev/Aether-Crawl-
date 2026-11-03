@@ -1,12 +1,11 @@
 import React from 'react';
 import { getUniqueItem } from '../data/uniqueItems';
-import type { DerivedCharacterStats, EquipmentSlot, PlayerCharacter } from '../types';
+import type { DerivedCharacterStats, PlayerCharacter } from '../types';
 import { xpToNextLevel } from '../player/PlayerProgression';
 import { uniqueEffectRemaining } from '../player/UniqueEffects';
 import { describeItem } from '../services/itemization';
 import { ItemIcon } from './ItemIcon';
-
-const EQUIPMENT_SLOTS: EquipmentSlot[] = ['weapon', 'armor', 'offhand', 'accessory'];
+import { EQUIPMENT_SLOTS, equipmentSlotLabel } from '../services/equipmentRules';
 
 export const CharacterStatsScreen: React.FC<{ player: PlayerCharacter; derived: DerivedCharacterStats }> = ({ player, derived }) => {
   const nextLevelXp = xpToNextLevel(player.stats.level);
@@ -43,6 +42,8 @@ export const CharacterStatsScreen: React.FC<{ player: PlayerCharacter; derived: 
         <StatLine label="Intelligence" value={derived.intelligence} />
         <StatLine label="Armor" value={derived.armor} />
         <StatLine label="Weapon power" value={derived.weaponPower} />
+        <StatLine label="Main-hand power" value={derived.mainHandWeaponPower} />
+        <StatLine label="Off-hand power" value={derived.offHandWeaponPower} />
       </section>
       <section className="fps-build-summary fps-character-stat-card">
         <h3>Combat</h3>
@@ -75,7 +76,7 @@ export const CharacterStatsScreen: React.FC<{ player: PlayerCharacter; derived: 
         const item = player.equipment[slot];
         return <div className="fps-character-equipment-item" key={slot}>
           <span className="fps-equipment-icon">{item ? <ItemIcon item={item} /> : <i>◇</i>}</span>
-          <span><small>{slot.toUpperCase()}</small><strong>{item ? describeItem(item) : 'Empty'}</strong>{item && <small>{item.rarity} · Item Level {item.itemLevel}</small>}</span>
+          <span><small>{equipmentSlotLabel(slot)}</small><strong>{item ? describeItem(item) : 'Empty'}</strong>{item && <small>{item.rarity} · Item Level {item.itemLevel}</small>}</span>
         </div>;
       })}</div>
     </section>
@@ -111,4 +112,3 @@ function percent(value: number): string {
 function signed(value: number): string {
   return `${value >= 0 ? '+' : '−'}${Math.abs(value).toFixed(1)}`;
 }
-

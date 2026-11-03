@@ -3,6 +3,7 @@ import { getItemAffix } from '../data/itemAffixes';
 import type { DerivedCharacterStats, ItemAffixStat, ItemInstance, ItemTag, PlayerCharacter } from '../types';
 import { getUniqueStatBonuses } from './UniqueEffects';
 import { ACTION_SPEED_RULES } from '../combat/actionSpeed';
+import type { EquipmentSlot } from '../types';
 
 const MAX_STAT = 100_000;
 
@@ -11,7 +12,9 @@ const MAX_STAT = 100_000;
  * values back to the player and never trusts display names or unknown affixes.
  */
 export function calculateDerivedStats(player: PlayerCharacter): DerivedCharacterStats {
-  let weaponPower = 0;
+  const mainHandWeaponPower = getWeaponPowerForSlot(player, 'mainHand');
+  const offHandWeaponPower = getWeaponPowerForSlot(player, 'offHand');
+  const weaponPower = mainHandWeaponPower || offHandWeaponPower;
   let armorBase = Math.max(0, finite(player.stats.baseArmor ?? 0));
   let strength = finite(player.stats.str);
   let dexterity = finite(player.stats.dex);
@@ -27,7 +30,7 @@ export function calculateDerivedStats(player: PlayerCharacter): DerivedCharacter
 
   for (const item of equippedItems(player)) {
     const value = Math.max(0, finite(item.value));
-    if (item.type === 'WEAPON') weaponPower += value;
+    // Base weapon power is selected per action hand below; off-hand weapons do not stack into every hit.
     if (item.type === 'ARMOR' || item.type === 'SHIELD') armorBase += value;
     if (item.type === 'ARMOR') {
       const weight = item.armorWeight ?? getItemBase(item.baseId)?.armorWeight;
@@ -81,6 +84,8 @@ export function calculateDerivedStats(player: PlayerCharacter): DerivedCharacter
     maxMana,
     armor,
     weaponPower: clamp(weaponPower, 0, MAX_STAT),
+    mainHandWeaponPower: clamp(mainHandWeaponPower, 0, MAX_STAT),
+    offHandWeaponPower: clamp(offHandWeaponPower, 0, MAX_STAT),
     physicalDamageFlat: bounded(values.physicalDamageFlat ?? 0, -50, 100),
     physicalDamageMultiplier: multiplier(values.physicalDamagePercent ?? 0, 0.5, 2),
     spellDamageFlat: bounded(values.spellDamageFlat ?? 0, -50, 100),
@@ -114,6 +119,8 @@ export function compareDerivedStats(before: PlayerCharacter, after: PlayerCharac
     { id: 'dexterity', label: 'Dexterity', before: left.dexterity, after: right.dexterity },
     { id: 'intelligence', label: 'Intelligence', before: left.intelligence, after: right.intelligence },
     { id: 'weaponPower', label: 'Weapon power', before: left.weaponPower, after: right.weaponPower },
+    { id: 'mainHandWeaponPower', label: 'Main-hand weapon power', before: left.mainHandWeaponPower, after: right.mainHandWeaponPower },
+    { id: 'offHandWeaponPower', label: 'Off-hand weapon power', before: left.offHandWeaponPower, after: right.offHandWeaponPower },
     { id: 'physicalDamageFlat', label: 'Flat physical damage', before: left.physicalDamageFlat, after: right.physicalDamageFlat },
     { id: 'physicalDamageMultiplier', label: 'Physical damage', before: left.physicalDamageMultiplier * 100, after: right.physicalDamageMultiplier * 100 },
     { id: 'spellDamageFlat', label: 'Flat spell damage', before: left.spellDamageFlat, after: right.spellDamageFlat },
@@ -160,6 +167,11 @@ export function itemTags(item: ItemInstance): Set<ItemTag> {
   return new Set(tags);
 }
 
+export function getWeaponPowerForSlot(player: PlayerCharacter, slot: Extract<EquipmentSlot, 'mainHand' | 'offHand'>): number {
+  const item = player.equipment[slot];
+  return item?.type === 'WEAPON' ? clamp(finite(item.value), 0, MAX_STAT) : 0;
+}
+
 function equippedItems(player: PlayerCharacter): ItemInstance[] {
   return Object.values(player.equipment).filter((item): item is ItemInstance => Boolean(item));
 }
@@ -168,3 +180,4 @@ function clamp(value: number, min: number, max: number): number { return Math.ma
 function bounded(value: number, min: number, max: number): number { return clamp(value, min, max); }
 function multiplier(percent: number, min: number, max: number): number { return clamp(1 + finite(percent) / 100, min, max); }
 function chance(percent: number): number { return clamp(finite(percent) / 100, 0, 0.6); }
+
