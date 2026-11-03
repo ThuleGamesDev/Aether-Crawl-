@@ -4,13 +4,32 @@ import { calculateDerivedStats } from './DerivedStats';
 import { actionSpeedMultiplier } from '../combat/StatusSystem';
 import { combineActionSpeedMultipliers } from '../combat/actionSpeed';
 import { isDualWieldLoadout } from '../services/equipmentRules';
+import { getClassSkillKit } from '../data/classSkillKits';
+import type { WeaponActionPresentationProfile } from '../data/weaponActionRegistry';
 import type { EquipmentSlot } from '../types';
 import { abilityStaminaCost, STAMINA_RULES } from '../combat/CombatMastery';
 
 export type PlayerActionPhase = 'WINDUP' | 'ACTIVE' | 'RECOVERY';
 
+export type PlayerActionSource = 'WEAPON' | 'CLASS_SKILL' | 'OFFHAND' | 'LEGACY';
+
+export interface PlayerActionStartOptions {
+  source?: PlayerActionSource;
+  actionSlot?: 'PRIMARY' | 'SECONDARY' | 'TECHNIQUE';
+  weaponSlot?: Extract<EquipmentSlot, 'mainHand' | 'offHand'>;
+  sourceItemInstanceId?: string | null;
+  presentationProfile?: WeaponActionPresentationProfile;
+  alternatesHand?: boolean;
+}
+
 export interface ActivePlayerAction {
   abilityId: string;
+  /** Captured so animation, VFX and damage retain one resolved action contract. */
+  actionSource?: PlayerActionSource;
+  actionSlot?: 'PRIMARY' | 'SECONDARY' | 'TECHNIQUE';
+  sourceItemInstanceId?: string | null;
+  presentationProfile?: WeaponActionPresentationProfile;
+  alternatesHand?: boolean;
   phase: PlayerActionPhase;
   remainingSeconds: number;
   damageMultiplier: number;
@@ -46,6 +65,7 @@ export class PlayerCombat {
   private nextMeleeWeaponSlot: Extract<EquipmentSlot, 'mainHand' | 'offHand'> = 'mainHand';
 
   get action(): ActivePlayerAction | null { return this.activeAction ? { ...this.activeAction } : null; }
+  get nextMeleeWeaponHand(): Extract<EquipmentSlot, 'mainHand' | 'offHand'> { return this.nextMeleeWeaponSlot; }
 
   snapshot(): PlayerCombatSaveState {
     return { cooldowns: Object.fromEntries(this.cooldowns), action: this.action, nextMeleeWeaponSlot: this.nextMeleeWeaponSlot };
@@ -66,6 +86,7 @@ export class PlayerCombat {
       classPassiveResolved: false,
       classPassiveMultiplier: 1,
       classMeleeRecorded: false,
+      actionSource: 'LEGACY',
       ...state.action,
     };
   }
@@ -75,7 +96,7 @@ export class PlayerCombat {
   /** Cancels an in-flight animation/action after an equipment transaction while preserving its cooldown. */
   cancelActiveAction(): void { this.activeAction = null; }
 
-  start(player: PlayerCharacter, abilityId: string, chargeSeconds = 0): PlayerActionStart {
+  start(player: PlayerCharacter, abilityId: string, chargeSeconds = 0, options: PlayerActionStartOptions = {}): PlayerActionStart {
     if (this.activeAction) return { player, ability: null, error: 'Recovering from the current action.' };
     const ability = getAbility(abilityId);
     if (!ability) return { player, ability: null, error: 'That skill is not available.' };
@@ -83,9 +104,12 @@ export class PlayerCombat {
     const derived = calculateDerivedStats(player);
     const manaCost = ability.manaCost * derived.manaCostMultiplier;
     if (player.stats.mp < manaCost) return { player, ability: null, error: 'Not enough mana.' };
-    let weaponSlot: Extract<EquipmentSlot, 'mainHand' | 'offHand'> = 'mainHand';
-    if (ability.kind === 'MELEE' && isDualWieldLoadout(player.equipment)) weaponSlot = this.nextMeleeWeaponSlot;
-    const isClassSkill = CLASS_ABILITY_LOADOUT[player.classId].skillSlots.includes(abilityId);
+    const actionSource = options.source ?? 'LEGACY';
+    const dualWield = isDualWieldLoadout(player.equipment);
+    let weaponSlot: Extract<EquipmentSlot, 'mainHand' | 'offHand'> = options.weaponSlot ?? 'mainHand';
+    if (options.weaponSlot === undefined && actionSource === 'LEGACY' && ability.kind === 'MELEE' && dualWield) weaponSlot = this.nextMeleeWeaponSlot;
+    const isClassSkill = actionSource === 'CLASS_SKILL'
+      || (actionSource === 'LEGACY' && Boolean(getClassSkillKit(player.classId)?.skills.some(skill => skill.abilityId === abilityId)));
     const staminaCost = isClassSkill ? 0 : abilityStaminaCost(ability, player, weaponSlot);
     const currentStamina = Math.max(0, Math.min(derived.maxStamina, Number.isFinite(player.stats.stamina) ? player.stats.stamina! : derived.maxStamina));
     if (currentStamina < staminaCost) return { player, ability: null, error: 'Not enough stamina.' };
@@ -95,15 +119,17 @@ export class PlayerCombat {
       ? 1 + Math.max(0, Math.min(0.65, (chargeSeconds - ability.chargeMinSeconds) * 0.45))
       : 1;
     this.cooldowns.set(abilityId, ability.cooldownSeconds * derived.cooldownMultiplier);
-    if (ability.kind === 'MELEE' && isDualWieldLoadout(player.equipment)) {
+    const shouldAlternateHand = actionSource === 'WEAPON' ? options.alternatesHand === true : actionSource === 'LEGACY' && ability.kind === 'MELEE' && dualWield;
+    if (shouldAlternateHand && ability.kind === 'MELEE' && dualWield) {
       this.nextMeleeWeaponSlot = weaponSlot === 'mainHand' ? 'offHand' : 'mainHand';
     }
     this.activeAction = {
-      abilityId, phase: 'WINDUP', remainingSeconds: ability.windupSeconds / speedMultiplier,
+      abilityId, actionSource, actionSlot: options.actionSlot, weaponSlot, sourceItemInstanceId: options.sourceItemInstanceId ?? null, presentationProfile: options.presentationProfile, alternatesHand: shouldAlternateHand,
+      phase: 'WINDUP', remainingSeconds: ability.windupSeconds / speedMultiplier,
       damageMultiplier: chargeScale, speedMultiplier,
       hitIndex: 0, hitCount: Math.max(1, Math.min(8, Math.floor(ability.activeHitCount ?? 1))), nextHitSeconds: 0,
       classPassiveResolved: false, classPassiveMultiplier: 1,
-      classMeleeRecorded: false, weaponSlot,
+      classMeleeRecorded: false,
     };
     return { player: { ...player, stats: {
       ...player.stats,
