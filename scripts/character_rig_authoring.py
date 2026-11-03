@@ -4,7 +4,10 @@ from pathlib import Path
 import json
 import math
 
-from PIL import Image, ImageDraw, ImageFont
+try:
+    from PIL import Image, ImageDraw, ImageFont
+except ImportError:
+    Image = ImageDraw = ImageFont = None
 
 
 CELL = 64
@@ -342,11 +345,89 @@ def humanoid_clips(heavy=False, mage=False, guardian=False):
         'cast_impact': [{'t': 0, 'layers': {'armUpperR': {'rotation': -0.78}, 'armLowerR': {'rotation': 0.2}, 'armUpperL': {'rotation': -0.5}, 'armLowerL': {'rotation': -0.22}, 'weapon': {'y': 3}}}, {'t': 0.35, 'layers': {'armUpperR': {'rotation': -0.92}, 'armLowerR': {'rotation': 0.34}, 'armUpperL': {'rotation': -0.62}, 'weapon': {'y': 6}}}, {'t': 1, 'layers': {'armUpperR': {'rotation': -0.92}, 'armLowerR': {'rotation': 0.34}, 'armUpperL': {'rotation': -0.62}, 'weapon': {'y': 6}}}],
         'cast_recovery': [{'t': 0, 'layers': {'armUpperR': {'rotation': -0.92}, 'armLowerR': {'rotation': 0.34}, 'armUpperL': {'rotation': -0.62}, 'weapon': {'y': 6}}}, {'t': 0.45, 'layers': {'armUpperR': {'rotation': -0.42}, 'armLowerR': {'rotation': 0.08}, 'armUpperL': {'rotation': -0.2}, 'weapon': {'y': 2}}}, {'t': 1, 'layers': {'armUpperR': {'rotation': 0}, 'armLowerR': {'rotation': 0}, 'armUpperL': {'rotation': 0}, 'weapon': {'y': 0}}}],
         'guard_windup': [{'t': 0, 'layers': {'shield': {'rotation': 0}, 'armUpperL': {'rotation': 0}}}, {'t': 1, 'layers': {'shield': {'rotation': -0.3}, 'armUpperL': {'rotation': -0.24}, 'torso': {'rotation': 0.03}}}],
-        'guard_impact': [{'t': 0, 'layers': {'shield': {'rotation': -0.3}, 'armUpperL': {'rotation': -0.24}, 'torso': {'rotation': 0.03}}}, {'t': 0.3, 'layers': {'shield': {'rotation': -0.42}, 'armUpper,
+        'guard_impact': [{'t': 0, 'layers': {'shield': {'rotation': -0.3}, 'armUpperL': {'rotation': -0.24}, 'torso': {'rotation': 0.03}}}, {'t': 0.3, 'layers': {'shield': {'rotation': -0.42}, 'armUpperL': {'rotation': -0.32}, 'torso': {'rotation': -0.06}}}, {'t': 1, 'layers': {'shield': {'rotation': -0.36}, 'armUpperL': {'rotation': -0.26}, 'torso': {'rotation': -0.03}}}],
+        'guard_recovery': [{'t': 0, 'layers': {'shield': {'rotation': -0.36}, 'armUpperL': {'rotation': -0.26}, 'torso': {'rotation': -0.03}}}, {'t': 1, 'layers': {'shield': {'rotation': 0}, 'armUpperL': {'rotation': 0}, 'torso': {'rotation': 0}}}],
+        'lunge_windup': [{'t': 0, 'layers': {'torso': {'y': 0}, 'armUpperR': {'rotation': 0.04}, 'legUpperL': {'rotation': 0}}}, {'t': 1, 'layers': {'torso': {'rotation': -0.18, 'y': -3}, 'armUpperR': {'rotation': -0.55}, 'legUpperL': {'rotation': -0.32}, 'legUpperR': {'rotation': 0.36}}}],
+        'lunge_impact': [{'t': 0, 'layers': {'torso': {'rotation': -0.18, 'y': -3}, 'armUpperR': {'rotation': -0.55}, 'legUpperL': {'rotation': -0.32}, 'legUpperR': {'rotation': 0.36}}}, {'t': 0.35, 'layers': {'torso': {'rotation': 0.22, 'y': 1}, 'armUpperR': {'rotation': 0.82}, 'armLowerR': {'rotation': -0.32}, 'legUpperL': {'rotation': 0.4}, 'legUpperR': {'rotation': -0.45}}}, {'t': 1, 'layers': {'torso': {'rotation': 0.2}, 'armUpperR': {'rotation': 0.78}, 'armLowerR': {'rotation': -0.28}}}],
+        'lunge_recovery': [{'t': 0, 'layers': {'torso': {'rotation': 0.2}, 'armUpperR': {'rotation': 0.78}, 'armLowerR': {'rotation': -0.28}}}, {'t': 1, 'layers': {'torso': {'rotation': 0}, 'armUpperR': {'rotation': 0}, 'armLowerR': {'rotation': 0}, 'legUpperL': {'rotation': 0}, 'legUpperR': {'rotation': 0}}}],
+        'hurt': [{'t': 0, 'layers': {'torso': {'rotation': 0.14, 'x': -2}, 'head': {'rotation': 0.18}, 'armUpperR': {'rotation': 0.38}, 'armUpperL': {'rotation': -0.3}}}, {'t': 0.45, 'layers': {'torso': {'rotation': 0.07, 'x': -1}, 'head': {'rotation': 0.08}, 'armUpperR': {'rotation': 0.17}, 'armUpperL': {'rotation': -0.12}}}, {'t': 1, 'layers': {}}],
+        'stagger': [{'t': 0, 'layers': {'torso': {'rotation': 0.22, 'x': -3}, 'head': {'rotation': 0.25}, 'armUpperR': {'rotation': -0.52}, 'armUpperL': {'rotation': 0.42}, 'legUpperL': {'rotation': -0.12}}}, {'t': 0.4, 'layers': {'torso': {'rotation': -0.16, 'x': 2}, 'head': {'rotation': -0.18}, 'armUpperR': {'rotation': -0.34}, 'armUpperL': {'rotation': 0.3}}}, {'t': 1, 'layers': {}}],
+        'death': [{'t': 0, 'layers': {'torso': {'rotation': 0.02}, 'head': {'rotation': 0}, 'armUpperL': {'rotation': 0}, 'armUpperR': {'rotation': 0}}}, {'t': 0.46, 'layers': {'torso': {'rotation': 1.05, 'y': -10}, 'head': {'rotation': 0.72}, 'armUpperL': {'rotation': -1.0}, 'armUpperR': {'rotation': 0.95}, 'legUpperL': {'rotation': 0.55}, 'legUpperR': {'rotation': -0.5}, 'shield': {'rotation': 0.28}}}, {'t': 1, 'layers': {'torso': {'rotation': 1.48, 'y': -17}, 'head': {'rotation': 1.15}, 'armUpperL': {'rotation': -1.35}, 'armUpperR': {'rotation': 1.22}, 'legUpperL': {'rotation': 0.82}, 'legUpperR': {'rotation': -0.72}, 'shield': {'rotation': 0.55}}}],
+    }
+
+
+def rat_clips():
+    return {
+        'idle': [{'t': 0, 'layers': {'body': {'y': 0}, 'head': {'rotation': 0.015}}}, {'t': 0.5, 'layers': {'body': {'y': 0.7}, 'head': {'rotation': -0.02}}}, {'t': 1, 'layers': {'body': {'y': 0}, 'head': {'rotation': 0.015}}}],
+        'run': [{'t': 0, 'layers': {'body': {'y': 0}, 'hindUpperL': {'rotation': 0.45}, 'hindUpperR': {'rotation': -0.45}, 'hindLowerL': {'rotation': -0.55}, 'hindLowerR': {'rotation': 0.08}, 'foreUpperL': {'rotation': -0.2}, 'foreUpperR': {'rotation': 0.2}, 'tail': {'rotation': -0.08}}}, {'t': 0.25, 'layers': {'body': {'y': 3}, 'hindUpperL': {'rotation': 0.04}, 'hindUpperR': {'rotation': -0.04}, 'hindLowerL': {'rotation': -0.12}, 'hindLowerR': {'rotation': 0.12}, 'foreUpperL': {'rotation': 0.04}, 'foreUpperR': {'rotation': -0.04}, 'tail': {'rotation': 0.12}}}, {'t': 0.5, 'layers': {'body': {'y': 0}, 'hindUpperL': {'rotation': -0.45}, 'hindUpperR': {'rotation': 0.45}, 'hindLowerL': {'rotation': 0.08}, 'hindLowerR': {'rotation': -0.55}, 'foreUpperL': {'rotation': 0.2}, 'foreUpperR': {'rotation': -0.2}, 'tail': {'rotation': -0.1}}}, {'t': 0.75, 'layers': {'body': {'y': 3}, 'hindUpperL': {'rotation': -0.04}, 'hindUpperR': {'rotation': 0.04}, 'hindLowerL': {'rotation': 0.12}, 'hindLowerR': {'rotation': -0.12}, 'foreUpperL': {'rotation': -0.04}, 'foreUpperR': {'rotation': 0.04}, 'tail': {'rotation': 0.13}}}, {'t': 1, 'layers': {'body': {'y': 0}, 'hindUpperL': {'rotation': 0.45}, 'hindUpperR': {'rotation': -0.45}, 'hindLowerL': {'rotation': -0.55}, 'hindLowerR': {'rotation': 0.08}, 'foreUpperL': {'rotation': -0.2}, 'foreUpperR': {'rotation': 0.2}, 'tail': {'rotation': -0.08}}}],
+        'alert': [{'t': 0, 'layers': {'head': {'rotation': -0.12}, 'tail': {'rotation': -0.1}, 'body': {'y': -1}}}, {'t': 1, 'layers': {'head': {'rotation': 0.08}, 'tail': {'rotation': 0.14}, 'body': {'y': 1}}}],
+        'melee_windup': [{'t': 0, 'layers': {'head': {'rotation': 0}, 'body': {'rotation': 0}}}, {'t': 1, 'layers': {'head': {'rotation': 0.22}, 'body': {'rotation': -0.12}, 'tail': {'rotation': -0.22}, 'hindUpperL': {'rotation': -0.18}, 'hindUpperR': {'rotation': -0.18}}}],
+        'melee_impact': [{'t': 0, 'layers': {'head': {'rotation': 0.22}, 'body': {'rotation': -0.12}, 'tail': {'rotation': -0.22}}}, {'t': 0.3, 'layers': {'head': {'rotation': -0.42}, 'body': {'rotation': 0.18}, 'tail': {'rotation': 0.24}, 'hindUpperL': {'rotation': 0.22}, 'hindUpperR': {'rotation': -0.18}}}, {'t': 1, 'layers': {'head': {'rotation': -0.36}, 'body': {'rotation': 0.12}, 'tail': {'rotation': 0.18}}}],
+        'melee_recovery': [{'t': 0, 'layers': {'head': {'rotation': -0.36}, 'body': {'rotation': 0.12}, 'tail': {'rotation': 0.18}}}, {'t': 1, 'layers': {}}],
+        'leap_windup': [{'t': 0, 'layers': {'body': {'y': 0}}}, {'t': 1, 'layers': {'body': {'rotation': -0.12, 'y': -4}, 'head': {'rotation': 0.2}, 'hindUpperL': {'rotation': 0.48}, 'hindUpperR': {'rotation': 0.48}, 'foreUpperL': {'rotation': 0.48}, 'foreUpperR': {'rotation': 0.48}, 'tail': {'rotation': -0.36}}}],
+        'leap_impact': [{'t': 0, 'layers': {'body': {'rotation': -0.12, 'y': -4}, 'head': {'rotation': 0.2}, 'hindUpperL': {'rotation': 0.48}, 'hindUpperR': {'rotation': 0.48}, 'foreUpperL': {'rotation': 0.48}, 'foreUpperR': {'rotation': 0.48}, 'tail': {'rotation': -0.36}}}, {'t': 0.28, 'layers': {'body': {'rotation': 0.12, 'y': 2}, 'head': {'rotation': -0.38}, 'hindUpperL': {'rotation': -0.55}, 'hindUpperR': {'rotation': -0.5}, 'foreUpperL': {'rotation': -0.48}, 'foreUpperR': {'rotation': -0.45}, 'hindLowerL': {'rotation': 0.6}, 'hindLowerR': {'rotation': 0.58}, 'tail': {'rotation': 0.32}}}, {'t': 1, 'layers': {'body': {'rotation': 0.1, 'y': 1}, 'head': {'rotation': -0.32}}}],
+        'leap_recovery': [{'t': 0, 'layers': {'body': {'rotation': 0.1, 'y': 1}, 'head': {'rotation': -0.32}}}, {'t': 1, 'layers': {}}],
+        'cast_windup': [{'t': 0, 'layers': {}}, {'t': 1, 'layers': {}}], 'cast_impact': [{'t': 0, 'layers': {}}, {'t': 1, 'layers': {}}], 'cast_recovery': [{'t': 0, 'layers': {}}, {'t': 1, 'layers': {}}],
+        'guard_windup': [{'t': 0, 'layers': {}}, {'t': 1, 'layers': {}}], 'guard_impact': [{'t': 0, 'layers': {}}, {'t': 1, 'layers': {}}], 'guard_recovery': [{'t': 0, 'layers': {}}, {'t': 1, 'layers': {}}],
+        'hurt': [{'t': 0, 'layers': {'body': {'rotation': 0.25, 'x': -2}, 'head': {'rotation': 0.2}, 'tail': {'rotation': -0.2}}}, {'t': 1, 'layers': {}}],
+        'stagger': [{'t': 0, 'layers': {'body': {'rotation': 0.32, 'x': -3}, 'head': {'rotation': 0.32}, 'tail': {'rotation': -0.3}, 'hindUpperL': {'rotation': -0.15}}}, {'t': 0.5, 'layers': {'body': {'rotation': -0.14, 'x': 2}, 'head': {'rotation': -0.12}}}, {'t': 1, 'layers': {}}],
+        'death': [{'t': 0, 'layers': {'body': {'rotation': 0}, 'head': {'rotation': 0}}}, {'t': 0.46, 'layers': {'body': {'rotation': 1.15, 'y': -5}, 'head': {'rotation': 0.65}, 'hindUpperL': {'rotation': -0.72}, 'hindUpperR': {'rotation': 0.75}, 'tail': {'rotation': 0.6}}}, {'t': 1, 'layers': {'body': {'rotation': 1.45, 'y': -9}, 'head': {'rotation': 0.9}, 'hindUpperL': {'rotation': -0.9}, 'hindUpperR': {'rotation': 0.9}, 'tail': {'rotation': 0.75}}}],
+    }
+
+
+def make_rat():
+    return {
+        'visualId': 'cretan_cave_rat', 'name': 'Cretan Cave Rat', 'family': 'quadruped', 'worldHeight': 0.72, 'designHeight': 72, 'origin': [48, 63],
+        'attackStyles': {'rat_bite': 'melee', 'rat_leap': 'leap'}, 'clips': rat_clips(),
+        'layers': [
+            layer('tail', 'tail', 'body', (-18, 3), (50, 15), 0),
+            layer('hindUpperL', 'upper_leg', 'body', (-12, 6), (32, 8), 1), layer('hindUpperR', 'upper_leg', 'body', (-7, 6), (32, 8), 2, True),
+            layer('hindLowerL', 'lower_leg', 'hindUpperL', (0, 9), (32, 8), 3), layer('hindLowerR', 'lower_leg', 'hindUpperR', (0, 9), (32, 8), 4, True),
+            layer('body', 'body', 'root', (46, 40), (32, 34), 5),
+            layer('foreUpperL', 'upper_leg', 'body', (12, 4), (32, 8), 6), layer('foreUpperR', 'upper_leg', 'body', (16, 4), (32, 8), 7, True),
             layer('foreLowerL', 'lower_leg', 'foreUpperL', (0, 9), (32, 8), 8), layer('foreLowerR', 'lower_leg', 'foreUpperR', (0, 9), (32, 8), 9, True),
             layer('head', 'head', 'body', (19, -6), (26, 43), 10), layer('ear', 'ear', 'head', (5, -19), (28, 46), 11),
             layer('muzzle', 'muzzle', 'head', (12, -4), (13, 33), 12), layer('eye', 'eye', 'head', (6, -16), (32, 32), 13),
         ],
+    }
+
+
+def spider_clips():
+    legs = [f'{side}{index}{segment}' for side in ('L', 'R') for index in range(1, 5) for segment in ('Upper', 'Lower')]
+    def wave(amount, phase):
+        values = {}
+        for index, key in enumerate(legs):
+            sign = -1 if key.startswith('L') else 1
+            lower = key.endswith('Lower')
+            base = math.sin(phase + index * math.pi / 2) * amount * (0.68 if lower else 1)
+            values[key] = {'rotation': round(sign * base, 4)}
+        return values
+    run_frames = []
+    for t in (0, 0.25, 0.5, 0.75, 1):
+        layers = wave(0.42, t * math.tau)
+        layers['abdomen'] = {'y': 1 if t in (0.25, 0.75) else 0}
+        layers['thorax'] = {'rotation': 0.025 if t < 0.5 else -0.025}
+        run_frames.append({'t': t, 'layers': layers})
+    resting = {key: {'rotation': 0} for key in legs}
+    return {
+        'idle': [{'t': 0, 'layers': {'abdomen': {'y': 0}, 'thorax': {'rotation': -0.015}}}, {'t': 0.5, 'layers': {'abdomen': {'y': 0.8}, 'thorax': {'rotation': 0.02}}}, {'t': 1, 'layers': {'abdomen': {'y': 0}, 'thorax': {'rotation': -0.015}}}],
+        'run': run_frames,
+        'alert': [{'t': 0, 'layers': {'thorax': {'y': -1}, 'fangL': {'rotation': -0.08}, 'fangR': {'rotation': 0.08}}}, {'t': 1, 'layers': {'thorax': {'y': 1}, 'fangL': {'rotation': 0.12}, 'fangR': {'rotation': -0.12}}}],
+        'melee_windup': [{'t': 0, 'layers': {}}, {'t': 1, 'layers': {**wave(0.28, 0.2), 'thorax': {'y': -2, 'rotation': -0.1}, 'fangL': {'rotation': -0.28}, 'fangR': {'rotation': 0.28}}}],
+        'melee_impact': [{'t': 0, 'layers': {**wave(0.28, 0.2), 'thorax': {'y': -2, 'rotation': -0.1}, 'fangL': {'rotation': -0.28}, 'fangR': {'rotation': 0.28}}}, {'t': 0.25, 'layers': {**wave(0.4, 1.7), 'thorax': {'y': 3, 'rotation': 0.16}, 'fangL': {'rotation': 0.48}, 'fangR': {'rotation': -0.48}}}, {'t': 1, 'layers': {**wave(0.34, 1.7), 'thorax': {'y': 2, 'rotation': 0.12}}}],
+        'melee_recovery': [{'t': 0, 'layers': {**wave(0.34, 1.7), 'thorax': {'y': 2, 'rotation': 0.12}}}, {'t': 1, 'layers': {**resting, 'thorax': {'rotation': 0}}}],
+        'leap_windup': [{'t': 0, 'layers': {}}, {'t': 1, 'layers': {**wave(0.3, 0.5), 'abdomen': {'y': -2}, 'thorax': {'y': -3, 'rotation': -0.1}}}],
+        'leap_impact': [{'t': 0, 'layers': {**wave(0.3, 0.5), 'abdomen': {'y': -2}, 'thorax': {'y': -3, 'rotation': -0.1}}}, {'t': 0.3, 'layers': {**wave(0.68, 1.5), 'abdomen': {'y': 3}, 'thorax': {'y': 3, 'rotation': 0.2}}}, {'t': 1, 'layers': {**wave(0.52, 1.5), 'abdomen': {'y': 2}, 'thorax': {'y': 2, 'rotation': 0.14}}}],
+        'leap_recovery': [{'t': 0, 'layers': {**wave(0.52, 1.5), 'abdomen': {'y': 2}, 'thorax': {'y': 2, 'rotation': 0.14}}}, {'t': 1, 'layers': {**resting, 'abdomen': {'y': 0}, 'thorax': {'rotation': 0}}}],
+        'cast_windup': [{'t': 0, 'layers': {}}, {'t': 1, 'layers': {**wave(0.18, 0.2), 'thorax': {'y': -2}, 'fangL': {'rotation': -0.2}, 'fangR': {'rotation': 0.2}}}],
+        'cast_impact': [{'t': 0, 'layers': {**wave(0.18, 0.2), 'thorax': {'y': -2}}}, {'t': 0.45, 'layers': {**wave(0.25, 1.2), 'thorax': {'y': 2}, 'fangL': {'rotation': 0.24}, 'fangR': {'rotation': -0.24}}}, {'t': 1, 'layers': {**wave(0.18, 1.2), 'thorax': {'y': 2}}}],
+        'cast_recovery': [{'t': 0, 'layers': {**wave(0.18, 1.2), 'thorax': {'y': 2}}}, {'t': 1, 'layers': {**resting, 'thorax': {'y': 0}}}],
+        'guard_windup': [{'t': 0, 'layers': {}}, {'t': 1, 'layers': {**wave(0.12, 0.3), 'thorax': {'y': -1}}}],
+        'guard_impact': [{'t': 0, 'layers': {**wave(0.12, 0.3), 'thorax': {'y': -1}}}, {'t': 1, 'layers': {**resting, 'thorax': {'y': 0}}}],
+        'guard_recovery': [{'t': 0, 'layers': {**resting, 'thorax': {'y': 0}}}, {'t': 1, 'layers': {**resting, 'thorax': {'y': 0}}}],
+        'hurt': [{'t': 0, 'layers': {'abdomen': {'rotation': 0.15, 'x': -2}, 'thorax': {'rotation': 0.2}, 'fangL': {'rotation': -0.24}, 'fangR': {'rotation': 0.24}}}, {'t': 1, 'layers': {}}],
+        'stagger': [{'t': 0, 'layers': {'abdomen': {'rotation': 0.26, 'x': -3}, 'thorax': {'rotation': 0.3}, **wave(0.5, 1)}}, {'t': 0.5, 'layers': {'abdomen': {'rotation': -0.18, 'x': 2}, 'thorax': {'rotation': -0.2}, **wave(0.45, 3)}}, {'t': 1, 'layers': {}}],
+        'death': [{'t': 0, 'layers': {**resting, 'abdomen': {'y': 0}}}, {'t': 0.45, 'layers': {**wave(0.75, 0.6), 'abdomen': {'rotation': 1.2, 'y': -4}, 'thorax': {'rotation': 0.8, 'y': -3}}}, {'t': 1, 'layers': {**resting, 'abdomen': {'rotation': 1.45, 'y': -8}, 'thorax': {'rotation': 1.0, 'y': -5}}}],
     }
 
 
@@ -547,85 +628,7 @@ def generate_character_rig_assets(root):
         'atlasPath': '/assets/maze/characters/character_rigs.png',
         'atlasWidth': ATLAS_SIZE[0],
         'atlasHeight': ATLAS_SIZE[1],
- L': {'rotation': -0.32}, 'torso': {'rotation': -0.06}}}, {'t': 1, 'layers': {'shield': {'rotation': -0.36}, 'armUpperL': {'rotation': -0.26}, 'torso': {'rotation': -0.03}}}],
-        'guard_recovery': [{'t': 0, 'layers': {'shield': {'rotation': -0.36}, 'armUpperL': {'rotation': -0.26}, 'torso': {'rotation': -0.03}}}, {'t': 1, 'layers': {'shield': {'rotation': 0}, 'armUpperL': {'rotation': 0}, 'torso': {'rotation': 0}}}],
-        'lunge_windup': [{'t': 0, 'layers': {'torso': {'y': 0}, 'armUpperR': {'rotation': 0.04}, 'legUpperL': {'rotation': 0}}}, {'t': 1, 'layers': {'torso': {'rotation': -0.18, 'y': -3}, 'armUpperR': {'rotation': -0.55}, 'legUpperL': {'rotation': -0.32}, 'legUpperR': {'rotation': 0.36}}}],
-        'lunge_impact': [{'t': 0, 'layers': {'torso': {'rotation': -0.18, 'y': -3}, 'armUpperR': {'rotation': -0.55}, 'legUpperL': {'rotation': -0.32}, 'legUpperR': {'rotation': 0.36}}}, {'t': 0.35, 'layers': {'torso': {'rotation': 0.22, 'y': 1}, 'armUpperR': {'rotation': 0.82}, 'armLowerR': {'rotation': -0.32}, 'legUpperL': {'rotation': 0.4}, 'legUpperR': {'rotation': -0.45}}}, {'t': 1, 'layers': {'torso': {'rotation': 0.2}, 'armUpperR': {'rotation': 0.78}, 'armLowerR': {'rotation': -0.28}}}],
-        'lunge_recovery': [{'t': 0, 'layers': {'torso': {'rotation': 0.2}, 'armUpperR': {'rotation': 0.78}, 'armLowerR': {'rotation': -0.28}}}, {'t': 1, 'layers': {'torso': {'rotation': 0}, 'armUpperR': {'rotation': 0}, 'armLowerR': {'rotation': 0}, 'legUpperL': {'rotation': 0}, 'legUpperR': {'rotation': 0}}}],
-        'hurt': [{'t': 0, 'layers': {'torso': {'rotation': 0.14, 'x': -2}, 'head': {'rotation': 0.18}, 'armUpperR': {'rotation': 0.38}, 'armUpperL': {'rotation': -0.3}}}, {'t': 0.45, 'layers': {'torso': {'rotation': 0.07, 'x': -1}, 'head': {'rotation': 0.08}, 'armUpperR': {'rotation': 0.17}, 'armUpperL': {'rotation': -0.12}}}, {'t': 1, 'layers': {}}],
-        'stagger': [{'t': 0, 'layers': {'torso': {'rotation': 0.22, 'x': -3}, 'head': {'rotation': 0.25}, 'armUpperR': {'rotation': -0.52}, 'armUpperL': {'rotation': 0.42}, 'legUpperL': {'rotation': -0.12}}}, {'t': 0.4, 'layers': {'torso': {'rotation': -0.16, 'x': 2}, 'head': {'rotation': -0.18}, 'armUpperR': {'rotation': -0.34}, 'armUpperL': {'rotation': 0.3}}}, {'t': 1, 'layers': {}}],
-        'death': [{'t': 0, 'layers': {'torso': {'rotation': 0.02}, 'head': {'rotation': 0}, 'armUpperL': {'rotation': 0}, 'armUpperR': {'rotation': 0}}}, {'t': 0.46, 'layers': {'torso': {'rotation': 1.05, 'y': -10}, 'head': {'rotation': 0.72}, 'armUpperL': {'rotation': -1.0}, 'armUpperR': {'rotation': 0.95}, 'legUpperL': {'rotation': 0.55}, 'legUpperR': {'rotation': -0.5}, 'shield': {'rotation': 0.28}}}, {'t': 1, 'layers': {'torso': {'rotation': 1.48, 'y': -17}, 'head': {'rotation': 1.15}, 'armUpperL': {'rotation': -1.35}, 'armUpperR': {'rotation': 1.22}, 'legUpperL': {'rotation': 0.82}, 'legUpperR': {'rotation': -0.72}, 'shield': {'rotation': 0.55}}}],
-    }
-
-
-def rat_clips():
-    return {
-        'idle': [{'t': 0, 'layers': {'body': {'y': 0}, 'head': {'rotation': 0.015}}}, {'t': 0.5, 'layers': {'body': {'y': 0.7}, 'head': {'rotation': -0.02}}}, {'t': 1, 'layers': {'body': {'y': 0}, 'head': {'rotation': 0.015}}}],
-        'run': [{'t': 0, 'layers': {'body': {'y': 0}, 'hindUpperL': {'rotation': 0.45}, 'hindUpperR': {'rotation': -0.45}, 'hindLowerL': {'rotation': -0.55}, 'hindLowerR': {'rotation': 0.08}, 'foreUpperL': {'rotation': -0.2}, 'foreUpperR': {'rotation': 0.2}, 'tail': {'rotation': -0.08}}}, {'t': 0.25, 'layers': {'body': {'y': 3}, 'hindUpperL': {'rotation': 0.04}, 'hindUpperR': {'rotation': -0.04}, 'hindLowerL': {'rotation': -0.12}, 'hindLowerR': {'rotation': 0.12}, 'foreUpperL': {'rotation': 0.04}, 'foreUpperR': {'rotation': -0.04}, 'tail': {'rotation': 0.12}}}, {'t': 0.5, 'layers': {'body': {'y': 0}, 'hindUpperL': {'rotation': -0.45}, 'hindUpperR': {'rotation': 0.45}, 'hindLowerL': {'rotation': 0.08}, 'hindLowerR': {'rotation': -0.55}, 'foreUpperL': {'rotation': 0.2}, 'foreUpperR': {'rotation': -0.2}, 'tail': {'rotation': -0.1}}}, {'t': 0.75, 'layers': {'body': {'y': 3}, 'hindUpperL': {'rotation': -0.04}, 'hindUpperR': {'rotation': 0.04}, 'hindLowerL': {'rotation': 0.12}, 'hindLowerR': {'rotation': -0.12}, 'foreUpperL': {'rotation': -0.04}, 'foreUpperR': {'rotation': 0.04}, 'tail': {'rotation': 0.13}}}, {'t': 1, 'layers': {'body': {'y': 0}, 'hindUpperL': {'rotation': 0.45}, 'hindUpperR': {'rotation': -0.45}, 'hindLowerL': {'rotation': -0.55}, 'hindLowerR': {'rotation': 0.08}, 'foreUpperL': {'rotation': -0.2}, 'foreUpperR': {'rotation': 0.2}, 'tail': {'rotation': -0.08}}}],
-        'alert': [{'t': 0, 'layers': {'head': {'rotation': -0.12}, 'tail': {'rotation': -0.1}, 'body': {'y': -1}}}, {'t': 1, 'layers': {'head': {'rotation': 0.08}, 'tail': {'rotation': 0.14}, 'body': {'y': 1}}}],
-        'melee_windup': [{'t': 0, 'layers': {'head': {'rotation': 0}, 'body': {'rotation': 0}}}, {'t': 1, 'layers': {'head': {'rotation': 0.22}, 'body': {'rotation': -0.12}, 'tail': {'rotation': -0.22}, 'hindUpperL': {'rotation': -0.18}, 'hindUpperR': {'rotation': -0.18}}}],
-        'melee_impact': [{'t': 0, 'layers': {'head': {'rotation': 0.22}, 'body': {'rotation': -0.12}, 'tail': {'rotation': -0.22}}}, {'t': 0.3, 'layers': {'head': {'rotation': -0.42}, 'body': {'rotation': 0.18}, 'tail': {'rotation': 0.24}, 'hindUpperL': {'rotation': 0.22}, 'hindUpperR': {'rotation': -0.18}}}, {'t': 1, 'layers': {'head': {'rotation': -0.36}, 'body': {'rotation': 0.12}, 'tail': {'rotation': 0.18}}}],
-        'melee_recovery': [{'t': 0, 'layers': {'head': {'rotation': -0.36}, 'body': {'rotation': 0.12}, 'tail': {'rotation': 0.18}}}, {'t': 1, 'layers': {}}],
-        'leap_windup': [{'t': 0, 'layers': {'body': {'y': 0}}}, {'t': 1, 'layers': {'body': {'rotation': -0.12, 'y': -4}, 'head': {'rotation': 0.2}, 'hindUpperL': {'rotation': 0.48}, 'hindUpperR': {'rotation': 0.48}, 'foreUpperL': {'rotation': 0.48}, 'foreUpperR': {'rotation': 0.48}, 'tail': {'rotation': -0.36}}}],
-        'leap_impact': [{'t': 0, 'layers': {'body': {'rotation': -0.12, 'y': -4}, 'head': {'rotation': 0.2}, 'hindUpperL': {'rotation': 0.48}, 'hindUpperR': {'rotation': 0.48}, 'foreUpperL': {'rotation': 0.48}, 'foreUpperR': {'rotation': 0.48}, 'tail': {'rotation': -0.36}}}, {'t': 0.28, 'layers': {'body': {'rotation': 0.12, 'y': 2}, 'head': {'rotation': -0.38}, 'hindUpperL': {'rotation': -0.55}, 'hindUpperR': {'rotation': -0.5}, 'foreUpperL': {'rotation': -0.48}, 'foreUpperR': {'rotation': -0.45}, 'hindLowerL': {'rotation': 0.6}, 'hindLowerR': {'rotation': 0.58}, 'tail': {'rotation': 0.32}}}, {'t': 1, 'layers': {'body': {'rotation': 0.1, 'y': 1}, 'head': {'rotation': -0.32}}}],
-        'leap_recovery': [{'t': 0, 'layers': {'body': {'rotation': 0.1, 'y': 1}, 'head': {'rotation': -0.32}}}, {'t': 1, 'layers': {}}],
-        'cast_windup': [{'t': 0, 'layers': {}}, {'t': 1, 'layers': {}}], 'cast_impact': [{'t': 0, 'layers': {}}, {'t': 1, 'layers': {}}], 'cast_recovery': [{'t': 0, 'layers': {}}, {'t': 1, 'layers': {}}],
-        'guard_windup': [{'t': 0, 'layers': {}}, {'t': 1, 'layers': {}}], 'guard_impact': [{'t': 0, 'layers': {}}, {'t': 1, 'layers': {}}], 'guard_recovery': [{'t': 0, 'layers': {}}, {'t': 1, 'layers': {}}],
-        'hurt': [{'t': 0, 'layers': {'body': {'rotation': 0.25, 'x': -2}, 'head': {'rotation': 0.2}, 'tail': {'rotation': -0.2}}}, {'t': 1, 'layers': {}}],
-        'stagger': [{'t': 0, 'layers': {'body': {'rotation': 0.32, 'x': -3}, 'head': {'rotation': 0.32}, 'tail': {'rotation': -0.3}, 'hindUpperL': {'rotation': -0.15}}}, {'t': 0.5, 'layers': {'body': {'rotation': -0.14, 'x': 2}, 'head': {'rotation': -0.12}}}, {'t': 1, 'layers': {}}],
-        'death': [{'t': 0, 'layers': {'body': {'rotation': 0}, 'head': {'rotation': 0}}}, {'t': 0.46, 'layers': {'body': {'rotation': 1.15, 'y': -5}, 'head': {'rotation': 0.65}, 'hindUpperL': {'rotation': -0.72}, 'hindUpperR': {'rotation': 0.75}, 'tail': {'rotation': 0.6}}}, {'t': 1, 'layers': {'body': {'rotation': 1.45, 'y': -9}, 'head': {'rotation': 0.9}, 'hindUpperL': {'rotation': -0.9}, 'hindUpperR': {'rotation': 0.9}, 'tail': {'rotation': 0.75}}}],
-    }
-
-
-def spider_clips():
-    legs = [f'{side}{index}{segment}' for side in ('L', 'R') for index in range(1, 5) for segment in ('Upper', 'Lower')]
-    def wave(amount, phase):
-        values = {}
-        for index, key in enumerate(legs):
-            sign = -1 if key.startswith('L') else 1
-            lower = key.endswith('Lower')
-            base = math.sin(phase + index * math.pi / 2) * amount * (0.68 if lower else 1)
-            values[key] = {'rotation': round(sign * base, 4)}
-        return values
-    run_frames = []
-    for t in (0, 0.25, 0.5, 0.75, 1):
-        layers = wave(0.42, t * math.tau)
-        layers['abdomen'] = {'y': 1 if t in (0.25, 0.75) else 0}
-        layers['thorax'] = {'rotation': 0.025 if t < 0.5 else -0.025}
-        run_frames.append({'t': t, 'layers': layers})
-    resting = {key: {'rotation': 0} for key in legs}
-    return {
-        'idle': [{'t': 0, 'layers': {'abdomen': {'y': 0}, 'thorax': {'rotation': -0.015}}}, {'t': 0.5, 'layers': {'abdomen': {'y': 0.8}, 'thorax': {'rotation': 0.02}}}, {'t': 1, 'layers': {'abdomen': {'y': 0}, 'thorax': {'rotation': -0.015}}}],
-        'run': run_frames,
-        'alert': [{'t': 0, 'layers': {'thorax': {'y': -1}, 'fangL': {'rotation': -0.08}, 'fangR': {'rotation': 0.08}}}, {'t': 1, 'layers': {'thorax': {'y': 1}, 'fangL': {'rotation': 0.12}, 'fangR': {'rotation': -0.12}}}],
-        'melee_windup': [{'t': 0, 'layers': {}}, {'t': 1, 'layers': {**wave(0.28, 0.2), 'thorax': {'y': -2, 'rotation': -0.1}, 'fangL': {'rotation': -0.28}, 'fangR': {'rotation': 0.28}}}],
-        'melee_impact': [{'t': 0, 'layers': {**wave(0.28, 0.2), 'thorax': {'y': -2, 'rotation': -0.1}, 'fangL': {'rotation': -0.28}, 'fangR': {'rotation': 0.28}}}, {'t': 0.25, 'layers': {**wave(0.4, 1.7), 'thorax': {'y': 3, 'rotation': 0.16}, 'fangL': {'rotation': 0.48}, 'fangR': {'rotation': -0.48}}}, {'t': 1, 'layers': {**wave(0.34, 1.7), 'thorax': {'y': 2, 'rotation': 0.12}}}],
-        'melee_recovery': [{'t': 0, 'layers': {**wave(0.34, 1.7), 'thorax': {'y': 2, 'rotation': 0.12}}}, {'t': 1, 'layers': {**resting, 'thorax': {'rotation': 0}}}],
-        'leap_windup': [{'t': 0, 'layers': {}}, {'t': 1, 'layers': {**wave(0.3, 0.5), 'abdomen': {'y': -2}, 'thorax': {'y': -3, 'rotation': -0.1}}}],
-        'leap_impact': [{'t': 0, 'layers': {**wave(0.3, 0.5), 'abdomen': {'y': -2}, 'thorax': {'y': -3, 'rotation': -0.1}}}, {'t': 0.3, 'layers': {**wave(0.68, 1.5), 'abdomen': {'y': 3}, 'thorax': {'y': 3, 'rotation': 0.2}}}, {'t': 1, 'layers': {**wave(0.52, 1.5), 'abdomen': {'y': 2}, 'thorax': {'y': 2, 'rotation': 0.14}}}],
-        'leap_recovery': [{'t': 0, 'layers': {**wave(0.52, 1.5), 'abdomen': {'y': 2}, 'thorax': {'y': 2, 'rotation': 0.14}}}, {'t': 1, 'layers': {**resting, 'abdomen': {'y': 0}, 'thorax': {'rotation': 0}}}],
-        'cast_windup': [{'t': 0, 'layers': {}}, {'t': 1, 'layers': {**wave(0.18, 0.2), 'thorax': {'y': -2}, 'fangL': {'rotation': -0.2}, 'fangR': {'rotation': 0.2}}}],
-        'cast_impact': [{'t': 0, 'layers': {**wave(0.18, 0.2), 'thorax': {'y': -2}}}, {'t': 0.45, 'layers': {**wave(0.25, 1.2), 'thorax': {'y': 2}, 'fangL': {'rotation': 0.24}, 'fangR': {'rotation': -0.24}}}, {'t': 1, 'layers': {**wave(0.18, 1.2), 'thorax': {'y': 2}}}],
-        'cast_recovery': [{'t': 0, 'layers': {**wave(0.18, 1.2), 'thorax': {'y': 2}}}, {'t': 1, 'layers': {**resting, 'thorax': {'y': 0}}}],
-        'guard_windup': [{'t': 0, 'layers': {}}, {'t': 1, 'layers': {**wave(0.12, 0.3), 'thorax': {'y': -1}}}],
-        'guard_impact': [{'t': 0, 'layers': {**wave(0.12, 0.3), 'thorax': {'y': -1}}}, {'t': 1, 'layers': {**resting, 'thorax': {'y': 0}}}],
-        'guard_recovery': [{'t': 0, 'layers': {**resting, 'thorax': {'y': 0}}}, {'t': 1, 'layers': {**resting, 'thorax': {'y': 0}}}],
-        'hurt': [{'t': 0, 'layers': {'abdomen': {'rotation': 0.15, 'x': -2}, 'thorax': {'rotation': 0.2}, 'fangL': {'rotation': -0.24}, 'fangR': {'rotation': 0.24}}}, {'t': 1, 'layers': {}}],
-        'stagger': [{'t': 0, 'layers': {'abdomen': {'rotation': 0.26, 'x': -3}, 'thorax': {'rotation': 0.3}, **wave(0.5, 1)}}, {'t': 0.5, 'layers': {'abdomen': {'rotation': -0.18, 'x': 2}, 'thorax': {'rotation': -0.2}, **wave(0.45, 3)}}, {'t': 1, 'layers': {}}],
-        'death': [{'t': 0, 'layers': {**resting, 'abdomen': {'y': 0}}}, {'t': 0.45, 'layers': {**wave(0.75, 0.6), 'abdomen': {'rotation': 1.2, 'y': -4}, 'thorax': {'rotation': 0.8, 'y': -3}}}, {'t': 1, 'layers': {**resting, 'abdomen': {'rotation': 1.45, 'y': -8}, 'thorax': {'rotation': 1.0, 'y': -5}}}],
-    }
-
-
-def make_rat():
-    return {
-        'visualId': 'cretan_cave_rat', 'name': 'Cretan Cave Rat', 'family': 'quadruped', 'worldHeight': 0.72, 'designHeight': 72, 'origin': [48, 63],
-        'attackStyles': {'rat_bite': 'melee', 'rat_leap': 'leap'}, 'clips': rat_clips(),
-        'layers': [
-            layer('tail', 'tail', 'body', (-18, 3), (50, 15), 0),
-            layer('hindUpperL', 'upper_leg', 'body', (-12, 6), (32, 8), 1), layer('hindUpperR', 'upper_leg', 'body', (-7, 6), (32, 8), 2, True),
-            layer('hindLowerL', 'lower_leg', 'hindUpperL', (0, 9), (32, 8), 3), layer('hindLowerR', 'lower_leg', 'hindUpperR', (0, 9), (32, 8), 4, True),
-            layer('body', 'body', 'root', (46, 40), (32, 34), 5),
-            layer('foreUpperL', 'upper_leg', 'body', (12, 4), (32, 8), 6), layer('foreUpperR', 'upper_leg', 'body', (16, 4), (32, 8), 7, True)       'cellSize': CELL,
+        'cellSize': CELL,
         'contactSheetPath': 'docs/previews/R6E_CHARACTER_DIRECTION_SHEET.png',
         'rigs': {rig['visualId']: {**rig, 'fallbackSprite': f"/assets/maze/enemies/{rig['visualId']}.png"} for rig in RIGS},
     }

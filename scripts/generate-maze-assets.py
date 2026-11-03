@@ -215,7 +215,31 @@ def enemy_sprite(name):
         d.rectangle((24,24,40,28),fill=shadow); d.point((29,25),fill=eye)
         d.polygon([(19,33),(44,31),(47,52),(41,58),(22,53)],fill=skin,outline=shadow)
         d.line((42,37,55,17),fill=metal,width=3); d.polygon([(53,18),(59,7),(60,23)],fill=bone)
-        d.rk,width=3)
+        d.rectangle((22,53,28,63),fill=shadow); d.rectangle((38,53,44,63),fill=shadow)
+    else:
+        d.polygon([(20,20),(28,10),(44,12),(49,24),(44,48),(23,48)],fill=skin,outline=bone)
+        d.point((30,22),fill=eye); d.point((38,22),fill=eye)
+        d.rectangle((18,34,48,56),fill=metal)
+        d.rectangle((23,53,29,63),fill=shadow); d.rectangle((37,53,43,63),fill=shadow)
+    im.save(ROOT/'enemies'/f'{name}.png', optimize=True)
+
+for e in ENEMIES: enemy_sprite(e)
+
+def offhand(name):
+    im=Image.new('RGBA',(64,64),(0,0,0,0)); d=ImageDraw.Draw(im)
+    dark=rgb('#201a17'); skin=rgb('#d79d72'); sleeve=rgb('#9b332b'); linen=rgb('#f0e4c6'); bronze=rgb('#b98246'); silver=rgb('#cad3db')
+    if name=='empty':
+        pass
+    elif name=='shield':
+        d.ellipse((6,14,58,66),fill=bronze,outline=dark,width=3)
+        d.ellipse((14,22,50,58),fill=rgb('#7e552d'),outline=rgb('#e2bd72'),width=2)
+    elif name in ('xiphos','kopis'):
+        d.line((18,63,55,20),fill=silver,width=5); d.polygon([(55,20),(61,13),(54,12)],fill=silver)
+        d.line((24,67,14,77),fill=bronze,width=6); d.ellipse((10,75,17,82),fill=bronze)
+    elif name=='dory':
+        d.line((14,74,53,15),fill=rgb('#6d4e2f'),width=6)
+        d.polygon([(50,19),(61,4),(57,24)],fill=silver)
+    elif name=='focus':
         d.ellipse((41,31,57,47),fill=rgb('#e5bd69'),outline=linen,width=2)
         d.polygon([(49,34),(53,41),(49,46),(45,41)],fill=rgb('#fff0bb'))
         d.line((32,54,48,60),fill=linen,width=2)
