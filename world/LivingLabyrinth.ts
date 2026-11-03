@@ -1,4 +1,4 @@
-import { DungeonDecoration, TileType, type DungeonRoom, type MazeLawHazard, type MazeLawId, type MazeLawSpawn, type MazeLawProgress } from '../types';
+import { DungeonDecoration, TileType, type AriadneThreadJunction, type DungeonRoom, type MazeLawHazard, type MazeLawId, type MazeLawSpawn, type MazeLawProgress } from '../types';
 import type { DungeonWorldState } from './DungeonWorld';
 import { getMazeLaw } from '../data/mazeLaws';
 import { reachableCells } from '../services/dungeonPlan';
@@ -89,7 +89,7 @@ export function applyLivingLabyrinth(world: DungeonWorldState, progress: MazeLaw
     } else if (lawId === 'broken_thread') {
       let secret = rooms.find(room => room.type === 'SECRET');
       if (!secret) {
-        const added = addSecretBranch(map, decorations, rooms, world.floor.level, world.floor.seed);
+        const added = addSecretBranch(map, decorations, rooms, world.floor.level, world.floor.seed, world.floor.threadJunctions ?? []);
         if (added) { secret = added; rooms = [...rooms, added]; }
       }
       if (secret) markRoom(lawId, secret);
@@ -188,9 +188,10 @@ function preservesMainRoute(map: number[][], rooms: readonly DungeonRoom[]): boo
   return Boolean(exit && reachable.has(exit)) && anchors.every(key => reachable.has(key));
 }
 
-function addSecretBranch(map: number[][], decorations: number[][], rooms: readonly DungeonRoom[], level: number, seed: number): DungeonRoom | undefined {
+function addSecretBranch(map: number[][], decorations: number[][], rooms: readonly DungeonRoom[], level: number, seed: number, junctions: readonly AriadneThreadJunction[]): DungeonRoom | undefined {
   const directions = [{ x: 1, y: 0 }, { x: -1, y: 0 }, { x: 0, y: 1 }, { x: 0, y: -1 }];
   const protectedCells = new Set(rooms.filter(room => room.type === 'BOSS' || room.type === 'BOSS_ANTECHAMBER').flatMap(room => room.cells.map(cell => `${cell.x},${cell.y}`)));
+  for (const junction of junctions) for (const cell of [...junction.revealRoute.cells, ...junction.sealRoute.cells]) protectedCells.add(`${cell.x},${cell.y}`);
   const openNeighbors = (x: number, y: number) => neighbors(map, x, y).filter(point => [TileType.EMPTY, TileType.EXIT].includes(map[point.y][point.x] as TileType));
   const candidates = reachableCells(map).filter(entry => !protectedCells.has(`${entry.x},${entry.y}`))
     .sort((a, b) => stableHash(`${seed}|broken_thread|${a.x},${a.y}`) - stableHash(`${seed}|broken_thread|${b.x},${b.y}`));

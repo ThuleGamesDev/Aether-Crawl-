@@ -44,7 +44,7 @@ Guardian death, opening/canceling/selecting the Loom, resolving a Law room choic
 
 The future meta-unlock contract uses `maze_of_the_minotaur_meta_v1` and `MazeLawMetaUnlockState`. The nine pilot Laws remain available; future discoveries add draft options only. This wave does not store meta progression or grant permanent stats.
 
-`data/minotaurLawContract.ts` defines a versioned, data-only limit of three Law modifiers for the future Minotaur. It does not add a Minotaur encounter. Wall reshaping remains R6D2 work.
+`data/minotaurLawContract.ts` defines a versioned, data-only limit of three Law modifiers for the future Minotaur. It does not add a Minotaur encounter. R6D2 adds bounded spatial route edits at prepared anchors; the Minotaur encounter remains future work.
 
 ## Review carryover
 
@@ -67,4 +67,4 @@ R6C PR #25 was reviewed before implementation. This wave carries three confirmed
 
 ## Known limits
 
-Bronze Hounds are a tinted variant of the existing quadruped rat sprite, not a newly authored sprite. The meta-unlock state is a contract only; it is not persisted in this wave. No Minotaur fight or free wall reshaping is present.
+Bronze Hounds are a tinted variant of the existing quadruped rat sprite, not a newly authored sprite. The meta-unlock state is a contract only; it is not persisted in this wave. No Minotaur fight or unrestricted wall reshaping is present.

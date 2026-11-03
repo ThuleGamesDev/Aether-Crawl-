@@ -37,7 +37,7 @@ const App: React.FC = () => {
     const result = loadMazeGame();
     setHasSave(Boolean(result.save));
     if (result.invalid) setSaveWarning('A saved expedition is invalid or unavailable. Existing save data has not been overwritten.');
-    else if (result.migrationRequired) setSaveWarning((result.migratedFromR1 ? 'An FPS-R1' : result.migratedFromR6C ? 'An R6C' : result.migratedFromR4B ? 'An FPS-R4B' : result.migratedFromR4A ? 'An FPS-R4A' : 'An FPS-R2A') + ' expedition is ready to migrate when you continue. Its original save is preserved until the new save is written.');
+    else if (result.migrationRequired) setSaveWarning((result.migratedFromR1 ? 'An FPS-R1' : result.migratedFromR6D1 ? 'An R6D1' : result.migratedFromR6C ? 'An R6C' : result.migratedFromR4B ? 'An FPS-R4B' : result.migratedFromR4A ? 'An FPS-R4A' : 'An FPS-R2A') + ' expedition is ready to migrate when you continue. Its original save is preserved until the new save is written.');
     try {
       const savedSensitivity = Number(window.localStorage.getItem('aether_fps_mouse_sensitivity'));
       if (Number.isFinite(savedSensitivity) && savedSensitivity >= 0.001 && savedSensitivity <= 0.006) setMouseSensitivity(savedSensitivity);
@@ -53,6 +53,7 @@ const App: React.FC = () => {
     levelUpOpen: snapshot.levelUpOpen,
     roomOfferOpen: Boolean(snapshot.roomOffer),
     lawOfferOpen: Boolean(snapshot.lawOffer),
+    threadOfferOpen: Boolean(snapshot.threadOffer),
     gameOver: snapshot.gameOver,
   }));
 
@@ -85,6 +86,8 @@ const App: React.FC = () => {
         setHasSave(true);
         setMigrationNotice(result.migratedFromR1
           ? 'FPS-R1 progress migrated into the Labyrinth. The original save remains preserved.'
+          : result.migratedFromR6D1
+            ? 'R6D1 progress migrated safely. The existing floor and route remain intact.'
           : result.migratedFromR4A
             ? 'FPS-R4A item data moved to the expanded inventory safely. Your saved items were preserved.'
             : result.migratedFromR4B
@@ -288,6 +291,7 @@ const App: React.FC = () => {
           <div className="fps-resource-row"><span>STA</span><div className="fps-bar"><i className="fps-stamina-bar" style={{ width: staminaPercent + '%' }} /></div><b>{Math.floor(player.stats.stamina ?? snapshot.derivedStats.maxStamina)}/{Math.floor(snapshot.derivedStats.maxStamina)}</b></div>
           <div className="fps-defense-hint">{defenseLabel}</div>
           <div className="fps-resource-row fps-xp-row"><span>XP</span><div className="fps-bar"><i className="fps-xp-bar" style={{ width: xpPercent + '%' }} /></div><b>{player.stats.xp}/{xpNeeded}</b></div>
+          <div className="fps-thread-resource" aria-label={'Thread Charges ' + (snapshot.world.floor.threadProgress?.charges ?? 0) + ' of ' + (snapshot.world.floor.threadProgress?.maxCharges ?? 3)}><span>THREAD CHARGES</span><b>{snapshot.world.floor.threadProgress?.charges ?? 0}/{snapshot.world.floor.threadProgress?.maxCharges ?? 3}</b></div>
         </div>
         <div className="fps-floor-label">FLOOR {snapshot.world.level}<span>{biomeName(snapshot.world.biome)}</span></div>
         <CompactMinimap snapshot={snapshot} onOpen={() => { runtime.mapOpen = true; runtime.inventoryOpen = false; runtime.cancelHeldActions(); refreshSnapshot(); }} />
@@ -408,6 +412,18 @@ const App: React.FC = () => {
         </>}
       </Overlay>}
 
+      {snapshot.threadOffer && <Overlay title="Ariadne's Thread" onClose={() => { runtime.closeThreadAnchor(); refreshSnapshot(); }} className="fps-overlay-panel-wide">
+        <div className="fps-thread-offer-resource"><span>THREAD CHARGES</span><strong>{snapshot.threadOffer.charges}/{snapshot.threadOffer.maxCharges}</strong></div>
+        <p className="fps-overlay-copy">Choose one prepared passage. The route will settle only after its safety checks pass, and this anchor can be woven once.</p>
+        <div className="fps-thread-choices">{snapshot.threadOffer.choices.map(choice => <button key={choice.routeId} className={'fps-thread-choice ' + choice.risk.toLowerCase()} disabled={!choice.enabled} onClick={() => { runtime.chooseThreadRoute(choice.action); refreshSnapshot(); }}>
+          <span className="fps-thread-route-heading"><b>{choice.arrow}</b><strong>{choice.action === 'REVEAL_PASSAGE' ? 'Reveal Passage' : 'Seal a Passage'}</strong><em>{choice.risk}</em></span>
+          <span className="fps-thread-cost">Cost · {choice.cost} Thread Charge{choice.cost === 1 ? '' : 's'}{choice.healthCost > 0 ? ' + ' + choice.healthCost + ' HP' : ''}</span>
+          <span>{choice.effect}</span>
+          {!choice.enabled && <span className="fps-thread-disabled-reason">{choice.disabledReason}</span>}
+        </button>)}</div>
+        <div className="fps-overlay-actions"><button className="fps-button" onClick={() => { runtime.closeThreadAnchor(); refreshSnapshot(); }}>Return without weaving</button></div>
+      </Overlay>}
+
       {snapshot.gameOver && <Overlay title="Lost to the Labyrinth" onClose={returnToMenu}>
         <p className="fps-overlay-copy">Floor {snapshot.world.level} · Level {player.stats.level}. Your run can be saved before leaving.</p>
         <div className="fps-overlay-actions"><button className="fps-button fps-button-primary" onClick={saveRun}>Save Run</button><button className="fps-button" onClick={returnToMenu}>Main Menu</button></div>
@@ -425,10 +441,12 @@ const DungeonMap: React.FC<{ snapshot: FPSGameSnapshot }> = ({ snapshot }) => <d
   {snapshot.world.map.map((row, z) => row.map((tile, x) => {
     const explored = Boolean(snapshot.world.explored[z]?.[x]);
     const playerCell = Math.floor(snapshot.player.position.x) === x && Math.floor(snapshot.player.position.z) === z;
-    const className = !explored ? 'unseen' : playerCell ? 'player' : tile === 1 ? 'wall' : tile === 3 ? 'exit' : tile === 2 ? 'door' : 'floor';
-    return <i className={'fps-map-cell ' + className} key={x + ':' + z} />;
+    const threadAnchor = explored && (snapshot.world.floor.threadJunctions ?? []).some(junction => junction.anchorPosition.x === x && junction.anchorPosition.y === z
+      && snapshot.world.floor.threadProgress?.anchorStates.some(state => state.junctionId === junction.id && state.discovered));
+    const className = !explored ? 'unseen' : playerCell ? 'player' : threadAnchor ? 'thread-anchor' : tile === 1 ? 'wall' : tile === 3 ? 'exit' : tile === 2 ? 'door' : 'floor';
+    return <i className={'fps-map-cell ' + className} key={x + ':' + z} title={threadAnchor ? 'Discovered Thread Anchor' : undefined} />;
   }))}
-</div><p className="fps-muted">Unexplored rooms stay hidden. The cyan marker is your position; the gold marker is the floor exit.</p></div>;
+</div><p className="fps-muted">Unexplored rooms stay hidden. The cyan marker is your position, the gold marker is the floor exit, and teal marks a discovered Thread Anchor.</p></div>;
 
 const LawReplacementPanel: React.FC<{ progress: MazeLawProgress; pendingLawId: MazeLawId; onReplace: (lawId: MazeLawId) => void; onBack: () => void }> = ({ progress, pendingLawId, onReplace, onBack }) => {
   const ordered = [...progress.activeLaws].sort((a, b) => a.acquiredOrder - b.acquiredOrder);
@@ -449,7 +467,9 @@ const CompactMinimap: React.FC<{ snapshot: FPSGameSnapshot; onOpen: () => void }
     {snapshot.world.map.map((row, z) => row.map((tile, x) => {
       const explored = Boolean(snapshot.world.explored[z]?.[x]);
       const playerCell = Math.floor(snapshot.player.position.x) === x && Math.floor(snapshot.player.position.z) === z;
-      const className = !explored ? 'unseen' : playerCell ? 'player' : tile === 3 ? 'exit' : tile === 2 ? 'door' : tile === 1 ? 'wall' : 'floor';
+      const threadAnchor = explored && (snapshot.world.floor.threadJunctions ?? []).some(junction => junction.anchorPosition.x === x && junction.anchorPosition.y === z
+        && snapshot.world.floor.threadProgress?.anchorStates.some(state => state.junctionId === junction.id && state.discovered));
+      const className = !explored ? 'unseen' : playerCell ? 'player' : threadAnchor ? 'thread-anchor' : tile === 3 ? 'exit' : tile === 2 ? 'door' : tile === 1 ? 'wall' : 'floor';
       return <i className={'fps-map-cell ' + className} key={x + ':' + z} />;
     }))}
   </i>

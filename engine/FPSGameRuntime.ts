@@ -32,6 +32,8 @@ import { normalizeClassPassiveState, recordClassBlock, recordClassDodge, recordC
 import type { EquipmentTransactionResult } from '../services/equipmentRules';
 import { isShieldItem } from '../services/equipmentRules';
 import { abilityPoiseDamage, applyEnemyPoiseDamage, enemyAttackContainsPoint, getEnemyPoiseProfile, initializeEnemyPoise, STAMINA_RULES, tickEnemyPoise } from '../combat/CombatMastery';
+import { awardThreadCharge, buildThreadAnchorOffer, closeThreadAnchor as clearOpenThreadAnchor, createAriadneThreadProgress, openThreadAnchor as markThreadAnchorOpen, planAriadneThreadEdit, type ThreadAnchorOffer, type ThreadEditContext } from '../services/ariadneThread';
+import type { AriadneThreadAction } from '../types';
 
 export interface FPSGameSnapshot {
   player: PlayerCharacter;
@@ -59,6 +61,7 @@ export interface FPSGameSnapshot {
   gameOver: boolean;
   roomOffer: RoomOffer | null;
   lawOffer: MazeLawDraft | null;
+  threadOffer: ThreadAnchorOffer | null;
   prompt: string | null;
   targetEnemy: WorldEnemy | null;
   incomingAttacks: Array<{ id: string; name: string; seconds: number; parryable: boolean; direction: 'FRONT' | 'LEFT' | 'RIGHT' | 'BEHIND' }>;
@@ -91,6 +94,7 @@ export class FPSGameRuntime {
   projectiles: WorldProjectile[] = [];
   loot: WorldLootDrop[] = [];
   roomOffer: RoomOffer | null = null;
+  private threadOffer: ThreadAnchorOffer | null = null;
   paused = false;
   inventoryOpen = false;
   mapOpen = false;
@@ -134,6 +138,8 @@ export class FPSGameRuntime {
     this.updateGuardianDiscovery();
     this.gameOver = this.player.stats.hp <= 0;
     this.levelUpOpen = !this.gameOver && (this.player.skillPoints ?? 0) > 0;
+    const openThreadId = this.world.floor.threadProgress?.openJunctionId;
+    if (openThreadId) this.rebuildThreadOffer(openThreadId);
   }
 
   update(deltaSeconds: number, input: InputFrame): void {
@@ -149,7 +155,8 @@ export class FPSGameRuntime {
       if (this.toastSeconds === 0) this.toast = '';
     }
     if (input.pausePressed) {
-      if (this.world.floor.lawProgress?.draft?.open) this.closeLawOffer();
+      if (this.threadOffer) this.closeThreadAnchor();
+      else if (this.world.floor.lawProgress?.draft?.open) this.closeLawOffer();
       else if (this.levelUpOpen) { this.levelUpOpen = false; this.cancelHeldActions(); }
       else if (this.inventoryOpen || this.mapOpen) { this.inventoryOpen = false; this.mapOpen = false; }
       else {
@@ -167,7 +174,7 @@ export class FPSGameRuntime {
       this.inventoryOpen = false;
       if (this.mapOpen) this.cancelHeldActions();
     }
-    if (this.paused || this.inventoryOpen || this.mapOpen || this.levelUpOpen || this.roomOffer || this.world.floor.lawProgress?.draft?.open || this.gameOver) return;
+    if (this.paused || this.inventoryOpen || this.mapOpen || this.levelUpOpen || this.roomOffer || this.threadOffer || this.world.floor.lawProgress?.draft?.open || this.gameOver) return;
 
     this.tickLawHazards(dt);
 
@@ -903,7 +910,14 @@ export class FPSGameRuntime {
       this.addLog(enemy.name + ' defeated. +' + enemy.xpReward + ' XP.');
       if (enemy.definitionId === this.world.floor.guardianId) {
         guardianDefeated = true;
-        this.world = { ...this.world, floor: { ...this.world.floor, guardianState: 'DESCENT_UNLOCKED' } };
+        const threadProgress = this.world.floor.threadProgress ?? createAriadneThreadProgress(this.world.floor.threadJunctions ?? []);
+        const earnedThreadCharge = threadProgress.charges < threadProgress.maxCharges;
+        this.world = { ...this.world, floor: {
+          ...this.world.floor,
+          guardianState: 'DESCENT_UNLOCKED',
+          threadProgress: awardThreadCharge(threadProgress, this.world.floor.threadJunctions ?? []),
+        } };
+        if (earnedThreadCharge) this.addLog('The Guardian leaves one Thread Charge behind.');
       }
       if (enemy.roomId && !this.enemies.some(other => other.id !== enemy.id && other.roomId === enemy.roomId && other.health > 0)) {
         this.world = { ...this.world, floor: { ...this.world.floor, rooms: this.world.floor.rooms.map(room => room.id === enemy.roomId ? { ...room, resolved: true, visited: true, discovered: true } : room) } };
@@ -952,6 +966,7 @@ export class FPSGameRuntime {
     }
     const target = findLookTarget(this.world, this.player);
     if (!target) { this.addToast('Nothing to interact with.'); return; }
+    if (target.kind === 'THREAD_ANCHOR') { this.openThreadAnchor(target.junctionId); return; }
     if (target.kind === 'DOOR') {
       const map = this.world.map.map(row => [...row]);
       map[target.z][target.x] = 0;
@@ -982,6 +997,92 @@ export class FPSGameRuntime {
         return;
       }
     }
+  }
+
+  openThreadAnchor(junctionId: string): boolean {
+    if (this.combat.action || this.chargeStartedAt !== null || this.controllerState.guarding) {
+      this.addToast('Finish your active action before opening the Thread Anchor.');
+      return false;
+    }
+    const progress = this.world.floor.threadProgress;
+    const nextProgress = progress && markThreadAnchorOpen(progress, junctionId);
+    if (!nextProgress) { this.addToast('This Thread Anchor is unavailable.'); return false; }
+    this.world = { ...this.world, floor: { ...this.world.floor, threadProgress: nextProgress } };
+    this.cancelHeldActions();
+    this.rebuildThreadOffer(junctionId);
+    if (!this.threadOffer) {
+      this.world = { ...this.world, floor: { ...this.world.floor, threadProgress: clearOpenThreadAnchor(nextProgress) } };
+      this.addToast('This Thread Anchor has no valid prepared routes.');
+      return false;
+    }
+    this.persistRun();
+    return true;
+  }
+
+  closeThreadAnchor(): void {
+    const progress = this.world.floor.threadProgress;
+    if (progress?.openJunctionId) {
+      this.world = { ...this.world, floor: { ...this.world.floor, threadProgress: clearOpenThreadAnchor(progress) } };
+      this.persistRun();
+    }
+    this.threadOffer = null;
+    this.cancelHeldActions();
+  }
+
+  chooseThreadRoute(action: AriadneThreadAction): boolean {
+    const offer = this.threadOffer;
+    if (!offer) return false;
+    const choice = offer.choices.find(candidate => candidate.action === action);
+    if (!choice) return false;
+    if (!choice.enabled) { this.addToast(choice.disabledReason ?? 'That route cannot be woven now.'); return false; }
+    const plan = planAriadneThreadEdit(this.threadEditContext(offer.junctionId, action));
+    if (!plan.ok || !plan.map || !plan.progress || !plan.route || !plan.junction) {
+      this.addToast(plan.reason ?? 'The route changed before the weave could settle.');
+      this.rebuildThreadOffer(offer.junctionId);
+      return false;
+    }
+
+    const maxHealth = calculateDerivedStats(this.player).maxHealth;
+    this.player = { ...this.player, stats: { ...this.player.stats, hp: Math.max(1, Math.min(maxHealth, this.player.stats.hp - (plan.healthCost ?? 0))) } };
+    this.world = {
+      ...this.world,
+      map: plan.map,
+      decorations: plan.decorations ?? this.world.decorations,
+      worldRevision: this.world.worldRevision + 1,
+      floor: { ...this.world.floor, threadProgress: plan.progress },
+    };
+    this.enemies = this.enemies.map(enemy => ({ ...enemy, pathStep: undefined, pathTargetCell: undefined, pathRefreshSeconds: 0 }));
+    this.threadOffer = null;
+    this.cancelHeldActions();
+    const actionName = action === 'REVEAL_PASSAGE' ? 'revealed' : 'sealed';
+    const threadDirection = plan.route.direction === 'NORTH' ? { x: 0, z: -1 }
+      : plan.route.direction === 'SOUTH' ? { x: 0, z: 1 }
+        : plan.route.direction === 'EAST' ? { x: 1, z: 0 } : { x: -1, z: 0 };
+    this.visualEvents.push({ kind: 'impact', effectId: 'ariadne_thread', position: { x: plan.junction.anchorPosition.x + 0.5, y: 0.58, z: plan.junction.anchorPosition.y + 0.5 }, color: '#60d8ce', direction: threadDirection, scale: 0.9, sourceId: 'ariadnes_thread_weave' });
+    this.addToast('Thread passage ' + actionName + ' to the ' + plan.route.direction.toLowerCase() + '.');
+    this.addLog('Ariadne’s Thread ' + actionName + ' a prepared passage.');
+    this.persistRun();
+    return true;
+  }
+
+  private threadEditContext(junctionId: string, action: AriadneThreadAction): ThreadEditContext {
+    return {
+      map: this.world.map,
+      decorations: this.world.decorations,
+      floor: this.world.floor,
+      junctionId,
+      action,
+      lawIds: this.world.floor.lawProgress?.activeLaws.map(law => law.lawId) ?? [],
+      player: { x: this.player.position.x, z: this.player.position.z, health: this.player.stats.hp, maxHealth: calculateDerivedStats(this.player).maxHealth },
+      enemies: this.enemies.map(enemy => ({ x: enemy.position.x, z: enemy.position.z, health: enemy.health })),
+      projectiles: this.projectiles.map(projectile => ({ x: projectile.position.x, z: projectile.position.z })),
+      loot: this.loot.map(drop => ({ x: drop.position.x, z: drop.position.z })),
+      playerActionActive: Boolean(this.combat.action || this.chargeStartedAt !== null || this.controllerState.guarding),
+    };
+  }
+
+  private rebuildThreadOffer(junctionId: string): void {
+    this.threadOffer = buildThreadAnchorOffer(this.threadEditContext(junctionId, 'REVEAL_PASSAGE'));
   }
 
   private attemptGate(x: number, z: number, room: DungeonRoom | undefined, isSecret: boolean): void {
@@ -1176,7 +1277,12 @@ export class FPSGameRuntime {
     if (!progress.draft?.selectedLawId) { this.addToast('Choose a Law before descending.'); return; }
     const nextWorldBase = createDungeonWorld(this.world.level + 1, randomSeed());
     const inheritedProgress = { ...progress, draft: undefined };
-    const nextWorld = applyLivingLabyrinth(nextWorldBase, inheritedProgress);
+    const nextWorldWithLaws = applyLivingLabyrinth(nextWorldBase, inheritedProgress);
+    const charges = this.world.floor.threadProgress?.charges ?? 2;
+    const nextWorld: DungeonWorldState = { ...nextWorldWithLaws, floor: {
+      ...nextWorldWithLaws.floor,
+      threadProgress: createAriadneThreadProgress(nextWorldWithLaws.floor.threadJunctions ?? [], charges),
+    } };
     const yaw = spawnFacingAngle(nextWorld.map, { x: 1, y: 1 });
     this.world = { ...markExplored(nextWorld, 1.5, 1.5), worldRevision: this.world.worldRevision + 1 };
     this.player = { ...this.player, position: { x: 1.5, y: 0, z: 1.5 }, rotation: { yaw, pitch: this.player.rotation.pitch } };
@@ -1237,6 +1343,10 @@ export class FPSGameRuntime {
     if (drop) return 'E  Collect ' + drop.item.name + ' · ' + drop.item.rarity;
     const target = findLookTarget(this.world, this.player);
     if (!target) return null;
+    if (target.kind === 'THREAD_ANCHOR') {
+      const progress = this.world.floor.threadProgress;
+      return 'E  Thread Anchor · ' + (progress?.charges ?? 0) + '/' + (progress?.maxCharges ?? 3) + ' Charges';
+    }
     if (target.kind === 'DOOR') return 'E  Open door';
     if (target.kind === 'LOCKED') return this.world.floor.keys > 0 ? 'E  Use Ariadne’s Token' : 'E  Force locked gate';
     if (target.kind === 'SECRET') return 'E  Search for a secret';
@@ -1385,7 +1495,7 @@ export class FPSGameRuntime {
   }
 
   getRenderState(): FPSRenderState {
-    return { world: this.world, player: this.player, enemies: this.enemies, projectiles: this.projectiles, loot: this.loot, action: this.combat.action, isMoving: this.isMoving, guarding: this.controllerState.guarding, paused: this.paused || this.inventoryOpen || this.mapOpen || this.levelUpOpen || Boolean(this.roomOffer) || Boolean(this.world.floor.lawProgress?.draft?.open) || this.gameOver, cameraBob: this.cameraBob, viewmodelEvent: this.viewmodelEvent, viewmodelEventProgress: this.viewmodelEventDuration > 0 ? this.viewmodelEventSeconds / this.viewmodelEventDuration : 0, events: this.visualEvents.splice(0) };
+    return { world: this.world, player: this.player, enemies: this.enemies, projectiles: this.projectiles, loot: this.loot, action: this.combat.action, isMoving: this.isMoving, guarding: this.controllerState.guarding, paused: this.paused || this.inventoryOpen || this.mapOpen || this.levelUpOpen || Boolean(this.roomOffer) || Boolean(this.threadOffer) || Boolean(this.world.floor.lawProgress?.draft?.open) || this.gameOver, cameraBob: this.cameraBob, viewmodelEvent: this.viewmodelEvent, viewmodelEventProgress: this.viewmodelEventDuration > 0 ? this.viewmodelEventSeconds / this.viewmodelEventDuration : 0, events: this.visualEvents.splice(0) };
   }
 
   private setViewmodelEvent(event: NonNullable<FPSRenderState['viewmodelEvent']>, durationSeconds: number): void {
@@ -1435,7 +1545,8 @@ export class FPSGameRuntime {
       gameOver: this.gameOver,
       roomOffer: this.roomOffer,
       lawOffer: this.world.floor.lawProgress?.draft?.open ? this.world.floor.lawProgress.draft : null,
-      prompt: this.paused || this.inventoryOpen || this.mapOpen || this.levelUpOpen || this.roomOffer || this.world.floor.lawProgress?.draft?.open ? null : this.getPrompt(),
+      threadOffer: this.threadOffer,
+      prompt: this.paused || this.inventoryOpen || this.mapOpen || this.levelUpOpen || this.roomOffer || this.threadOffer || this.world.floor.lawProgress?.draft?.open ? null : this.getPrompt(),
       targetEnemy: this.getTargetEnemy(),
       incomingAttacks,
       parryWindowSeconds: this.controllerState.parryWindowSeconds,

@@ -332,6 +332,45 @@ export interface SaveData {
 export type DungeonRoomType = 'NORMAL' | 'COMBAT' | 'ELITE' | 'TREASURE' | 'SHRINE' | 'TRAP' | 'SECRET' | 'REST' | 'LOCKED' | 'EVENT' | 'BOSS_ANTECHAMBER' | 'BOSS';
 export type MazeLawId = 'hall_of_echoes' | 'vault_of_tyche' | 'pillars_of_daedalus' | 'bronze_hounds' | 'arachnes_kin' | 'shades_of_styx' | 'oath_of_ares' | 'serpents_bargain' | 'broken_thread';
 export type MazeLawCategory = 'ROOM' | 'CREATURE' | 'CURSE';
+export type AriadneThreadAction = 'REVEAL_PASSAGE' | 'SEAL_PASSAGE';
+export type AriadneThreadDirection = 'NORTH' | 'EAST' | 'SOUTH' | 'WEST';
+export interface AriadneThreadRoute {
+  id: string;
+  action: AriadneThreadAction;
+  direction: AriadneThreadDirection;
+  fromRoomId: string;
+  toRoomId: string;
+  cells: Position[];
+}
+export interface AriadneThreadJunction {
+  id: string;
+  anchorRoomId: string;
+  anchorPosition: Position;
+  revealRoute: AriadneThreadRoute;
+  sealRoute: AriadneThreadRoute;
+}
+export interface AriadneThreadAnchorState {
+  junctionId: string;
+  discovered: boolean;
+  used: boolean;
+}
+export interface AriadneThreadJunctionChoice {
+  junctionId: string;
+  action: AriadneThreadAction;
+  routeId: string;
+  chargeCost: number;
+  healthCost: number;
+  topologyRevision: number;
+}
+export interface AriadneThreadProgress {
+  version: 1;
+  charges: number;
+  maxCharges: 3;
+  anchorStates: AriadneThreadAnchorState[];
+  junctionChoices: AriadneThreadJunctionChoice[];
+  topologyRevision: number;
+  openJunctionId?: string;
+}
 export interface MazeLawDraft {
   version: 1;
   offerId: string;
@@ -397,6 +436,8 @@ export interface ArchitecturalRoom {
   landmarkIds: string[];
   /** Reserved for later ruleset-specific content such as R6D1; no such content is authored in R6A. */
   roomArchetype?: string;
+  /** Stable identifier for a prepared Ariadne's Thread anchor room. */
+  threadJunctionId?: string;
 }
 
 export interface DungeonRoom {
@@ -433,6 +474,10 @@ export interface FloorState {
   lawSpawns?: MazeLawSpawn[];
   lawHazards?: MazeLawHazard[];
   manifestedLawIds?: MazeLawId[];
+  /** Seeded route-edit options prepared by the architectural floor generator. */
+  threadJunctions?: AriadneThreadJunction[];
+  /** Run-owned charges and per-floor, versioned route-edit history. */
+  threadProgress?: AriadneThreadProgress;
 }
 
 /** Player-owned state for the active solo action-RPG runtime. */

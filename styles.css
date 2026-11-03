@@ -173,6 +173,8 @@ canvas {
 .fps-xp-bar { background: linear-gradient(90deg, #8b6428, #e3bd63); }
 .fps-xp-row { opacity: .78; }
 .fps-defense-hint { margin-top: 5px; color: #a9c9aa; font: 8px ui-monospace, monospace; letter-spacing: .04em; }
+.fps-thread-resource { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 5px; border-top: 1px solid rgba(86,216,206,.2); padding-top: 4px; color: #8bc9c0; font: 8px ui-monospace, monospace; letter-spacing: .08em; }
+.fps-thread-resource b { color: #c2eee7; font-size: 9px; font-weight: 600; }
 .fps-floor-label { padding-top: 5px; text-align: center; color: #e2c58e; font: bold 12px ui-monospace, monospace; letter-spacing: .14em; text-shadow: 0 2px 5px #000; }
 .fps-floor-label span { display: block; margin-top: 4px; color: #afa293; font: 9px ui-monospace, monospace; letter-spacing: .18em; }
 .fps-top-actions { display: flex; gap: 6px; pointer-events: auto; }
@@ -400,10 +402,28 @@ canvas {
 .fps-law-category { width: fit-content; border: 1px solid #735c41; color: #d0ad73; padding: 3px 7px; font-size: 9px; letter-spacing: .13em; }
 .fps-law-capacity { color: #aaa092; font-size: 11px; line-height: 1.5; }
 .fps-law-replacement { display: grid; gap: 10px; }
+.fps-thread-offer-resource { display: flex; justify-content: space-between; align-items: center; gap: 12px; border: 1px solid rgba(86,216,206,.34); background: rgba(26,72,68,.16); padding: 10px 12px; color: #9ad9d1; font: 9px ui-monospace, monospace; letter-spacing: .12em; }
+.fps-thread-offer-resource strong { color: #d3f4ed; font-size: 13px; }
+.fps-thread-choices { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 10px; }
+.fps-thread-choice { display: grid; align-content: start; gap: 10px; min-width: 0; min-height: 150px; border: 1px solid rgba(86,216,206,.4); background: linear-gradient(145deg, rgba(25,53,51,.75), rgba(11,13,15,.95)); padding: 13px; color: #d9d3c7; text-align: left; cursor: pointer; touch-action: manipulation; }
+.fps-thread-choice:hover:not(:disabled) { border-color: #73dfd4; background: linear-gradient(145deg, rgba(36,79,75,.84), rgba(11,13,15,.96)); }
+.fps-thread-choice.reward { border-color: rgba(220,181,103,.58); }
+.fps-thread-choice.locked { border-color: rgba(175,101,92,.45); }
+.fps-thread-choice:disabled { opacity: .66; cursor: not-allowed; }
+.fps-thread-route-heading { display: flex; align-items: center; gap: 9px; }
+.fps-thread-route-heading b { display: grid; place-items: center; flex: 0 0 34px; width: 34px; height: 34px; border: 1px solid rgba(86,216,206,.45); color: #8ae0d6; font: bold 21px ui-monospace, monospace; }
+.fps-thread-route-heading strong { color: #f0e4d1; font: bold 14px Georgia, serif; }
+.fps-thread-route-heading em { margin-left: auto; border: 1px solid rgba(255,255,255,.17); padding: 3px 5px; color: #b8d5cf; font: 7px ui-monospace, monospace; font-style: normal; letter-spacing: .08em; }
+.fps-thread-choice.reward .fps-thread-route-heading em { color: #e5cb8d; border-color: rgba(220,181,103,.36); }
+.fps-thread-choice.locked .fps-thread-route-heading em { color: #dfa79c; border-color: rgba(175,101,92,.38); }
+.fps-thread-cost { color: #a9d5cd; font: 9px ui-monospace, monospace; }
+.fps-thread-disabled-reason { color: #d6a99e; font: 9px ui-monospace, monospace; line-height: 1.45; }
 
 @media (max-width: 760px) {
   .fps-law-cards { grid-template-columns: 1fr; }
   .fps-law-card { min-height: 0; }
+  .fps-thread-choices { grid-template-columns: 1fr; }
+  .fps-thread-choice { min-height: 0; }
 }
 .fps-map-wrap { display: grid; justify-items: center; gap: 14px; }
 .fps-map-grid { display: grid; width: min(100%, 500px); aspect-ratio: 1; border: 2px solid #5a4c3c; background: #111; gap: 1px; padding: 2px; }
@@ -413,6 +433,7 @@ canvas {
 .fps-map-cell.door { background: #b17b44; }
 .fps-map-cell.exit { background: #d2ab63; box-shadow: 0 0 6px #d2ab63; }
 .fps-map-cell.player { background: #63d9ed; box-shadow: 0 0 7px #63d9ed; }
+.fps-map-cell.thread-anchor { background: #55c9be; outline: 1px solid #b2f4e8; box-shadow: 0 0 6px rgba(85,201,190,.8); }
 .fps-renderer-error { position: absolute; z-index: 30; inset: 0; display: grid; place-items: center; padding: 20px; background: #0c0b0e; }
 .fps-renderer-error > div { width: min(100%, 560px); border: 1px solid #8b5f45; background: #171315; padding: 28px; }
 .fps-renderer-error h2 { color: #ece1d0; font: 27px Georgia, serif; }

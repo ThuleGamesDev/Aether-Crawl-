@@ -1,4 +1,4 @@
-import { DungeonDecoration, TileType, type ArchitecturalRoom, type ArchitecturalRoomShape, type FloorState, type Position } from '../types';
+import { DungeonDecoration, TileType, type AriadneThreadJunction, type ArchitecturalRoom, type ArchitecturalRoomShape, type FloorState, type Position } from '../types';
 import { floorRandom } from './floorRandom';
 import { findWallMount } from '../world/architecture';
 
@@ -19,6 +19,7 @@ export interface LabyrinthLayout {
   decorations: number[][];
   exit: Position;
   architectureRooms: ArchitecturalRoom[];
+  threadJunctions: AriadneThreadJunction[];
 }
 
 const PASSAGE_SHAPES = new Set<ArchitecturalRoomShape>(['WIDE_PASSAGE', 'NARROW_PASSAGE']);
@@ -33,6 +34,7 @@ export function generateLabyrinthLayout(mapSize: number, seed: number, level: nu
   const map = Array.from({ length: mapSize }, () => Array<number>(mapSize).fill(TileType.WALL));
   const decorations = Array.from({ length: mapSize }, () => Array<number>(mapSize).fill(0));
   const centers = [3, Math.floor((mapSize - 1) / 2), mapSize - 5];
+  const threadEnabled = level >= 2 && level <= 5;
   const innerShapes: ArchitecturalRoomShape[] = shuffle([
     'HALL', 'GALLERY', 'CROSSROADS', 'PILLARED_HALL', 'ROTUNDA', 'GALLERY', 'HALL',
   ], random);
@@ -44,6 +46,11 @@ export function generateLabyrinthLayout(mapSize: number, seed: number, level: nu
     const isArena = row === 2 && column === 2;
     const roomShape: ArchitecturalRoomShape = isEntry ? 'ENTRY_HALL' : isArena ? 'GUARDIAN_ARENA' : innerShapes[shapeIndex++];
     let [width, depth] = dimensionsFor(roomShape, random, guardianArenaRadius);
+    // Preserve a one-cell separator around the anchor chamber so each reserved Thread route owns real wall cells.
+    if (threadEnabled && row === 1 && column === 1) { width = Math.min(width, 5); depth = Math.min(depth, 5); }
+    // Keep a one-cell separator around all four anchor approaches, so each reserved route owns real wall cells.
+    if (threadEnabled && ((row === 0 && column === 1) || (row === 2 && column === 1))) depth = Math.min(depth, 5);
+    if (threadEnabled && ((row === 1 && column === 0) || (row === 1 && column === 2))) width = Math.min(width, 5);
     // Keep a solid limestone separator around the Guardian arena so its tree corridor is the only entrance.
     if (row === 1 && column === 2) depth = Math.min(depth, 5);
     if (row === 2 && column === 1) width = Math.min(width, 5);
@@ -74,16 +81,26 @@ export function generateLabyrinthLayout(mapSize: number, seed: number, level: nu
       id: `arch_${level}_${seed >>> 0}_${nodes.length}`,
       cells: roomCells,
       roomShape,
-      combatSuitability: isEntry ? 'LIMITED' : 'SUITABLE',
+      combatSuitability: isEntry ? 'LIMITED' : level >= 2 && row === 1 && column === 1 ? 'NONE' : 'SUITABLE',
       lightingTheme: lightingFor(roomShape, row, column),
       landmarkIds: landmarksFor(roomShape),
     };
     nodes.push({ row, column, centerX, centerZ, minX, maxX, minZ, maxZ, room });
   }
 
-  const treeEdges = buildSpanningTree(random);
+  const center = { row: 1, column: 1 };
+  const treeEdges = buildSpanningTree(random, threadEnabled ? 2 : Number.POSITIVE_INFINITY);
   const treeKeys = new Set(treeEdges.map(edgeKey));
   const edges = [...treeEdges];
+  let threadSealEdge: ReturnType<typeof centerEdges>[number] | undefined;
+  let threadRevealEdge: ReturnType<typeof centerEdges>[number] | undefined;
+  if (threadEnabled) {
+    const uncarvedCenterEdges = centerEdges(center).filter(edge => !treeKeys.has(edgeKey(edge)));
+    if (uncarvedCenterEdges.length < 2) throw new Error('The architectural center could not reserve two safe Thread routes.');
+    threadSealEdge = uncarvedCenterEdges[0];
+    threadRevealEdge = uncarvedCenterEdges[1];
+    edges.push(threadSealEdge);
+  }
   for (let row = 0; row < 3; row += 1) for (let column = 0; column < 3; column += 1) {
     const from = { row, column };
     for (const [dc, dr] of [[1, 0], [0, 1]]) {
@@ -91,18 +108,22 @@ export function generateLabyrinthLayout(mapSize: number, seed: number, level: nu
       if (next.row >= 3 || next.column >= 3) continue;
       const edge = [from, next] as const;
       const touchesGuardian = from.row === 2 && from.column === 2 || next.row === 2 && next.column === 2;
-      if (!treeKeys.has(edgeKey(edge)) && !touchesGuardian && random() < 0.38) edges.push(edge);
+      if (!treeKeys.has(edgeKey(edge)) && !touchesGuardian && !edges.some(existing => edgeKey(existing) === edgeKey(edge))
+        && edgeKey(edge) !== (threadRevealEdge && edgeKey(threadRevealEdge)) && random() < 0.38) edges.push(edge);
     }
   }
 
   const corridorRooms: ArchitecturalRoom[] = [];
   const corridorCellsUsed = new Set<string>();
+  const passageCellsByEdge = new Map<string, Position[]>();
   for (const edge of edges) {
     const a = nodes[edge[0].row * 3 + edge[0].column];
     const b = nodes[edge[1].row * 3 + edge[1].column];
     const optionalLoop = !treeKeys.has(edgeKey(edge));
-    const width = optionalLoop && random() < 0.16 ? 1 : random() < 0.5 ? 2 : 3;
+    const threadSeal = Boolean(threadSealEdge && edgeKey(edge) === edgeKey(threadSealEdge));
+    const width = threadSeal ? 1 : optionalLoop && random() < 0.16 ? 1 : random() < 0.5 ? 2 : 3;
     const corridorCells = carveConnection(map, a, b, width);
+    passageCellsByEdge.set(edgeKey(edge), corridorCells.map(cell => ({ ...cell })));
     const ownedCells = corridorCells.filter(cell => {
       const key = cell.x + ',' + cell.y;
       if (corridorCellsUsed.has(key)) return false;
@@ -119,11 +140,48 @@ export function generateLabyrinthLayout(mapSize: number, seed: number, level: nu
     });
   }
 
+  const threadJunctions: AriadneThreadJunction[] = [];
+  if (threadEnabled && threadSealEdge && threadRevealEdge) {
+    const anchorRoom = nodes[4].room;
+    const anchorPosition = anchorRoom.cells.filter(cell => map[cell.y]?.[cell.x] === TileType.EMPTY)
+      .sort((a, b) => Math.hypot(a.x - nodes[4].centerX, a.y - nodes[4].centerZ) - Math.hypot(b.x - nodes[4].centerX, b.y - nodes[4].centerZ)
+        || a.y - b.y || a.x - b.x)[0];
+    const revealOther = otherEndpoint(threadRevealEdge, center);
+    const revealMap = map.map(row => [...row]);
+    const revealRouteCells = carveConnection(revealMap, nodes[4], nodes[revealOther.row * 3 + revealOther.column], 1);
+    const sealRouteCells = passageCellsByEdge.get(edgeKey(threadSealEdge)) ?? [];
+    if (!anchorPosition || !revealRouteCells.length || !sealRouteCells.length) throw new Error('The architectural center did not produce two editable Thread passages (anchor=' + Boolean(anchorPosition) + ', reveal=' + revealRouteCells.length + ', seal=' + sealRouteCells.length + ').');
+    const junctionId = `thread_${level}_${seed >>> 0}_0`;
+    anchorRoom.threadJunctionId = junctionId;
+    const directionFor = (edge: ReturnType<typeof centerEdges>[number]): AriadneThreadJunction['revealRoute']['direction'] => {
+      const other = otherEndpoint(edge, center);
+      return other.row < center.row ? 'NORTH' : other.row > center.row ? 'SOUTH' : other.column < center.column ? 'WEST' : 'EAST';
+    };
+    const route = (edge: ReturnType<typeof centerEdges>[number], action: 'REVEAL_PASSAGE' | 'SEAL_PASSAGE', cells: Position[]) => {
+      const other = otherEndpoint(edge, center);
+      return {
+        id: `thread_route_${level}_${seed >>> 0}_0_${action.toLowerCase()}`,
+        action,
+        direction: directionFor(edge),
+        fromRoomId: anchorRoom.id,
+        toRoomId: nodes[other.row * 3 + other.column].room.id,
+        cells: cells.map(cell => ({ ...cell })),
+      };
+    };
+    threadJunctions.push({
+      id: junctionId,
+      anchorRoomId: anchorRoom.id,
+      anchorPosition: { ...anchorPosition },
+      revealRoute: route(threadRevealEdge, 'REVEAL_PASSAGE', revealRouteCells),
+      sealRoute: route(threadSealEdge, 'SEAL_PASSAGE', sealRouteCells),
+    });
+  }
+
   const start: Position = { x: 1, y: 1 };
   const exit = { x: centers[2], y: centers[2] };
   map[start.y][start.x] = TileType.EMPTY;
   map[exit.y][exit.x] = TileType.EXIT;
-  return { map, decorations, exit, architectureRooms: [...nodes.map(node => node.room), ...corridorRooms] };
+  return { map, decorations, exit, architectureRooms: [...nodes.map(node => node.room), ...corridorRooms], threadJunctions };
 }
 
 /** Adds semantic room metadata to legacy-independent spatial areas for gameplay and rendering consumers. */
@@ -252,27 +310,46 @@ function landmarksFor(shape: ArchitecturalRoomShape): string[] {
   return [];
 }
 
-function buildSpanningTree(random: () => number): Array<readonly [{ row: number; column: number }, { row: number; column: number }]> {
+function buildSpanningTree(random: () => number, maxCenterDegree = Number.POSITIVE_INFINITY): Array<readonly [{ row: number; column: number }, { row: number; column: number }]> {
   const start = { row: 0, column: 0 };
   const visited = new Set([nodeKey(start)]);
   const stack = [start];
   const edges: Array<readonly [{ row: number; column: number }, { row: number; column: number }]> = [];
+  let centerDegree = 0;
   while (stack.length) {
     const current = stack[stack.length - 1];
     const neighbors = CARDINALS
       .map(([dc, dr]) => ({ row: current.row + dr, column: current.column + dc }))
       .filter(next => next.row >= 0 && next.row < 3 && next.column >= 0 && next.column < 3
-        && !(next.row === 2 && next.column === 2) && !visited.has(nodeKey(next)));
+        && !(next.row === 2 && next.column === 2) && !visited.has(nodeKey(next))
+        && (current.row !== 1 || current.column !== 1 || centerDegree < maxCenterDegree)
+        && (next.row !== 1 || next.column !== 1 || centerDegree < maxCenterDegree));
     if (!neighbors.length) { stack.pop(); continue; }
     const next = neighbors[Math.floor(random() * neighbors.length)];
     visited.add(nodeKey(next));
     edges.push([current, next]);
+    if (current.row === 1 && current.column === 1 || next.row === 1 && next.column === 1) centerDegree += 1;
     stack.push(next);
   }
+  if (visited.size !== 8) throw new Error('The architectural spanning tree did not connect every chamber.');
   const guardianParents = [{ row: 1, column: 2 }, { row: 2, column: 1 }];
   const guardianParent = guardianParents[Math.floor(random() * guardianParents.length)];
   edges.push([guardianParent, { row: 2, column: 2 }]);
   return edges;
+}
+
+function centerEdges(center: { row: number; column: number }): Array<readonly [{ row: number; column: number }, { row: number; column: number }]> {
+  return CARDINALS
+    .map(([dc, dr]) => ({ row: center.row + dr, column: center.column + dc }))
+    .filter(next => next.row >= 0 && next.row < 3 && next.column >= 0 && next.column < 3)
+    .map(next => [center, next] as const);
+}
+
+function otherEndpoint(
+  edge: readonly [{ row: number; column: number }, { row: number; column: number }],
+  center: { row: number; column: number },
+): { row: number; column: number } {
+  return edge[0].row === center.row && edge[0].column === center.column ? edge[1] : edge[0];
 }
 
 function carveConnection(map: number[][], a: ChamberNode, b: ChamberNode, width: number): Position[] {
