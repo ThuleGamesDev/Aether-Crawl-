@@ -26,6 +26,11 @@ export interface CharacterRigLayerDefinition {
   order: number;
   flipX: boolean;
   cell: [number, number];
+  viewCells?: {
+    front: [number, number];
+    threeQuarter: [number, number];
+    back: [number, number];
+  };
 }
 
 export interface CharacterRigDefinition {
@@ -60,7 +65,7 @@ export function getCharacterRigDefinition(visualId: string): CharacterRigDefinit
 
 export function validateCharacterRigManifest(manifest: CharacterRigManifest = CHARACTER_RIG_MANIFEST): string[] {
   const issues: string[] = [];
-  if (manifest.schemaVersion !== 1) issues.push('Unsupported character rig schema version.');
+  if (manifest.schemaVersion !== 2) issues.push('Unsupported character rig schema version.');
   if (!manifest.atlasPath.startsWith('/assets/')) issues.push('Atlas path must point to a local public asset.');
   if (manifest.atlasWidth <= 0 || manifest.atlasHeight <= 0 || manifest.cellSize <= 0) issues.push('Atlas dimensions must be positive.');
   if (!Object.keys(manifest.rigs).length) issues.push('Character rig manifest is empty.');
@@ -79,6 +84,16 @@ export function validateCharacterRigManifest(manifest: CharacterRigManifest = CH
       byId.set(layer.id, layer);
       const [x, y] = layer.cell;
       if (x < 0 || y < 0 || x + manifest.cellSize > manifest.atlasWidth || y + manifest.cellSize > manifest.atlasHeight) issues.push(prefix + `atlas bounds exceeded by ${layer.id}.`);
+      if (['humanoid', 'heavyHumanoid', 'caster'].includes(rig.family)) {
+        if (!layer.viewCells || !layer.viewCells.front || !layer.viewCells.threeQuarter || !layer.viewCells.back) {
+          issues.push(prefix + `${layer.id} is missing a front, three-quarter, or back view cell.`);
+        } else {
+          for (const [view, [viewX, viewY]] of Object.entries(layer.viewCells)) {
+            if (viewX < 0 || viewY < 0 || viewX + manifest.cellSize > manifest.atlasWidth || viewY + manifest.cellSize > manifest.atlasHeight) issues.push(prefix + `${view} atlas bounds exceeded by ${layer.id}.`);
+          }
+          if (layer.viewCells.threeQuarter[0] !== x || layer.viewCells.threeQuarter[1] !== y) issues.push(prefix + `${layer.id} default cell must match its three-quarter view.`);
+        }
+      }
       if (layer.pivot.some(value => !Number.isFinite(value) || value < 0 || value >= manifest.cellSize)) issues.push(prefix + `source pivot is outside ${layer.id}.`);
       if (layer.attach.some(value => !Number.isFinite(value))) issues.push(prefix + `non-finite attachment on ${layer.id}.`);
       if (!Number.isFinite(layer.order)) issues.push(prefix + `non-finite draw order on ${layer.id}.`);

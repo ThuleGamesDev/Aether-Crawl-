@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate static, locally-authored pixel art for Maze of the Minotaur. No network or runtime AI."""
 from pathlib import Path
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 import hashlib
 from character_rig_authoring import generate_character_rig_assets
 from mythic_vfx_atlas import generate_mythic_vfx_atlas
@@ -26,7 +26,90 @@ def greek_band(draw, y, color, dark):
         line(draw, [(x,y),(x+7,y),(x+7,y+5),(x+3,y+5),(x+3,y+2),(x+10,y+2)], color, 2)
         line(draw, [(x+1,y+1),(x+6,y+1),(x+6,y+4),(x+4,y+4)], dark, 1)
 
+def palace_texture(kind):
+    """Knossian limestone, painted plaster, and restrained bronze inlay for floors 1–5."""
+    stone = rgb('#786a56')
+    pale = rgb('#c2aa7b')
+    light = rgb('#dfc58c')
+    shadow = rgb('#403a32')
+    bronze = rgb('#bd8c4b')
+    red = rgb('#8e3931')
+    teal = rgb('#54746c')
+    ink = rgb('#272522')
+    if kind == 'wall':
+        im = Image.new('RGB', (64, 64), stone); d = ImageDraw.Draw(im)
+        for row, y in enumerate(range(0, 64, 16)):
+            offset = 0 if row % 2 == 0 else -16
+            for x in range(offset, 80, 32):
+                d.rectangle((x + 1, y + 1, x + 30, y + 14), fill=pale if (row + x // 32) % 3 else (164, 139, 101))
+                line(d, [(x + 2, y + 13), (x + 29, y + 13)], shadow, 1)
+                line(d, [(x + 4, y + 3), (x + 18, y + 3)], light, 1)
+                d.point((x + 26, y + 6), fill=(194, 172, 131))
+        # A painted, repeating bull-wave frieze uses the Palace palette without turning the wall into a flat checker.
+        d.rectangle((0, 3, 63, 7), fill=red)
+        d.rectangle((0, 8, 63, 9), fill=bronze)
+        for x in range(4, 64, 16):
+            line(d, [(x, 7), (x + 3, 4), (x + 7, 7), (x + 11, 4), (x + 14, 7)], pale, 1)
+        greek_band(d, 56, bronze, shadow)
+        for x, y in [(7, 22), (24, 38), (51, 25), (40, 48)]:
+            d.rectangle((x, y, x + 2, y + 1), fill=red)
+            d.point((x + 1, y + 3), fill=teal)
+        return im
+    if kind == 'floor':
+        im = Image.new('RGB', (64, 64), rgb('#353129')); d = ImageDraw.Draw(im)
+        for y in range(0, 64, 16):
+            for x in range(0, 64, 16):
+                shade = rgb('#9a8769') if (x // 16 + y // 16) % 3 else rgb('#8c795e')
+                d.rectangle((x + 1, y + 1, x + 14, y + 14), fill=shade)
+                line(d, [(x + 2, y + 13), (x + 13, y + 13)], rgb('#625846'), 1)
+                d.point((x + 4, y + 4), fill=rgb('#c3ad85'))
+        # Small inset bronze squares and a broken running wave keep the repeated floor readable in motion.
+        for x, y in [(6, 6), (38, 22), (22, 38), (54, 54)]:
+            d.rectangle((x, y, x + 3, y + 3), fill=bronze)
+            d.point((x + 1, y + 1), fill=light)
+        line(d, [(17, 30), (20, 27), (24, 28), (27, 25)], shadow, 1)
+        line(d, [(45, 44), (48, 41), (52, 42)], teal, 1)
+        return im
+    if kind == 'ceiling':
+        im = Image.new('RGB', (64, 64), rgb('#282725')); d = ImageDraw.Draw(im)
+        for y in range(0, 64, 16):
+            d.rectangle((0, y + 1, 63, y + 13), fill=rgb('#423a32'))
+            line(d, [(0, y + 13), (63, y + 13)], ink, 2)
+            for x in range(6, 64, 16):
+                d.rectangle((x, y + 3, x + 7, y + 9), fill=rgb('#64513b'))
+                d.point((x + 2, y + 4), fill=bronze)
+        greek_band(d, 0, rgb('#84663f'), ink)
+        return im
+    if kind == 'door':
+        im = Image.new('RGB', (64, 64), rgb('#31251f')); d = ImageDraw.Draw(im)
+        d.rectangle((4, 2, 59, 63), fill=rgb('#704a30'))
+        d.rectangle((8, 5, 55, 60), fill=rgb('#493326'))
+        for x in (11, 21, 31, 41, 51):
+            d.rectangle((x, 10, x + 3, 54), fill=rgb('#765536'))
+            line(d, [(x + 1, 12), (x + 1, 51)], rgb('#a17947'), 1)
+        d.rectangle((5, 7, 58, 11), fill=bronze)
+        d.rectangle((5, 52, 58, 56), fill=bronze)
+        greek_band(d, 17, pale, rgb('#493326'))
+        greek_band(d, 39, bronze, rgb('#493326'))
+        # Labrys mark inset into the lintel.
+        d.rectangle((28, 24, 35, 39), fill=ink)
+        d.polygon([(31, 26), (26, 23), (26, 30), (30, 32), (26, 35), (27, 39), (32, 36), (37, 39), (38, 35), (34, 32), (38, 29), (37, 24), (33, 27)], fill=light)
+        return im
+    im = Image.new('RGB', (64, 64), ink); d = ImageDraw.Draw(im)
+    d.rectangle((5, 1, 58, 63), fill=rgb('#4b3025'))
+    d.rectangle((12, 7, 51, 63), fill=red)
+    d.rectangle((17, 13, 46, 63), fill=rgb('#be7137'))
+    d.rectangle((21, 18, 42, 63), fill=rgb('#241c1a'))
+    line(d, [(18, 12), (11, 5), (9, 1), (15, 5), (21, 13)], bronze, 2)
+    line(d, [(46, 12), (53, 5), (55, 1), (49, 5), (43, 13)], bronze, 2)
+    d.rectangle((28, 10, 35, 16), fill=bronze)
+    d.rectangle((30, 8, 33, 19), fill=light)
+    greek_band(d, 29, bronze, red)
+    return im
+
 def texture(theme, kind, cols):
+    if theme == 'palace_foundations':
+        return palace_texture(kind)
     wall, lit, floor, floorlit, bronze, red = map(rgb, cols)
     im=Image.new('RGB',(64,64),wall if kind in ('wall','door') else floor)
     d=ImageDraw.Draw(im)
@@ -132,140 +215,7 @@ def enemy_sprite(name):
         d.rectangle((24,24,40,28),fill=shadow); d.point((29,25),fill=eye)
         d.polygon([(19,33),(44,31),(47,52),(41,58),(22,53)],fill=skin,outline=shadow)
         d.line((42,37,55,17),fill=metal,width=3); d.polygon([(53,18),(59,7),(60,23)],fill=bone)
-        d.rectangle((23,52,29,63),fill=shadow); d.rectangle((38,52,44,63),fill=shadow)
-    elif 'bull_cult' in name:
-        d.polygon([(19,19),(23,8),(41,8),(46,21),(43,50),(50,61),(14,61),(22,50)],fill=skin,outline=bone)
-        d.polygon([(23,17),(10,5),(27,11),(32,18),(37,11),(54,5),(42,18)],fill=metal,outline=metal)
-        d.rectangle((25,23,40,29),fill=shadow); d.point((29,25),fill=red); d.point((36,25),fill=red)
-        d.rectangle((21,33,43,50),fill=red); d.rectangle((27,37,38,45),fill=metal)
-        d.line((44,40,56,14),fill=metal,width=5); d.polygon([(53,17),(61,4),(61,22)],fill=bone)
-    elif 'guardian_serpent' in name or 'lamia' in name or 'gorgon' in name or 'serpent' in name:
-        d.polygon([(22,31),(18,15),(25,6),(39,7),(46,17),(40,31),(44,47),(50,57),(18,57),(24,48)],fill=skin,outline=metal)
-        d.polygon([(22,19),(12,11),(14,5),(25,14),(32,10),(39,13),(50,5),(53,12),(41,22)],fill=teal if 'serpent' in name or 'lamia' in name else metal)
-        d.rectangle((24,23,40,36),fill=bone); d.point((28,27),fill=red); d.point((36,27),fill=red)
-        d.line((22,42,40,42,49,48),fill=teal,width=4); d.line((41,47,50,42),fill=teal,width=3)
-    elif 'threadbound' in name or 'hierophant' in name or 'priest' in name or 'acolyte' in name:
-        d.polygon([(17,22),(24,10),(40,10),(48,22),(45,56),(53,63),(10,63),(19,54)],fill=red,outline=metal)
-        d.ellipse((24,13,40,31),fill=bone); d.rectangle((28,23,36,28),fill=shadow)
-        d.line((18,25,48,49),fill=metal,width=2); d.line((46,24,17,49),fill=metal,width=2)
-        d.rectangle((29,32,35,54),fill=metal); d.point((32,39),fill=eye)
-    else:
-        # Bronze-linen humanoid: helmet, cuirass, shield and a hand-held weapon vary by stable ID.
-        d.rectangle((20,19,44,49),fill=skin,outline=shadow); d.polygon([(18,20),(20,9),(43,9),(47,21),(41,25),(23,25)],fill=metal,outline=bone)
-        d.rectangle((22,31,42,45),fill=metal); d.rectangle((26,34,38,39),fill=bone); d.line((31,35,31,42),fill=red,width=2)
-        d.rectangle((14,30,23,44),fill=red if 'champion' in name else metal,outline=bone)
-        d.line((45,33,53,12),fill=metal,width=3); d.polygon([(50,13),(55,3),(59,14)],fill=bone)
-        d.rectangle((23,47,29,62),fill=shadow); d.rectangle((36,47,42,62),fill=shadow)
-    # universal pixel highlights and a dark contour foot shadow
-    d.ellipse((13,59,51,63),fill=(20,18,17,145))
-    im.save(ROOT/'enemies'/f'{name}.png', optimize=True)
-
-for name in ENEMIES: enemy_sprite(name)
-
-# Ancient objects use their own hand-built silhouettes, with unfiltered pixel edges.
-def prop(name):
-    im=Image.new('RGBA',(64,64),(0,0,0,0)); d=ImageDraw.Draw(im)
-    bronze=rgb('#b58850'); light=rgb('#d2b178'); clay=rgb('#a3543d'); dark=rgb('#342a27'); cream=rgb('#d0c09d'); green=rgb('#56766a')
-    if name in ('amphora','broken_amphora'):
-        d.ellipse((20,4,43,16),fill=bronze,outline=dark); d.rectangle((26,9,37,19),fill=clay)
-        d.polygon([(25,17),(17,26),(15,48),(23,59),(41,59),(49,48),(47,26),(39,17)],fill=clay,outline=dark)
-        d.rectangle((22,28,42,31),fill=bronze); d.line((21,24,12,28,13,39,17,41),fill=bronze,width=3); d.line((43,24,52,28,51,39,47,41),fill=bronze,width=3)
-        d.rectangle((25,37,39,39),fill=light)
-        if name=='broken_amphora': d.polygon([(15,46),(28,43),(27,52),(20,58)],fill=dark); d.line((25,41,34,47,31,56),fill=dark,width=2)
-    elif name=='labyrinth_tablet':
-        d.polygon([(13,7),(49,10),(52,57),(11,54)],fill=cream,outline=dark); greek_band(d,17,bronze,cream); greek_band(d,42,bronze,cream)
-        d.rectangle((23,25,41,37),outline=red if False else clay,width=2); d.line((24,27,38,27,38,34,28,34,28,30,34,30),fill=clay,width=2)
-    elif name=='offering_altar':
-        d.rectangle((12,19,52,32),fill=cream,outline=dark); d.rectangle((17,32,47,55),fill=bronze,outline=dark); d.rectangle((9,54,55,60),fill=cream,outline=dark)
-        d.rectangle((27,22,37,28),fill=clay); d.point((31,18),fill=light)
-    elif name=='chthonic_altar':
-        d.rectangle((10,17,54,31),fill=rgb('#49363a'),outline=dark,width=2)
-        d.rectangle((16,31,48,53),fill=rgb('#30292b'),outline=bronze,width=2)
-        d.rectangle((7,53,57,61),fill=rgb('#75604c'),outline=dark,width=2)
-        d.polygon([(23,22),(28,18),(36,18),(41,22),(36,28),(28,28)],fill=rgb('#7c2e34'),outline=dark)
-        d.rectangle((30,19,34,27),fill=light); d.point((32,16),fill=rgb('#e7794f'))
-        greek_band(d,37,bronze,rgb('#30292b'))
-    elif name=='column_fragment':
-        d.rectangle((16,8,48,15),fill=cream,outline=dark); d.polygon([(20,15),(44,15),(40,49),(24,49)],fill=cream,outline=dark); d.rectangle((12,49,52,57),fill=bronze,outline=dark)
-        for x in [25,31,37]: d.line((x,20,x-2,44),fill=rgb('#a99b7c'),width=2)
-    elif name=='oil_bowl':
-        d.ellipse((17,36,47,48),fill=bronze,outline=dark); d.polygon([(20,42),(26,54),(38,54),(44,42)],fill=bronze,outline=dark); d.rectangle((28,20,36,40),fill=light); d.polygon([(32,5),(25,22),(31,19),(35,26),(39,16)],fill=rgb('#e57e3e'))
-    elif name=='wall_torch':
-        d.ellipse((20,16,44,43),fill=rgb('#544333'),outline=dark,width=2)
-        d.rectangle((27,35,37,51),fill=bronze,outline=dark)
-        d.rectangle((22,48,42,55),fill=rgb('#725037'),outline=dark)
-        d.rectangle((25,11,39,18),fill=light,outline=dark)
-        d.polygon([(32,1),(25,15),(30,13),(27,23),(32,20),(36,26),(41,16),(36,17)],fill=rgb('#e46f35'),outline=rgb('#702d27'))
-        d.polygon([(32,7),(29,17),(33,15),(34,21),(38,15)],fill=rgb('#f1cb72'))
-        d.point((32,25),fill=rgb('#ffed9a'))
-    elif name=='fresco_panel':
-        d.rectangle((5,5,59,59),fill=rgb('#59483b'),outline=dark,width=3)
-        d.rectangle((9,9,55,55),fill=rgb('#c0a777'),outline=bronze,width=2)
-        d.rectangle((13,13,51,51),fill=rgb('#603c32'))
-        greek_band(d,16,light,rgb('#603c32')); greek_band(d,43,bronze,rgb('#603c32'))
-        d.polygon([(20,34),(23,25),(31,21),(40,24),(46,32),(42,40),(35,43),(24,41)],fill=rgb('#b5834e'),outline=dark)
-        d.polygon([(22,27),(17,20),(27,24),(33,21),(40,24),(48,18),(44,28)],fill=cream,outline=dark)
-        d.rectangle((27,31,30,34),fill=dark); d.rectangle((38,31,41,34),fill=dark)
-    elif name=='bull_relief':
-        d.rectangle((5,7,59,57),fill=rgb('#54483d'),outline=bronze,width=3)
-        d.ellipse((18,21,47,48),fill=bronze,outline=dark); d.polygon([(20,26),(11,13),(27,21)],fill=bronze); d.polygon([(43,26),(54,13),(37,21)],fill=bronze)
-        d.rectangle((24,29,42,39),fill=dark); d.rectangle((27,31,30,34),fill=light); d.rectangle((36,31,39,34),fill=light)
-        line(d,[(21,39),(16,47),(23,45),(26,40)],cream,2); line(d,[(42,39),(49,47),(42,45),(38,40)],cream,2)
-    elif name=='cistern_mirror':
-        d.ellipse((8,4,56,59),fill=bronze,outline=dark,width=3); d.ellipse((14,10,50,53),fill=green,outline=light,width=2); d.line((19,37,44,20),fill=rgb('#bad0bd'),width=3); d.rectangle((27,59,37,63),fill=bronze)
-    im.save(ROOT/'props'/f'{name}.png', optimize=True)
-for n in ['amphora','broken_amphora','labyrinth_tablet','offering_altar','chthonic_altar','column_fragment','oil_bowl','wall_torch','fresco_panel','bull_relief','cistern_mirror']: prop(n)
-
-# First-person pixel hands and weapon silhouettes.
-def hand(name):
-    im=Image.new('RGBA',(96,96),(0,0,0,0)); d=ImageDraw.Draw(im)
-    skin=rgb('#be8b67'); sleeve=rgb('#6c4331'); dark=rgb('#2b2421'); bronze=rgb('#bc9054'); silver=rgb('#c4c0a8')
-    d.polygon([(51,66),(71,54),(95,62),(95,95),(43,95)],fill=sleeve,outline=dark)
-    d.polygon([(42,62),(53,53),(72,57),(75,73),(61,83),(40,78)],fill=skin,outline=dark)
-    for x in [47,54,61]: d.line((x,62,x+5,69),fill=rgb('#d9ac83'),width=2)
-    if name=='empty':
-        d.polygon([(24,54),(38,47),(47,54),(42,69),(31,72)],fill=skin,outline=dark)
-    elif name in ('xiphos','kopis','dory','labrys','ritual_staff','hunting_bow'):
-        if name=='dory':
-            d.line((57,72,79,7),fill=rgb('#71502f'),width=5); d.polygon([(77,16),(83,2),(84,18)],fill=silver,outline=dark); d.line((55,74,64,47),fill=bronze,width=2)
-        elif name=='ritual_staff':
-            d.line((56,75,69,10),fill=rgb('#65432b'),width=6); d.ellipse((63,4,78,19),fill=bronze,outline=dark); d.ellipse((67,7,74,15),fill=rgb('#e3b75c'))
-        elif name=='labrys':
-            d.line((55,73,68,26),fill=rgb('#65432b'),width=5); d.polygon([(62,29),(48,23),(49,9),(65,16),(71,8),(83,15),(78,31)],fill=silver,outline=dark); d.line((65,20,77,20),fill=bronze,width=2)
-        elif name=='hunting_bow':
-            d.arc((43,4,82,75),250,110,fill=rgb('#a9743a'),width=5); d.line((57,11,57,67),fill=rgb('#e5d5b2'),width=1); d.line((48,41,78,41),fill=silver,width=2); d.polygon([(78,41),(72,37),(72,45)],fill=silver)
-        else:
-            d.line((55,73,68,29),fill=rgb('#71502f'),width=6); d.polygon([(67,35),(70,6),(77,5),(75,34),(81,39),(68,43)],fill=silver,outline=dark)
-            if name=='kopis': d.polygon([(70,8),(81,4),(80,28),(76,35),(74,18)],fill=rgb('#ddd5bd'),outline=dark)
-            d.line((60,57,74,61),fill=bronze,width=4)
-    im.save(ROOT/'hands'/f'{name}.png', optimize=True)
-for n in ['empty','xiphos','kopis','labrys','ritual_staff','hunting_bow','dory']: hand(n)
-# Off-hand views use separately authored left-arm silhouettes. The hand is not mirrored from a right-hand sprite.
-def offhand(name):
-    im=Image.new('RGBA',(96,96),(0,0,0,0)); d=ImageDraw.Draw(im)
-    skin=rgb('#be8b67'); sleeve=rgb('#6c4331'); dark=rgb('#2b2421'); bronze=rgb('#bc9054'); silver=rgb('#c4c0a8'); linen=rgb('#d4c4a0')
-    d.polygon([(0,60),(18,51),(35,55),(48,69),(42,87),(31,96),(0,96)],fill=sleeve,outline=dark)
-    d.polygon([(16,62),(25,51),(39,53),(49,62),(47,74),(36,81),(20,75)],fill=skin,outline=dark)
-    d.polygon([(31,60),(39,52),(48,54),(52,61),(47,67),(38,66)],fill=skin,outline=dark)
-    for x in [34,39,44]: d.line((x,57,x+4,63),fill=rgb('#d9ac83'),width=2)
-    if name in ('xiphos','kopis','dory'):
-        d.line((39,66,19,15),fill=rgb('#71502f'),width=6)
-        d.line((37,66,18,18),fill=bronze,width=2)
-        if name=='dory':
-            d.polygon([(15,19),(11,4),(21,14),(22,27)],fill=silver,outline=dark)
-            d.line((25,31,40,26),fill=bronze,width=3)
-        else:
-            d.polygon([(18,29),(5,12),(13,8),(25,26),(29,32)],fill=silver,outline=dark)
-            d.line((11,24,28,18),fill=bronze,width=4)
-            if name=='kopis': d.polygon([(13,20),(2,6),(12,9),(21,25),(23,33)],fill=rgb('#ddd5bd'),outline=dark)
-    elif name=='shield':
-        d.polygon([(15,17),(29,11),(50,18),(57,37),(52,59),(36,70),(20,60),(13,40)],fill=rgb('#8b633a'),outline=dark)
-        d.polygon([(20,21),(30,17),(45,23),(50,38),(46,54),(36,62),(24,54),(19,39)],fill=rgb('#bc9152'),outline=rgb('#d0b577'))
-        d.ellipse((30,31,43,45),fill=rgb('#563b2c'),outline=rgb('#e1c17a'),width=2)
-        d.line((35,22,37,56),fill=rgb('#95613b'),width=2); d.line((23,38,49,38),fill=rgb('#95613b'),width=2)
-    elif name=='focus':
-        d.line((42,64,52,43),fill=rgb('#71502f'),width=5)
-        d.ellipse((35,25,63,53),fill=bronze,outline=dark,width=3)
+        d.rk,width=3)
         d.ellipse((41,31,57,47),fill=rgb('#e5bd69'),outline=linen,width=2)
         d.polygon([(49,34),(53,41),(49,46),(45,41)],fill=rgb('#fff0bb'))
         d.line((32,54,48,60),fill=linen,width=2)
@@ -279,6 +229,23 @@ def offhand(name):
         d.line((36,65,49,23),fill=rgb('#71502f'),width=7)
         for y in [55,60,65]: d.line((29,y,43,y+3),fill=rgb('#d9ac83'),width=2)
         d.line((38,65,50,63),fill=bronze,width=3)
+    # Separate leather cuff and gold meander keep the left arm distinct from the weapon sprite.
+    d.polygon([(7,69),(18,62),(29,65),(31,77),(20,84),(7,80)],fill=rgb('#9b7040'),outline=dark)
+    line(d,[(9,72),(19,67),(28,70)],rgb('#e1bd72'),1)
+    greek_band(d,87,rgb('#d0a55f'),sleeve)
+    if name=='shield':
+        d.ellipse((29,30,43,44),outline=rgb('#f0d487'),width=1)
+        line(d,[(33,14),(36,19),(39,14)],rgb('#f0d487'),1)
+    elif name in ('xiphos','kopis'):
+        line(d,[(18,14),(24,30),(29,42)],rgb('#f0e5c7'),1)
+    elif name=='dory':
+        line(d,[(15,10),(18,5),(20,14)],rgb('#fff0cc'),1)
+    elif name=='focus':
+        d.point((49,39),fill=(255,255,240,255))
+    elif name=='bow_draw':
+        line(d,[(31,18),(38,36)],rgb('#f0e5c7'),1)
+    elif name=='two_hand_grip':
+        line(d,[(47,25),(51,17)],rgb('#fff0cc'),1)
     im.save(ROOT/'hands'/f'offhand_{name}.png', optimize=True)
 for n in ['empty','xiphos','kopis','dory','shield','focus','two_hand_grip','bow_draw']: offhand(n)
 # Shield cutout is also used as a world/hand prop.
@@ -308,4 +275,56 @@ def vfx(name):
 for n in ['bronze_impact','laurel_light','promethean_flame','soul_ash','cistern_splash','oracle_spark','serpent_venom']: vfx(n)
 generate_character_rig_assets(ROOT)
 generate_mythic_vfx_atlas(Path(__file__).resolve().parents[1])
+def production_contact_sheet():
+    repo_root = Path(__file__).resolve().parents[1]
+    output = Image.new('RGB', (1140, 590), rgb('#211f1f'))
+    draw = ImageDraw.Draw(output)
+    font = ImageFont.load_default()
+    draw.text((18, 14), 'R6E · Palace Foundations visual production pilot', font=font, fill=rgb('#e2c27f'))
+
+    def row_cards(title, y, entries, card_width, card_height, art_box):
+        draw.text((18, y), title, font=font, fill=rgb('#c9bda4'))
+        start_x = 18
+        card_y = y + 16
+        for index, (label, relative_paths) in enumerate(entries):
+            x = start_x + index * (card_width + 8)
+            draw.rectangle((x, card_y, x + card_width, card_y + card_height), fill=rgb('#302c2a'), outline=rgb('#756447'))
+            paths = relative_paths if isinstance(relative_paths, tuple) else (relative_paths,)
+            box_x, box_y, box_w, box_h = art_box
+            for slot, relative in enumerate(paths):
+                source = Image.open(repo_root / relative).convert('RGBA')
+                ratio = min(box_w / source.width, box_h / source.height)
+                size = (max(1, round(source.width * ratio)), max(1, round(source.height * ratio)))
+                source = source.resize(size, Image.Resampling.NEAREST)
+                if len(paths) == 1:
+                    target_x = x + box_x + (box_w - size[0]) // 2
+                else:
+                    slot_w = box_w // len(paths)
+                    target_x = x + box_x + slot * slot_w + (slot_w - size[0]) // 2
+                target_y = card_y + box_y + (box_h - size[1]) // 2
+                output.paste(source, (target_x, target_y), source)
+            draw.text((x + 6, card_y + card_height - 13), label, font=font, fill=rgb('#e1d6bf'))
+
+    surfaces = [(kind.title(), f'public/assets/maze/tiles/palace_foundations_{kind}.png') for kind in ('wall', 'floor', 'ceiling', 'door', 'exit')]
+    row_cards('MATERIALS · Palace Foundations, floors 1–5', 42, surfaces, 204, 118, (8, 4, 188, 92))
+    landmarks = [
+        ('Fresco Gallery', 'public/assets/maze/props/fresco_panel.png'),
+        ('Pillared Hall', 'public/assets/maze/props/column_fragment.png'),
+        ('Guardian Arena', 'public/assets/maze/props/bull_relief.png'),
+        ('Wall Torch', 'public/assets/maze/props/wall_torch.png'),
+        ('Votive Altar', 'public/assets/maze/props/chthonic_altar.png'),
+    ]
+    row_cards('ROOM ARCHITECTURE · entry/gallery, pillared hall, Guardian arena', 190, landmarks, 204, 118, (8, 4, 188, 92))
+    equipment = [
+        ('Xiphos + Aspis', ('public/assets/maze/hands/xiphos.png', 'public/assets/maze/hands/offhand_shield.png')),
+        ('Dory + Grip', ('public/assets/maze/hands/dory.png', 'public/assets/maze/hands/offhand_two_hand_grip.png')),
+        ('Labrys', 'public/assets/maze/hands/labrys.png'),
+        ('Kopis', 'public/assets/maze/hands/kopis.png'),
+        ('Bow + Draw', ('public/assets/maze/hands/hunting_bow.png', 'public/assets/maze/hands/offhand_bow_draw.png')),
+        ('Staff + Focus', ('public/assets/maze/hands/ritual_staff.png', 'public/assets/maze/hands/offhand_focus.png')),
+    ]
+    row_cards('EQUIPMENT · two-hand set pairings and supported pilot silhouettes', 338, equipment, 176, 118, (4, 2, 168, 92))
+    output.save(repo_root / 'docs/previews/R6E_WORLD_EQUIPMENT_SHEET.png', optimize=True)
+
+production_contact_sheet()
 print('Generated static Maze of the Minotaur pixel art:', sum(1 for p in ROOT.rglob('*.png')), 'PNG files at', ROOT)
