@@ -288,5 +288,3 @@ function safeRandom(random: RandomSource): number {
 }
 function randomIndex(random: RandomSource, length: number): number { return Math.floor(safeRandom(random) * Math.max(1, length)); }
 function isRecord(value: unknown): value is Record<string, any> { return Boolean(value && typeof value === 'object' && !Array.isArray(value)); }
-
-\n
