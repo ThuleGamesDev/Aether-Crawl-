@@ -171,20 +171,23 @@ export class WorldGeometry {
   }
 
   private addPillars(cells: Array<{ x: number; z: number }>): void {
-    const stone = new THREE.MeshStandardMaterial({ color: 0x9b4e3e, roughness: 0.94, metalness: 0, flatShading: true });
-    const bronze = new THREE.MeshStandardMaterial({ color: 0x987144, roughness: 0.82, metalness: 0.08, flatShading: true });
-    const shaftGeometry = new THREE.CylinderGeometry(0.34, 0.39, WALL_HEIGHT - 0.16, 8, 1, false);
-    const capGeometry = new THREE.CylinderGeometry(0.47, 0.44, 0.16, 8, 1, false);
-    const baseGeometry = new THREE.CylinderGeometry(0.44, 0.48, 0.16, 8, 1, false);
-    for (const geometry of [shaftGeometry, capGeometry, baseGeometry]) this.ownedGeometries.push(geometry);
+    const stone = new THREE.MeshStandardMaterial({ color: 0xb59c78, roughness: 0.96, metalness: 0, flatShading: true });
+    const bronze = new THREE.MeshStandardMaterial({ color: 0x9e7544, roughness: 0.64, metalness: 0.24, flatShading: true });
+    const shaftGeometry = new THREE.CylinderGeometry(0.34, 0.4, WALL_HEIGHT - 0.2, 10, 1, false);
+    const capGeometry = new THREE.CylinderGeometry(0.48, 0.43, 0.17, 10, 1, false);
+    const baseGeometry = new THREE.CylinderGeometry(0.43, 0.49, 0.17, 10, 1, false);
+    const neckBandGeometry = new THREE.CylinderGeometry(0.444, 0.444, 0.045, 10, 1, false);
+    for (const geometry of [shaftGeometry, capGeometry, baseGeometry, neckBandGeometry]) this.ownedGeometries.push(geometry);
     this.ownedMaterials.push(stone, bronze);
     const matrix = new THREE.Matrix4();
     const shaft = new THREE.InstancedMesh(shaftGeometry, stone, cells.length);
-    const capital = new THREE.InstancedMesh(capGeometry, bronze, cells.length);
-    const base = new THREE.InstancedMesh(baseGeometry, bronze, cells.length);
-    shaft.name = 'RedLimestonePillars';
+    const capital = new THREE.InstancedMesh(capGeometry, stone, cells.length);
+    const base = new THREE.InstancedMesh(baseGeometry, stone, cells.length);
+    const neckBand = new THREE.InstancedMesh(neckBandGeometry, bronze, cells.length);
+    shaft.name = 'KnossianLimestonePillars';
     capital.name = 'PillarCapitals';
     base.name = 'PillarBases';
+    neckBand.name = 'BronzePillarBands';
     cells.forEach((cell, index) => {
       matrix.makeTranslation(cell.x + 0.5, WALL_HEIGHT / 2, cell.z + 0.5);
       shaft.setMatrixAt(index, matrix);
@@ -192,11 +195,14 @@ export class WorldGeometry {
       capital.setMatrixAt(index, matrix);
       matrix.makeTranslation(cell.x + 0.5, 0.08, cell.z + 0.5);
       base.setMatrixAt(index, matrix);
+      matrix.makeTranslation(cell.x + 0.5, WALL_HEIGHT - 0.2, cell.z + 0.5);
+      neckBand.setMatrixAt(index, matrix);
     });
     shaft.instanceMatrix.needsUpdate = true;
     capital.instanceMatrix.needsUpdate = true;
     base.instanceMatrix.needsUpdate = true;
-    this.group.add(shaft, capital, base);
+    neckBand.instanceMatrix.needsUpdate = true;
+    this.group.add(shaft, capital, base, neckBand);
   }
 
   private addExit(world: DungeonWorldState, assets: AssetManager): void {

@@ -46,6 +46,7 @@ npm run build
 - [R2B combat audit](docs/FPS_R2B_COMBAT_AUDIT.md) records the pre-wave gaps, combat architecture, enemy roles, Guardian patterns, save compatibility, and current limits.
 - [R3A character rig notes](docs/FPS_R3A_CHARACTER_RIGS.md) describe the six pilot rigs, state-driven animation, weapon poses, contact sheet, validation, and R3B handoff.
 - [R3B mythic VFX notes](docs/FPS_R3B_MYTHIC_VFX.md) document gameplay-timed effects, surface responses, Guardian threat tells, audio gating, budgets, validation, and the [VFX gallery](docs/previews/FPS_R3B_MYTHIC_VFX_GALLERY.png).
+- [R6E visual production notes](docs/R6E_IMPLEMENTATION.md) document the Palace Foundations pilot, directional character atlas, equipment viewmodels, material pass, and generated QA sheets.
 - [Art direction](docs/ART_DIRECTION.md) and [asset pipeline](docs/ASSET_PIPELINE.md) document the local static pixel art.
 - [Roadmap](docs/ROADMAP.md) tracks the next waves.
 - [Class skill kits, passives, and R5B integration](docs/CLASS_SKILLS_R5B.md) records the eight class builds, effect formulas, save compatibility, and validation status.

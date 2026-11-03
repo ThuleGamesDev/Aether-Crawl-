@@ -25,6 +25,14 @@ interface AnimatedLayer {
   mesh: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
   baseX: number;
   baseY: number;
+  currentCellKey: string;
+}
+
+export type CharacterView = 'front' | 'threeQuarter' | 'back';
+
+export interface CharacterViewSelection {
+  view: CharacterView;
+  flipX: boolean;
 }
 
 function stablePhaseOffset(id: string): number {
@@ -35,23 +43,27 @@ function stablePhaseOffset(id: string): number {
 
 function makeCellGeometry(layer: CharacterRigLayerDefinition, atlasWidth: number, atlasHeight: number, cellSize: number, pixelScale: number): THREE.PlaneGeometry {
   const geometry = new THREE.PlaneGeometry(cellSize * pixelScale, cellSize * pixelScale);
-  const [cellX, cellY] = layer.cell;
+  writeCellUv(geometry, layer.cell, layer.flipX, atlasWidth, atlasHeight, cellSize);
+  const cellCenter = cellSize / 2;
+  geometry.translate((cellCenter - layer.pivot[0]) * pixelScale, (layer.pivot[1] - cellCenter) * pixelScale, 0);
+  return geometry;
+}
+
+function writeCellUv(geometry: THREE.PlaneGeometry, cell: [number, number], flipX: boolean, atlasWidth: number, atlasHeight: number, cellSize: number): void {
+  const [cellX, cellY] = cell;
   const halfTexel = 0.5;
   const u0 = (cellX + halfTexel) / atlasWidth;
   const u1 = (cellX + cellSize - halfTexel) / atlasWidth;
   const vBottom = 1 - (cellY + cellSize - halfTexel) / atlasHeight;
   const vTop = 1 - (cellY + halfTexel) / atlasHeight;
-  const left = layer.flipX ? u1 : u0;
-  const right = layer.flipX ? u0 : u1;
+  const left = flipX ? u1 : u0;
+  const right = flipX ? u0 : u1;
   const uv = geometry.getAttribute('uv') as THREE.BufferAttribute;
   uv.setXY(0, left, vBottom);
   uv.setXY(1, right, vBottom);
   uv.setXY(2, left, vTop);
   uv.setXY(3, right, vTop);
   uv.needsUpdate = true;
-  const cellCenter = cellSize / 2;
-  geometry.translate((cellCenter - layer.pivot[0]) * pixelScale, (layer.pivot[1] - cellCenter) * pixelScale, 0);
-  return geometry;
 }
 
 function getBillboardYaw(enemy: WorldEnemy, cameraPosition: THREE.Vector3): number {
@@ -64,6 +76,17 @@ export function shouldFlipCharacterForViewer(enemy: WorldEnemy, cameraPosition: 
   return Math.cos(enemy.facingYaw - towardViewer) < -0.12;
 }
 
+/** Selects an authored humanoid atlas view from the existing facing yaw and viewer position. */
+export function getCharacterViewForViewer(enemy: WorldEnemy, cameraPosition: THREE.Vector3): CharacterViewSelection {
+  if (enemy.facingYaw === undefined) return { view: 'threeQuarter', flipX: false };
+  const towardViewer = Math.atan2(cameraPosition.z - enemy.position.z, cameraPosition.x - enemy.position.x);
+  const relativeYaw = enemy.facingYaw - towardViewer;
+  const facingDot = Math.cos(relativeYaw);
+  if (facingDot >= 0.72) return { view: 'front', flipX: false };
+  if (facingDot <= -0.72) return { view: 'back', flipX: false };
+  return { view: 'threeQuarter', flipX: Math.sin(relativeYaw) < 0 };
+}
+
 /** One renderer-owned visual instance; its transforms read existing combat state only. */
 export class CharacterRigAnimator {
   readonly group = new THREE.Group();
@@ -72,6 +95,9 @@ export class CharacterRigAnimator {
   private readonly layerNodes = new Map<string, THREE.Group>();
   private readonly pixelScale: number;
   private readonly idleOffset: number;
+  private readonly atlasWidth: number;
+  private readonly atlasHeight: number;
+  private readonly cellSize: number;
   private previousX: number;
   private previousZ: number;
   private gaitCycles = 0;
@@ -81,6 +107,9 @@ export class CharacterRigAnimator {
   constructor(enemy: WorldEnemy, readonly definition: CharacterRigDefinition, atlas: THREE.Texture, atlasWidth: number, atlasHeight: number, cellSize: number) {
     this.pixelScale = definition.worldHeight / definition.designHeight;
     this.idleOffset = stablePhaseOffset(enemy.id);
+    this.atlasWidth = atlasWidth;
+    this.atlasHeight = atlasHeight;
+    this.cellSize = cellSize;
     this.previousX = enemy.position.x;
     this.previousZ = enemy.position.z;
     this.group.name = 'WorldEnemyRig_' + enemy.id;
@@ -114,7 +143,7 @@ export class CharacterRigAnimator {
       mesh.renderOrder = 10 + layer.order;
       mesh.frustumCulled = false;
       node.add(mesh);
-      this.layers.push({ definition: layer, node, mesh, baseX, baseY });
+      this.layers.push({ definition: layer, node, mesh, baseX, baseY, currentCellKey: layer.cell.join(',') });
     }
   }
 
@@ -132,7 +161,18 @@ export class CharacterRigAnimator {
 
     this.group.position.set(enemy.position.x, enemy.position.y, enemy.position.z);
     this.group.rotation.y = getBillboardYaw(enemy, cameraPosition);
-    this.group.scale.x = shouldFlipCharacterForViewer(enemy, cameraPosition) ? -1 : 1;
+    const hasDirectionalViews = this.definition.layers.some(layer => Boolean(layer.viewCells));
+    const viewSelection = hasDirectionalViews
+      ? getCharacterViewForViewer(enemy, cameraPosition)
+      : { view: 'threeQuarter' as const, flipX: shouldFlipCharacterForViewer(enemy, cameraPosition) };
+    this.group.scale.x = viewSelection.flipX ? -1 : 1;
+    for (const layer of this.layers) {
+      const cell = layer.definition.viewCells?.[viewSelection.view] ?? layer.definition.cell;
+      const key = cell.join(',');
+      if (key === layer.currentCellKey) continue;
+      writeCellUv(layer.mesh.geometry, cell, layer.definition.flipX, this.atlasWidth, this.atlasHeight, this.cellSize);
+      layer.currentCellKey = key;
+    }
 
     const selection = selectEnemyCharacterAnimation(enemy);
     let clipName = selection.clipName;

@@ -9,7 +9,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 CELL = 64
 ATLAS_COLUMNS = 16
-ATLAS_ROWS = 8
+ATLAS_ROWS = 12
 ATLAS_SIZE = (CELL * ATLAS_COLUMNS, CELL * ATLAS_ROWS)
 RIGS = []
 
@@ -214,6 +214,84 @@ def authored_part(style, part):
     return image
 
 
+def authored_view_part(style, part, view):
+    """Build front, three-quarter, and back views from the same authored anatomy layers."""
+    image = authored_part(style, part)
+    if view == 'threeQuarter':
+        side = Image.new('RGBA', (CELL, CELL), (0, 0, 0, 0))
+        narrow = image.resize((54, CELL), Image.Resampling.NEAREST)
+        side.alpha_composite(narrow, (5, 0))
+        # The far plane loses a little light; the opposite view mirrors the whole rig in WebGL.
+        pixels = side.load()
+        for y in range(CELL):
+            for x in range(5, 32):
+                red, green, blue, alpha = pixels[x, y]
+                if alpha:
+                    pixels[x, y] = (round(red * 0.78), round(green * 0.78), round(blue * 0.78), alpha)
+        if part in ('torso', 'head', 'shield'):
+            p = PALETTES[style]
+            d = ImageDraw.Draw(side)
+            accent = p.get('bright', p.get('gold', p.get('lit')))
+            d.line((43, 12, 43, 43), fill=col(accent), width=1)
+        return side
+
+    p = PALETTES[style]
+    if view == 'front':
+        # Humanoid front views are deliberately bilateral while retaining each pilot's authored armor and palette.
+        half = image.crop((1, 0, 32, CELL))
+        image = Image.new('RGBA', (CELL, CELL), (0, 0, 0, 0))
+        image.alpha_composite(half, (0, 0))
+        image.alpha_composite(half.transpose(Image.Transpose.FLIP_LEFT_RIGHT), (32, 0))
+        d = ImageDraw.Draw(image)
+        if part == 'head':
+            eye = p.get('glow', p.get('eye', p.get('bright', p.get('lit'))))
+            d.rectangle((22, 26, 27, 29), fill=col(eye))
+            d.rectangle((37, 26, 42, 29), fill=col(eye))
+            d.point((24, 26), fill=col(p.get('tooth', p.get('bright', eye))))
+            d.point((39, 26), fill=col(p.get('tooth', p.get('bright', eye))))
+        elif part == 'torso':
+            accent = p.get('bright', p.get('gold', p.get('lit')))
+            d.line((32, 16, 32, 43), fill=col(accent), width=2)
+            if style == 'enforcer':
+                d.polygon([(24, 18), (32, 22), (40, 18), (38, 29), (32, 33), (26, 29)], fill=col(p['red']), outline=col(p['ink']))
+            elif style == 'acolyte':
+                d.polygon([(28, 22), (32, 18), (36, 22), (32, 35)], fill=col(p['glow']), outline=col(p['gold']))
+        elif part == 'shield':
+            d.ellipse((27, 25, 37, 35), fill=col(p.get('bright', p.get('gold', p.get('lit')))), outline=col(p['ink']))
+        return image
+
+    if view != 'back':
+        raise ValueError('Unknown authored humanoid view: ' + view)
+    image = image.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
+    d = ImageDraw.Draw(image)
+    if part == 'head':
+        shell = p.get('robe', p.get('bronze', p.get('dark', p.get('hide'))))
+        trim = p.get('bright', p.get('gold', p.get('lit')))
+        d.polygon([(15, 28), (17, 15), (27, 8), (39, 8), (49, 17), (48, 34), (42, 42), (23, 42)], fill=col(shell), outline=col(p['ink']))
+        d.line((32, 13, 32, 39), fill=col(trim), width=2)
+        d.line((20, 35, 26, 40, 32, 42, 38, 40, 44, 35), fill=col(p.get('patina', p.get('red', trim))), width=2)
+    elif part == 'torso':
+        back = p.get('dark', p.get('robe', p.get('hide')))
+        armor = p.get('bronze', p.get('red', p.get('gold', p.get('lit'))))
+        d.polygon([(20, 16), (27, 12), (37, 12), (44, 16), (42, 42), (32, 47), (22, 42)], fill=col(back), outline=col(p['ink']))
+        d.line((32, 17, 32, 45), fill=col(armor), width=3)
+        d.line((20, 20, 28, 25, 36, 25, 44, 20), fill=col(p.get('bright', p.get('gold', armor))), width=2)
+        for y in (31, 37, 43):
+            d.rectangle((28, y, 36, y + 1), fill=col(p.get('patina', p.get('red', armor))))
+    elif part == 'cloak':
+        d.line((31, 12, 31, 53), fill=col(p.get('gold', p.get('bronze', p.get('lit')))), width=2)
+        d.line((14, 47, 31, 51, 49, 47), fill=col(p.get('bright', p.get('gold', p.get('lit')))), width=2)
+    elif part == 'shield':
+        d.line((32, 12, 32, 52), fill=col(p.get('dark', p.get('ink'))), width=4)
+        d.line((20, 29, 44, 29), fill=col(p.get('lit', p.get('gold', p.get('bright')))), width=3)
+        d.ellipse((26, 24, 38, 36), outline=col(p.get('bright', p.get('gold', p.get('lit')))), width=2)
+    elif part in ('upper_arm', 'lower_arm', 'upper_leg', 'lower_leg', 'foot'):
+        stripe = p.get('patina', p.get('red', p.get('gold', p.get('lit'))))
+        d.line((26, 13, 38, 19), fill=col(stripe), width=2)
+        d.line((25, 28, 37, 34), fill=col(p.get('bright', p.get('lit', stripe))), width=1)
+    return image
+
+
 def layer(layer_id, art, parent, attach, pivot=(32, 32), order=0, flip=False):
     return {'id': layer_id, 'art': art, 'parent': parent, 'attach': list(attach), 'pivot': list(pivot), 'order': order, 'flipX': flip}
 
@@ -264,7 +342,212 @@ def humanoid_clips(heavy=False, mage=False, guardian=False):
         'cast_impact': [{'t': 0, 'layers': {'armUpperR': {'rotation': -0.78}, 'armLowerR': {'rotation': 0.2}, 'armUpperL': {'rotation': -0.5}, 'armLowerL': {'rotation': -0.22}, 'weapon': {'y': 3}}}, {'t': 0.35, 'layers': {'armUpperR': {'rotation': -0.92}, 'armLowerR': {'rotation': 0.34}, 'armUpperL': {'rotation': -0.62}, 'weapon': {'y': 6}}}, {'t': 1, 'layers': {'armUpperR': {'rotation': -0.92}, 'armLowerR': {'rotation': 0.34}, 'armUpperL': {'rotation': -0.62}, 'weapon': {'y': 6}}}],
         'cast_recovery': [{'t': 0, 'layers': {'armUpperR': {'rotation': -0.92}, 'armLowerR': {'rotation': 0.34}, 'armUpperL': {'rotation': -0.62}, 'weapon': {'y': 6}}}, {'t': 0.45, 'layers': {'armUpperR': {'rotation': -0.42}, 'armLowerR': {'rotation': 0.08}, 'armUpperL': {'rotation': -0.2}, 'weapon': {'y': 2}}}, {'t': 1, 'layers': {'armUpperR': {'rotation': 0}, 'armLowerR': {'rotation': 0}, 'armUpperL': {'rotation': 0}, 'weapon': {'y': 0}}}],
         'guard_windup': [{'t': 0, 'layers': {'shield': {'rotation': 0}, 'armUpperL': {'rotation': 0}}}, {'t': 1, 'layers': {'shield': {'rotation': -0.3}, 'armUpperL': {'rotation': -0.24}, 'torso': {'rotation': 0.03}}}],
-        'guard_impact': [{'t': 0, 'layers': {'shield': {'rotation': -0.3}, 'armUpperL': {'rotation': -0.24}, 'torso': {'rotation': 0.03}}}, {'t': 0.3, 'layers': {'shield': {'rotation': -0.42}, 'armUpperL': {'rotation': -0.32}, 'torso': {'rotation': -0.06}}}, {'t': 1, 'layers': {'shield': {'rotation': -0.36}, 'armUpperL': {'rotation': -0.26}, 'torso': {'rotation': -0.03}}}],
+        'guard_impact': [{'t': 0, 'layers': {'shield': {'rotation': -0.3}, 'armUpperL': {'rotation': -0.24}, 'torso': {'rotation': 0.03}}}, {'t': 0.3, 'layers': {'shield': {'rotation': -0.42}, 'armUpper,
+            layer('foreLowerL', 'lower_leg', 'foreUpperL', (0, 9), (32, 8), 8), layer('foreLowerR', 'lower_leg', 'foreUpperR', (0, 9), (32, 8), 9, True),
+            layer('head', 'head', 'body', (19, -6), (26, 43), 10), layer('ear', 'ear', 'head', (5, -19), (28, 46), 11),
+            layer('muzzle', 'muzzle', 'head', (12, -4), (13, 33), 12), layer('eye', 'eye', 'head', (6, -16), (32, 32), 13),
+        ],
+    }
+
+
+def make_spider():
+    layers = [layer('abdomen', 'abdomen', 'thorax', (1, 17), (32, 33), 1), layer('thorax', 'thorax', 'root', (48, 39), (32, 32), 7), layer('head', 'head', 'thorax', (0, -13), (32, 35), 11)]
+    for index in range(1, 5):
+        art = 'upper_front' if index <= 2 else 'upper_rear'
+        lower = 'lower_front' if index <= 2 else 'lower_rear'
+        attach_y = (33, 40, 48, 54)[index - 1]
+        x = 38 if index <= 2 else 42
+        child_x = -13 if index <= 2 else 9
+        layers.append(layer(f'L{index}Upper', art, 'thorax', (x - 48, attach_y - 39), (32, 8), index))
+        layers.append(layer(f'L{index}Lower', lower, f'L{index}Upper', (child_x, 19), (32, 8), index + 1))
+        layers.append(layer(f'R{index}Upper', art, 'thorax', (48 - x, attach_y - 39), (32, 8), 14 - index, True))
+        layers.append(layer(f'R{index}Lower', lower, f'R{index}Upper', (-child_x, 19), (32, 8), 18 - index, True))
+    layers.extend([layer('fangL', 'fang', 'head', (-6, 12), (27, 12), 12), layer('fangR', 'fang', 'head', (6, 12), (27, 12), 13, True)])
+    return {'visualId': 'arachne_brood', 'name': "Arachne's Brood", 'family': 'arachnid', 'worldHeight': 0.94, 'designHeight': 96, 'origin': [48, 91], 'attackStyles': {'spider_venom_fang': 'melee', 'spider_web_projectile': 'cast', 'spider_side_lunge': 'leap'}, 'clips': spider_clips(), 'layers': layers}
+
+
+def make_human(visual_id, name, style, height, family, heavy=False, mage=False, guardian=False):
+    clips = humanoid_clips(heavy, mage, guardian)
+    if style == 'enforcer':
+        clips['melee_windup'] = [{'t': 0, 'layers': {}}, {'t': 1, 'layers': {'torso': {'rotation': -0.22, 'y': -1}, 'armUpperR': {'rotation': -1.1}, 'armLowerR': {'rotation': 0.45}, 'armUpperL': {'rotation': -0.28}, 'shield': {'rotation': -0.16}}}]
+        clips['melee_impact'] = [{'t': 0, 'layers': {'torso': {'rotation': -0.22, 'y': -1}, 'armUpperR': {'rotation': -1.1}, 'armLowerR': {'rotation': 0.45}}}, {'t': 0.25, 'layers': {'torso': {'rotation': 0.28, 'y': 1}, 'armUpperR': {'rotation': 0.92}, 'armLowerR': {'rotation': -0.25}}}, {'t': 1, 'layers': {'torso': {'rotation': 0.22}, 'armUpperR': {'rotation': 0.78}, 'armLowerR': {'rotation': -0.2}}}]
+        clips['lunge_windup'] = [{'t': 0, 'layers': {}}, {'t': 1, 'layers': {'torso': {'rotation': -0.25, 'y': -4}, 'armUpperR': {'rotation': -0.9}, 'legUpperL': {'rotation': -0.38}, 'legUpperR': {'rotation': 0.42}, 'head': {'rotation': -0.12}}}]
+        clips['lunge_impact'] = [{'t': 0, 'layers': {'torso': {'rotation': -0.25, 'y': -4}, 'armUpperR': {'rotation': -0.9}, 'legUpperL': {'rotation': -0.38}, 'legUpperR': {'rotation': 0.42}}}, {'t': 0.3, 'layers': {'torso': {'rotation': 0.36, 'y': 2}, 'armUpperR': {'rotation': 0.95}, 'armLowerR': {'rotation': -0.4}, 'legUpperL': {'rotation': 0.4}, 'legUpperR': {'rotation': -0.5}}}, {'t': 1, 'layers': {'torso': {'rotation': 0.28}, 'armUpperR': {'rotation': 0.8}, 'armLowerR': {'rotation': -0.28}}}]
+    if style == 'revenant':
+        clips['guard_impact'][1]['layers']['shield'] = {'rotation': -0.55, 'x': 2}
+        clips['guard_impact'][1]['layers']['armUpperL'] = {'rotation': -0.45}
+    if style == 'acolyte':
+        clips['melee_windup'] = deepcopy(clips['cast_windup'])
+        clips['melee_impact'] = deepcopy(clips['cast_impact'])
+        clips['melee_recovery'] = deepcopy(clips['cast_recovery'])
+        clips['guard_windup'] = [{'t': 0, 'layers': {}}, {'t': 1, 'layers': {'armUpperL': {'rotation': -0.72}, 'armLowerL': {'rotation': 0.3}, 'armUpperR': {'rotation': -0.3}}}]
+        clips['guard_impact'] = [{'t': 0, 'layers': {'armUpperL': {'rotation': -0.72}, 'armLowerL': {'rotation': 0.3}, 'armUpperR': {'rotation': -0.3}}}, {'t': 1, 'layers': {'armUpperL': {'rotation': -0.82}, 'armLowerL': {'rotation': 0.22}, 'armUpperR': {'rotation': -0.35}}}]
+        clips['guard_recovery'] = [{'t': 0, 'layers': {'armUpperL': {'rotation': -0.82}, 'armLowerL': {'rotation': 0.22}, 'armUpperR': {'rotation': -0.35}}}, {'t': 1, 'layers': {'armUpperL': {'rotation': 0}, 'armLowerL': {'rotation': 0}, 'armUpperR': {'rotation': 0}}}]
+        for clip in clips.values():
+            for frame in clip:
+                frame.get('layers', {}).pop('shield', None)
+    return {'visualId': visual_id, 'name': name, 'family': family, 'worldHeight': height, 'designHeight': 112, 'origin': [48, 108], 'attackStyles': {}, 'clips': clips, 'layers': human_layers(style, heavy, mage)}
+
+
+RIGS = [
+    make_rat(), make_spider(),
+    make_human('bronze_revenant', 'Bronze Revenant', 'revenant', 1.66, 'humanoid', heavy=False),
+    make_human('bull_cult_enforcer', 'Bull-Cult Enforcer', 'enforcer', 1.82, 'heavyHumanoid', heavy=True),
+    make_human('guardian_bronze_gatekeeper', 'Bronze Gatekeeper', 'gatekeeper', 1.98, 'heavyHumanoid', heavy=True, guardian=True),
+    make_human('chthonic_acolyte', 'Chthonic Acolyte', 'acolyte', 1.68, 'caster', mage=True),
+]
+RIG_BY_ID = {rig['visualId']: rig for rig in RIGS}
+RIG_BY_ID['bronze_revenant']['attackStyles'] = {'revenant_xiphos': 'melee', 'revenant_shield_bash': 'melee', 'revenant_shield_guard': 'guard'}
+RIG_BY_ID['bull_cult_enforcer']['attackStyles'] = {'enforcer_heavy_cleave': 'melee', 'enforcer_charge': 'lunge', 'enforcer_roar': 'cast'}
+RIG_BY_ID['guardian_bronze_gatekeeper']['attackStyles'] = {'gatekeeper_shield_bash': 'melee', 'gatekeeper_sweep': 'melee', 'gatekeeper_guard': 'guard'}
+RIG_BY_ID['chthonic_acolyte']['attackStyles'] = {'acolyte_underworld_bolt': 'cast', 'acolyte_curse': 'cast', 'acolyte_votive_ward': 'guard'}
+
+
+def attach_pose_preview(atlas, rig, phase, view='threeQuarter'):
+    output = Image.new('RGBA', (112, 112), (0, 0, 0, 0))
+    clips = rig['clips']
+    clip_name = {'Idle': 'idle', 'Run': 'run', 'Windup': 'melee_windup', 'Impact': 'melee_impact', 'Hurt': 'hurt', 'Death': 'death'}[phase]
+    clip = clips.get(clip_name, clips['idle'])
+    t = {'Idle': 0.24, 'Run': 0.17, 'Windup': 0.68, 'Impact': 0.34, 'Hurt': 0.35, 'Death': 0.75}[phase]
+    pose = sample_pose(clip, t)
+    by_id = {layer['id']: layer for layer in rig['layers']}
+    scale = min(1.0, 92 / rig['designHeight'])
+    pixel_origin = (56, 105)
+    memo = {}
+
+    def point_for(layer_id):
+        if layer_id in memo:
+            return memo[layer_id]
+        spec = by_id[layer_id]
+        parent = spec['parent']
+        if parent == 'root':
+            attach = spec['attach']
+            px, py = attach[0] - rig['origin'][0], attach[1] - rig['origin'][1]
+            angle = 0.0
+        else:
+            px, py, angle = point_for(parent)
+            attach = spec['attach']
+            radians = angle
+            dx, dy = attach[0], attach[1]
+            px += dx * math.cos(radians) + dy * math.sin(radians)
+            py += -dx * math.sin(radians) + dy * math.cos(radians)
+        transform = pose.get(layer_id, {})
+        px += transform.get('x', 0)
+        py -= transform.get('y', 0)
+        angle += transform.get('rotation', 0)
+        memo[layer_id] = (px, py, angle)
+        return memo[layer_id]
+
+    for spec in sorted(rig['layers'], key=lambda entry: entry['order']):
+        cell = spec.get('viewCells', {}).get(view, spec['cell'])
+        art = atlas.crop((cell[0], cell[1], cell[0] + CELL, cell[1] + CELL))
+        if spec['flipX']:
+            art = art.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
+        rotated = art
+        px, py, angle = point_for(spec['id'])
+        rotated = art.rotate(math.degrees(angle), resample=Image.Resampling.NEAREST, center=tuple(spec['pivot']), expand=False)
+        x = round(pixel_origin[0] + px * scale - spec['pivot'][0] * scale)
+        y = round(pixel_origin[1] + py * scale - spec['pivot'][1] * scale)
+        rotated = rotated.resize((round(CELL * scale), round(CELL * scale)), Image.Resampling.NEAREST)
+        output.alpha_composite(rotated, (x, y))
+    return output
+
+
+def sample_pose(clip, time):
+    frames = clip
+    left = frames[0]
+    right = frames[-1]
+    for index in range(1, len(frames)):
+        if time <= frames[index]['t']:
+            left, right = frames[index - 1], frames[index]
+            break
+    span = max(0.0001, right['t'] - left['t'])
+    t = max(0, min(1, (time - left['t']) / span))
+    layers = set(left.get('layers', {})) | set(right.get('layers', {}))
+    sampled = {}
+    for layer_id in layers:
+        a = left.get('layers', {}).get(layer_id, {})
+        b = right.get('layers', {}).get(layer_id, {})
+        sampled[layer_id] = {key: a.get(key, 0) + (b.get(key, 0) - a.get(key, 0)) * t for key in set(a) | set(b)}
+    return sampled
+
+
+def validate_manifest(manifest):
+    ids = set()
+    for rig in manifest['rigs'].values():
+        if rig['visualId'] in ids:
+            raise ValueError('Duplicate visual id: ' + rig['visualId'])
+        ids.add(rig['visualId'])
+        layer_ids = {entry['id'] for entry in rig['layers']}
+        if len(layer_ids) != len(rig['layers']):
+            raise ValueError('Duplicate layer id: ' + rig['visualId'])
+        for entry in rig['layers']:
+            x, y = entry['cell']
+            if x < 0 or y < 0 or x + CELL > manifest['atlasWidth'] or y + CELL > manifest['atlasHeight']:
+                raise ValueError('Atlas bounds exceeded: ' + rig['visualId'] + '/' + entry['id'])
+            views = entry.get('viewCells')
+            if rig['family'] in ('humanoid', 'heavyHumanoid', 'caster'):
+                if not views or set(views) != {'front', 'threeQuarter', 'back'}:
+                    raise ValueError('Humanoid layer needs front, three-quarter, and back atlas cells: ' + rig['visualId'] + '/' + entry['id'])
+                if views['threeQuarter'] != entry['cell']:
+                    raise ValueError('Three-quarter cell must match the default layer cell: ' + rig['visualId'] + '/' + entry['id'])
+                for view, cell in views.items():
+                    vx, vy = cell
+                    if vx < 0 or vy < 0 or vx + CELL > manifest['atlasWidth'] or vy + CELL > manifest['atlasHeight']:
+                        raise ValueError('Directional atlas bounds exceeded: ' + rig['visualId'] + '/' + entry['id'] + '/' + view)
+            if not (0 <= entry['pivot'][0] < CELL and 0 <= entry['pivot'][1] < CELL):
+                raise ValueError('Pivot outside source cell: ' + rig['visualId'] + '/' + entry['id'])
+            if entry['parent'] != 'root' and entry['parent'] not in layer_ids:
+                raise ValueError('Unknown parent: ' + rig['visualId'] + '/' + entry['id'])
+        for clip_name, clip in rig['clips'].items():
+            if len(clip) < 2 or clip[0]['t'] != 0 or clip[-1]['t'] != 1:
+                raise ValueError('Clip needs endpoints: ' + rig['visualId'] + '/' + clip_name)
+            if any(frame['t'] < 0 or frame['t'] > 1 for frame in clip):
+                raise ValueError('Clip timing outside [0, 1]: ' + rig['visualId'] + '/' + clip_name)
+            for frame in clip:
+                if set(frame.get('layers', {})) - layer_ids:
+                    raise ValueError('Clip references unknown layer: ' + rig['visualId'] + '/' + clip_name)
+    return True
+
+
+def generate_character_rig_assets(root):
+    root = Path(root)
+    atlas = Image.new('RGBA', ATLAS_SIZE, (0, 0, 0, 0))
+    cell_lookup = {}
+    cell_index = 0
+    for rig in RIGS:
+        style = rig['visualId']
+        style_key = {'cretan_cave_rat': 'rat', 'arachne_brood': 'spider', 'bronze_revenant': 'revenant', 'bull_cult_enforcer': 'enforcer', 'guardian_bronze_gatekeeper': 'gatekeeper', 'chthonic_acolyte': 'acolyte'}[style]
+        for entry in rig['layers']:
+            directional = rig['family'] in ('humanoid', 'heavyHumanoid', 'caster')
+            views = ('front', 'threeQuarter', 'back') if directional else ('threeQuarter',)
+            view_cells = {}
+            for view in views:
+                key = style_key + '/' + entry['art'] + '/' + view
+                if key not in cell_lookup:
+                    if cell_index >= ATLAS_COLUMNS * ATLAS_ROWS:
+                        raise ValueError('Character rig atlas capacity exceeded.')
+                    column, row = cell_index % ATLAS_COLUMNS, cell_index // ATLAS_COLUMNS
+                    x, y = column * CELL, row * CELL
+                    image = authored_view_part(style_key, entry['art'], view)
+                    if image.getbbox() is None:
+                        raise ValueError('Empty authored art cell: ' + key)
+                    if image.getbbox()[0] <= 0 or image.getbbox()[1] <= 0 or image.getbbox()[2] >= CELL or image.getbbox()[3] >= CELL:
+                        raise ValueError('Art touches atlas cell boundary: ' + key)
+                    atlas.alpha_composite(image, (x, y))
+                    cell_lookup[key] = [x, y]
+                    cell_index += 1
+                view_cells[view] = cell_lookup[key]
+            entry['cell'] = view_cells['threeQuarter']
+            if directional:
+                entry['viewCells'] = view_cells
+
+    manifest = {
+        'schemaVersion': 2,
+        'atlasPath': '/assets/maze/characters/character_rigs.png',
+        'atlasWidth': ATLAS_SIZE[0],
+        'atlasHeight': ATLAS_SIZE[1],
+ L': {'rotation': -0.32}, 'torso': {'rotation': -0.06}}}, {'t': 1, 'layers': {'shield': {'rotation': -0.36}, 'armUpperL': {'rotation': -0.26}, 'torso': {'rotation': -0.03}}}],
         'guard_recovery': [{'t': 0, 'layers': {'shield': {'rotation': -0.36}, 'armUpperL': {'rotation': -0.26}, 'torso': {'rotation': -0.03}}}, {'t': 1, 'layers': {'shield': {'rotation': 0}, 'armUpperL': {'rotation': 0}, 'torso': {'rotation': 0}}}],
         'lunge_windup': [{'t': 0, 'layers': {'torso': {'y': 0}, 'armUpperR': {'rotation': 0.04}, 'legUpperL': {'rotation': 0}}}, {'t': 1, 'layers': {'torso': {'rotation': -0.18, 'y': -3}, 'armUpperR': {'rotation': -0.55}, 'legUpperL': {'rotation': -0.32}, 'legUpperR': {'rotation': 0.36}}}],
         'lunge_impact': [{'t': 0, 'layers': {'torso': {'rotation': -0.18, 'y': -3}, 'armUpperR': {'rotation': -0.55}, 'legUpperL': {'rotation': -0.32}, 'legUpperR': {'rotation': 0.36}}}, {'t': 0.35, 'layers': {'torso': {'rotation': 0.22, 'y': 1}, 'armUpperR': {'rotation': 0.82}, 'armLowerR': {'rotation': -0.32}, 'legUpperL': {'rotation': 0.4}, 'legUpperR': {'rotation': -0.45}}}, {'t': 1, 'layers': {'torso': {'rotation': 0.2}, 'armUpperR': {'rotation': 0.78}, 'armLowerR': {'rotation': -0.28}}}],
@@ -342,202 +625,29 @@ def make_rat():
             layer('hindUpperL', 'upper_leg', 'body', (-12, 6), (32, 8), 1), layer('hindUpperR', 'upper_leg', 'body', (-7, 6), (32, 8), 2, True),
             layer('hindLowerL', 'lower_leg', 'hindUpperL', (0, 9), (32, 8), 3), layer('hindLowerR', 'lower_leg', 'hindUpperR', (0, 9), (32, 8), 4, True),
             layer('body', 'body', 'root', (46, 40), (32, 34), 5),
-            layer('foreUpperL', 'upper_leg', 'body', (12, 4), (32, 8), 6), layer('foreUpperR', 'upper_leg', 'body', (16, 4), (32, 8), 7, True),
-            layer('foreLowerL', 'lower_leg', 'foreUpperL', (0, 9), (32, 8), 8), layer('foreLowerR', 'lower_leg', 'foreUpperR', (0, 9), (32, 8), 9, True),
-            layer('head', 'head', 'body', (19, -6), (26, 43), 10), layer('ear', 'ear', 'head', (5, -19), (28, 46), 11),
-            layer('muzzle', 'muzzle', 'head', (12, -4), (13, 33), 12), layer('eye', 'eye', 'head', (6, -16), (32, 32), 13),
-        ],
-    }
-
-
-def make_spider():
-    layers = [layer('abdomen', 'abdomen', 'thorax', (1, 17), (32, 33), 1), layer('thorax', 'thorax', 'root', (48, 39), (32, 32), 7), layer('head', 'head', 'thorax', (0, -13), (32, 35), 11)]
-    for index in range(1, 5):
-        art = 'upper_front' if index <= 2 else 'upper_rear'
-        lower = 'lower_front' if index <= 2 else 'lower_rear'
-        attach_y = (33, 40, 48, 54)[index - 1]
-        x = 38 if index <= 2 else 42
-        child_x = -13 if index <= 2 else 9
-        layers.append(layer(f'L{index}Upper', art, 'thorax', (x - 48, attach_y - 39), (32, 8), index))
-        layers.append(layer(f'L{index}Lower', lower, f'L{index}Upper', (child_x, 19), (32, 8), index + 1))
-        layers.append(layer(f'R{index}Upper', art, 'thorax', (48 - x, attach_y - 39), (32, 8), 14 - index, True))
-        layers.append(layer(f'R{index}Lower', lower, f'R{index}Upper', (-child_x, 19), (32, 8), 18 - index, True))
-    layers.extend([layer('fangL', 'fang', 'head', (-6, 12), (27, 12), 12), layer('fangR', 'fang', 'head', (6, 12), (27, 12), 13, True)])
-    return {'visualId': 'arachne_brood', 'name': "Arachne's Brood", 'family': 'arachnid', 'worldHeight': 0.94, 'designHeight': 96, 'origin': [48, 91], 'attackStyles': {'spider_venom_fang': 'melee', 'spider_web_projectile': 'cast', 'spider_side_lunge': 'leap'}, 'clips': spider_clips(), 'layers': layers}
-
-
-def make_human(visual_id, name, style, height, family, heavy=False, mage=False, guardian=False):
-    clips = humanoid_clips(heavy, mage, guardian)
-    if style == 'enforcer':
-        clips['melee_windup'] = [{'t': 0, 'layers': {}}, {'t': 1, 'layers': {'torso': {'rotation': -0.22, 'y': -1}, 'armUpperR': {'rotation': -1.1}, 'armLowerR': {'rotation': 0.45}, 'armUpperL': {'rotation': -0.28}, 'shield': {'rotation': -0.16}}}]
-        clips['melee_impact'] = [{'t': 0, 'layers': {'torso': {'rotation': -0.22, 'y': -1}, 'armUpperR': {'rotation': -1.1}, 'armLowerR': {'rotation': 0.45}}}, {'t': 0.25, 'layers': {'torso': {'rotation': 0.28, 'y': 1}, 'armUpperR': {'rotation': 0.92}, 'armLowerR': {'rotation': -0.25}}}, {'t': 1, 'layers': {'torso': {'rotation': 0.22}, 'armUpperR': {'rotation': 0.78}, 'armLowerR': {'rotation': -0.2}}}]
-        clips['lunge_windup'] = [{'t': 0, 'layers': {}}, {'t': 1, 'layers': {'torso': {'rotation': -0.25, 'y': -4}, 'armUpperR': {'rotation': -0.9}, 'legUpperL': {'rotation': -0.38}, 'legUpperR': {'rotation': 0.42}, 'head': {'rotation': -0.12}}}]
-        clips['lunge_impact'] = [{'t': 0, 'layers': {'torso': {'rotation': -0.25, 'y': -4}, 'armUpperR': {'rotation': -0.9}, 'legUpperL': {'rotation': -0.38}, 'legUpperR': {'rotation': 0.42}}}, {'t': 0.3, 'layers': {'torso': {'rotation': 0.36, 'y': 2}, 'armUpperR': {'rotation': 0.95}, 'armLowerR': {'rotation': -0.4}, 'legUpperL': {'rotation': 0.4}, 'legUpperR': {'rotation': -0.5}}}, {'t': 1, 'layers': {'torso': {'rotation': 0.28}, 'armUpperR': {'rotation': 0.8}, 'armLowerR': {'rotation': -0.28}}}]
-    if style == 'revenant':
-        clips['guard_impact'][1]['layers']['shield'] = {'rotation': -0.55, 'x': 2}
-        clips['guard_impact'][1]['layers']['armUpperL'] = {'rotation': -0.45}
-    if style == 'acolyte':
-        clips['melee_windup'] = deepcopy(clips['cast_windup'])
-        clips['melee_impact'] = deepcopy(clips['cast_impact'])
-        clips['melee_recovery'] = deepcopy(clips['cast_recovery'])
-        clips['guard_windup'] = [{'t': 0, 'layers': {}}, {'t': 1, 'layers': {'armUpperL': {'rotation': -0.72}, 'armLowerL': {'rotation': 0.3}, 'armUpperR': {'rotation': -0.3}}}]
-        clips['guard_impact'] = [{'t': 0, 'layers': {'armUpperL': {'rotation': -0.72}, 'armLowerL': {'rotation': 0.3}, 'armUpperR': {'rotation': -0.3}}}, {'t': 1, 'layers': {'armUpperL': {'rotation': -0.82}, 'armLowerL': {'rotation': 0.22}, 'armUpperR': {'rotation': -0.35}}}]
-        clips['guard_recovery'] = [{'t': 0, 'layers': {'armUpperL': {'rotation': -0.82}, 'armLowerL': {'rotation': 0.22}, 'armUpperR': {'rotation': -0.35}}}, {'t': 1, 'layers': {'armUpperL': {'rotation': 0}, 'armLowerL': {'rotation': 0}, 'armUpperR': {'rotation': 0}}}]
-        for clip in clips.values():
-            for frame in clip:
-                frame.get('layers', {}).pop('shield', None)
-    return {'visualId': visual_id, 'name': name, 'family': family, 'worldHeight': height, 'designHeight': 112, 'origin': [48, 108], 'attackStyles': {}, 'clips': clips, 'layers': human_layers(style, heavy, mage)}
-
-
-RIGS = [
-    make_rat(), make_spider(),
-    make_human('bronze_revenant', 'Bronze Revenant', 'revenant', 1.66, 'humanoid', heavy=False),
-    make_human('bull_cult_enforcer', 'Bull-Cult Enforcer', 'enforcer', 1.82, 'heavyHumanoid', heavy=True),
-    make_human('guardian_bronze_gatekeeper', 'Bronze Gatekeeper', 'gatekeeper', 1.98, 'heavyHumanoid', heavy=True, guardian=True),
-    make_human('chthonic_acolyte', 'Chthonic Acolyte', 'acolyte', 1.68, 'caster', mage=True),
-]
-RIG_BY_ID = {rig['visualId']: rig for rig in RIGS}
-RIG_BY_ID['bronze_revenant']['attackStyles'] = {'revenant_xiphos': 'melee', 'revenant_shield_bash': 'melee', 'revenant_shield_guard': 'guard'}
-RIG_BY_ID['bull_cult_enforcer']['attackStyles'] = {'enforcer_heavy_cleave': 'melee', 'enforcer_charge': 'lunge', 'enforcer_roar': 'cast'}
-RIG_BY_ID['guardian_bronze_gatekeeper']['attackStyles'] = {'gatekeeper_shield_bash': 'melee', 'gatekeeper_sweep': 'melee', 'gatekeeper_guard': 'guard'}
-RIG_BY_ID['chthonic_acolyte']['attackStyles'] = {'acolyte_underworld_bolt': 'cast', 'acolyte_curse': 'cast', 'acolyte_votive_ward': 'guard'}
-
-
-def attach_pose_preview(atlas, rig, phase, elapsed=0):
-    output = Image.new('RGBA', (112, 112), (0, 0, 0, 0))
-    parts = {layer['id']: atlas.crop((layer['cell'][0], layer['cell'][1], layer['cell'][0] + CELL, layer['cell'][1] + CELL)) for layer in rig['layers']}
-    clips = rig['clips']
-    clip_name = {'Idle': 'idle', 'Run': 'run', 'Windup': 'melee_windup', 'Impact': 'melee_impact', 'Hurt': 'hurt', 'Death': 'death'}[phase]
-    clip = clips.get(clip_name, clips['idle'])
-    t = {'Idle': 0.24, 'Run': 0.17, 'Windup': 0.68, 'Impact': 0.34, 'Hurt': 0.35, 'Death': 0.75}[phase]
-    pose = sample_pose(clip, t)
-    by_id = {layer['id']: layer for layer in rig['layers']}
-    scale = min(1.0, 92 / rig['designHeight'])
-    pixel_origin = (56, 105)
-    memo = {}
-
-    def point_for(layer_id):
-        if layer_id in memo:
-            return memo[layer_id]
-        spec = by_id[layer_id]
-        parent = spec['parent']
-        if parent == 'root':
-            attach = spec['attach']
-            px, py = attach[0] - rig['origin'][0], attach[1] - rig['origin'][1]
-            angle = 0.0
-        else:
-            px, py, angle = point_for(parent)
-            attach = spec['attach']
-            radians = angle
-            dx, dy = attach[0], attach[1]
-            px += dx * math.cos(radians) + dy * math.sin(radians)
-            py += -dx * math.sin(radians) + dy * math.cos(radians)
-        transform = pose.get(layer_id, {})
-        px += transform.get('x', 0)
-        py -= transform.get('y', 0)
-        angle += transform.get('rotation', 0)
-        memo[layer_id] = (px, py, angle)
-        return memo[layer_id]
-
-    for spec in sorted(rig['layers'], key=lambda entry: entry['order']):
-        art = parts[spec['id']]
-        if spec['flipX']:
-            art = art.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
-        rotated = art
-        px, py, angle = point_for(spec['id'])
-        rotated = art.rotate(math.degrees(angle), resample=Image.Resampling.NEAREST, center=tuple(spec['pivot']), expand=False)
-        x = round(pixel_origin[0] + px * scale - spec['pivot'][0] * scale)
-        y = round(pixel_origin[1] + py * scale - spec['pivot'][1] * scale)
-        rotated = rotated.resize((round(CELL * scale), round(CELL * scale)), Image.Resampling.NEAREST)
-        output.alpha_composite(rotated, (x, y))
-    return output
-
-
-def sample_pose(clip, time):
-    frames = clip
-    left = frames[0]
-    right = frames[-1]
-    for index in range(1, len(frames)):
-        if time <= frames[index]['t']:
-            left, right = frames[index - 1], frames[index]
-            break
-    span = max(0.0001, right['t'] - left['t'])
-    t = max(0, min(1, (time - left['t']) / span))
-    layers = set(left.get('layers', {})) | set(right.get('layers', {}))
-    sampled = {}
-    for layer_id in layers:
-        a = left.get('layers', {}).get(layer_id, {})
-        b = right.get('layers', {}).get(layer_id, {})
-        sampled[layer_id] = {key: a.get(key, 0) + (b.get(key, 0) - a.get(key, 0)) * t for key in set(a) | set(b)}
-    return sampled
-
-
-def validate_manifest(manifest):
-    ids = set()
-    for rig in manifest['rigs'].values():
-        if rig['visualId'] in ids:
-            raise ValueError('Duplicate visual id: ' + rig['visualId'])
-        ids.add(rig['visualId'])
-        layer_ids = {entry['id'] for entry in rig['layers']}
-        if len(layer_ids) != len(rig['layers']):
-            raise ValueError('Duplicate layer id: ' + rig['visualId'])
-        for entry in rig['layers']:
-            x, y = entry['cell']
-            if x < 0 or y < 0 or x + CELL > manifest['atlasWidth'] or y + CELL > manifest['atlasHeight']:
-                raise ValueError('Atlas bounds exceeded: ' + rig['visualId'] + '/' + entry['id'])
-            if not (0 <= entry['pivot'][0] < CELL and 0 <= entry['pivot'][1] < CELL):
-                raise ValueError('Pivot outside source cell: ' + rig['visualId'] + '/' + entry['id'])
-            if entry['parent'] != 'root' and entry['parent'] not in layer_ids:
-                raise ValueError('Unknown parent: ' + rig['visualId'] + '/' + entry['id'])
-        for clip_name, clip in rig['clips'].items():
-            if len(clip) < 2 or clip[0]['t'] != 0 or clip[-1]['t'] != 1:
-                raise ValueError('Clip needs endpoints: ' + rig['visualId'] + '/' + clip_name)
-            if any(frame['t'] < 0 or frame['t'] > 1 for frame in clip):
-                raise ValueError('Clip timing outside [0, 1]: ' + rig['visualId'] + '/' + clip_name)
-            for frame in clip:
-                if set(frame.get('layers', {})) - layer_ids:
-                    raise ValueError('Clip references unknown layer: ' + rig['visualId'] + '/' + clip_name)
-    return True
-
-
-def generate_character_rig_assets(root):
-    root = Path(root)
-    atlas = Image.new('RGBA', ATLAS_SIZE, (0, 0, 0, 0))
-    cell_lookup = {}
-    cell_index = 0
-    for rig in RIGS:
-        style = rig['visualId']
-        style_key = {'cretan_cave_rat': 'rat', 'arachne_brood': 'spider', 'bronze_revenant': 'revenant', 'bull_cult_enforcer': 'enforcer', 'guardian_bronze_gatekeeper': 'gatekeeper', 'chthonic_acolyte': 'acolyte'}[style]
-        for entry in rig['layers']:
-            key = style_key + '/' + entry['art']
-            if key not in cell_lookup:
-                if cell_index >= ATLAS_COLUMNS * ATLAS_ROWS:
-                    raise ValueError('Character rig atlas capacity exceeded.')
-                column, row = cell_index % ATLAS_COLUMNS, cell_index // ATLAS_COLUMNS
-                x, y = column * CELL, row * CELL
-                image = authored_part(style_key, entry['art'])
-                if image.getbbox() is None:
-                    raise ValueError('Empty authored art cell: ' + key)
-                if image.getbbox()[0] <= 0 or image.getbbox()[1] <= 0 or image.getbbox()[2] >= CELL or image.getbbox()[3] >= CELL:
-                    raise ValueError('Art touches atlas cell boundary: ' + key)
-                atlas.alpha_composite(image, (x, y))
-                cell_lookup[key] = [x, y]
-                cell_index += 1
-            entry['cell'] = cell_lookup[key]
-
-    manifest = {
-        'schemaVersion': 1,
-        'atlasPath': '/assets/maze/characters/character_rigs.png',
-        'atlasWidth': ATLAS_SIZE[0],
-        'atlasHeight': ATLAS_SIZE[1],
-        'cellSize': CELL,
-        'contactSheetPath': 'docs/previews/FPS_R3A_CHARACTER_CONTACT_SHEET.png',
+            layer('foreUpperL', 'upper_leg', 'body', (12, 4), (32, 8), 6), layer('foreUpperR', 'upper_leg', 'body', (16, 4), (32, 8), 7, True)       'cellSize': CELL,
+        'contactSheetPath': 'docs/previews/R6E_CHARACTER_DIRECTION_SHEET.png',
         'rigs': {rig['visualId']: {**rig, 'fallbackSprite': f"/assets/maze/enemies/{rig['visualId']}.png"} for rig in RIGS},
     }
     validate_manifest(manifest)
 
     character_dir = root / 'characters'
     character_dir.mkdir(parents=True, exist_ok=True)
+    fallback_dir = root / 'enemies'
+    for rig in RIGS:
+        preview = attach_pose_preview(atlas, rig, 'Idle')
+        bounds = preview.getchannel('A').getbbox()
+        if not bounds:
+            raise ValueError('Pilot fallback has no visible alpha: ' + rig['visualId'])
+        crop = preview.crop(bounds)
+        scale = min(60 / crop.width, 60 / crop.height)
+        size = (max(1, round(crop.width * scale)), max(1, round(crop.height * scale)))
+        crop = crop.resize(size, Image.Resampling.NEAREST)
+        fallback = Image.new('RGBA', (64, 64), (0, 0, 0, 0))
+        fallback_draw = ImageDraw.Draw(fallback)
+        fallback_draw.ellipse((8, 57, 56, 62), fill=(20, 18, 17, 118))
+        fallback.alpha_composite(crop, ((64 - size[0]) // 2, max(0, 60 - size[1])))
+        fallback.save(fallback_dir / (rig['visualId'] + '.png'), optimize=True)
     atlas.save(character_dir / 'character_rigs.png', optimize=True)
     manifest_path = root.parent.parent.parent / 'data/generated/characterRigs.json'
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
@@ -562,4 +672,25 @@ def generate_character_rig_assets(root):
             preview = attach_pose_preview(atlas, rig, title)
             sheet.paste(preview, (x + 20, y + 23), preview)
     sheet.save(preview_dir / 'FPS_R3A_CHARACTER_CONTACT_SHEET.png', optimize=True)
-    print('Generated character rig atlas and contact sheet:', len(RIGS), 'pilot rigs,', cell_index, 'authored atlas cells')
+
+    humanoids = [rig for rig in RIGS if rig['family'] in ('humanoid', 'heavyHumanoid', 'caster')]
+    columns = [('front', 'idle'), ('front', 'impact'), ('threeQuarter', 'idle'), ('threeQuarter', 'impact'), ('back', 'idle'), ('back', 'impact')]
+    margin, label_w, label_h, cell_w, cell_h = 14, 146, 20, 130, 130
+    direction_sheet = Image.new('RGB', (margin + label_w + len(columns) * cell_w + margin, margin + label_h + len(humanoids) * cell_h + margin), (26, 27, 29))
+    direction_draw = ImageDraw.Draw(direction_sheet)
+    for column, (view, phase) in enumerate(columns):
+        x = margin + label_w + column * cell_w
+        direction_draw.text((x + 5, margin), view + ' ' + phase, font=font, fill=(224, 192, 126))
+    for row, rig in enumerate(humanoids):
+        y = margin + label_h + row * cell_h
+        direction_draw.text((margin, y + 55), rig['name'], font=font, fill=(210, 204, 188))
+        for column, (view, phase) in enumerate(columns):
+            x = margin + label_w + column * cell_w
+            direction_draw.rectangle((x, y + 2, x + cell_w - 4, y + cell_h - 3), fill=(37, 34, 34), outline=(94, 77, 59))
+            preview = attach_pose_preview(atlas, rig, phase.capitalize(), view)
+            bounds = preview.getchannel('A').getbbox()
+            if not bounds or bounds[2] <= bounds[0] or bounds[3] <= bounds[1]:
+                raise ValueError('Empty alpha render in direction sheet: ' + rig['visualId'] + '/' + view + '/' + phase)
+            direction_sheet.paste(preview, (x + 8, y + 5), preview)
+    direction_sheet.save(preview_dir / 'R6E_CHARACTER_DIRECTION_SHEET.png', optimize=True)
+    print('Generated character rig atlas and contact sheets:', len(RIGS), 'pilot rigs,', cell_index, 'authored atlas cells')
