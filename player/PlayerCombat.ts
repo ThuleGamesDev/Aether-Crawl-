@@ -5,6 +5,7 @@ import { actionSpeedMultiplier } from '../combat/StatusSystem';
 import { combineActionSpeedMultipliers } from '../combat/actionSpeed';
 import { isDualWieldLoadout } from '../services/equipmentRules';
 import type { EquipmentSlot } from '../types';
+import { abilityStaminaCost, STAMINA_RULES } from '../combat/CombatMastery';
 
 export type PlayerActionPhase = 'WINDUP' | 'ACTIVE' | 'RECOVERY';
 
@@ -82,15 +83,19 @@ export class PlayerCombat {
     const derived = calculateDerivedStats(player);
     const manaCost = ability.manaCost * derived.manaCostMultiplier;
     if (player.stats.mp < manaCost) return { player, ability: null, error: 'Not enough mana.' };
+    let weaponSlot: Extract<EquipmentSlot, 'mainHand' | 'offHand'> = 'mainHand';
+    if (ability.kind === 'MELEE' && isDualWieldLoadout(player.equipment)) weaponSlot = this.nextMeleeWeaponSlot;
+    const isClassSkill = CLASS_ABILITY_LOADOUT[player.classId].skillSlots.includes(abilityId);
+    const staminaCost = isClassSkill ? 0 : abilityStaminaCost(ability, player, weaponSlot);
+    const currentStamina = Math.max(0, Math.min(derived.maxStamina, Number.isFinite(player.stats.stamina) ? player.stats.stamina! : derived.maxStamina));
+    if (currentStamina < staminaCost) return { player, ability: null, error: 'Not enough stamina.' };
     const baseSpeedMultiplier = getAbilityDamageType(ability) === 'SPELL' ? derived.castSpeedMultiplier : derived.attackSpeedMultiplier;
     const speedMultiplier = combineActionSpeedMultipliers(baseSpeedMultiplier, actionSpeedMultiplier(player.statusEffects));
     const chargeScale = ability.chargeMinSeconds
       ? 1 + Math.max(0, Math.min(0.65, (chargeSeconds - ability.chargeMinSeconds) * 0.45))
       : 1;
     this.cooldowns.set(abilityId, ability.cooldownSeconds * derived.cooldownMultiplier);
-    let weaponSlot: Extract<EquipmentSlot, 'mainHand' | 'offHand'> = 'mainHand';
     if (ability.kind === 'MELEE' && isDualWieldLoadout(player.equipment)) {
-      weaponSlot = this.nextMeleeWeaponSlot;
       this.nextMeleeWeaponSlot = weaponSlot === 'mainHand' ? 'offHand' : 'mainHand';
     }
     this.activeAction = {
@@ -100,7 +105,12 @@ export class PlayerCombat {
       classPassiveResolved: false, classPassiveMultiplier: 1,
       classMeleeRecorded: false, weaponSlot,
     };
-    return { player: { ...player, stats: { ...player.stats, mp: player.stats.mp - manaCost } }, ability };
+    return { player: { ...player, stats: {
+      ...player.stats,
+      mp: player.stats.mp - manaCost,
+      stamina: currentStamina - staminaCost,
+      staminaRegenDelaySeconds: staminaCost > 0 ? STAMINA_RULES.regenerationDelaySeconds : player.stats.staminaRegenDelaySeconds ?? 0,
+    } }, ability };
   }
 
   update(deltaSeconds: number): { activeStarted: boolean; activeHitIndices: number[]; completed: boolean; action: ActivePlayerAction | null } {

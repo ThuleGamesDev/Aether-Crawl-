@@ -394,6 +394,12 @@ export interface SoloCharacterStats {
   damageBonus: number;
   /** Base armor for authored class progression. Equipment armor is derived separately. */
   baseArmor?: number;
+  /** Base stamina for real-time combat; omitted by pre-R6C version-5 saves. */
+  baseMaxStamina?: number;
+  /** Current R6C stamina; omitted by pre-R6C version-5 saves and restored to full once. */
+  stamina?: number;
+  /** Delay before stamina begins regenerating after an action or guard drain. */
+  staminaRegenDelaySeconds?: number;
   /** Legacy cached equipment armor. R4A recalculates it from equipment and never aggregates it. */
   armor: number;
 }
@@ -422,7 +428,7 @@ export interface ItemBaseDefinition extends Omit<Item, 'isEquipped' | 'quantity'
 export type ItemAffixStat = 'strengthFlat' | 'dexterityFlat' | 'intelligenceFlat'
   | 'physicalDamageFlat' | 'physicalDamagePercent' | 'spellDamageFlat' | 'spellDamagePercent'
   | 'attackSpeedPercent' | 'castSpeedPercent' | 'criticalChancePercent' | 'criticalDamagePercent'
-  | 'maxHealthFlat' | 'maxHealthPercent' | 'maxManaFlat' | 'maxManaPercent'
+  | 'maxHealthFlat' | 'maxHealthPercent' | 'maxManaFlat' | 'maxManaPercent' | 'maxStaminaFlat' | 'staminaRegenPercent'
   | 'armorFlat' | 'armorPercent' | 'movementSpeedPercent' | 'cooldownReductionPercent' | 'manaCostReductionPercent'
   | 'projectileDamagePercent' | 'projectileSpeedPercent'
   | 'bleedChancePercent' | 'bleedPowerPercent' | 'poisonChancePercent' | 'poisonPowerPercent'
@@ -572,6 +578,13 @@ export interface WorldEnemy {
   statusEffects?: ActiveStatus[];
   phase?: number;
   phaseTransitioned?: boolean;
+  /** R6C combat mastery state; optional so existing v5 saves remain valid. */
+  poise?: number;
+  maxPoise?: number;
+  poiseRecoveryDelaySeconds?: number;
+  poiseBreakRecoverySeconds?: number;
+  staggerImmunitySeconds?: number;
+  phaseTransitionLockSeconds?: number;
   repositionCooldownSeconds?: number;
   pathRefreshSeconds?: number;
   pathTargetCell?: { x: number; y: number };
@@ -590,6 +603,8 @@ export interface DerivedCharacterStats {
   intelligence: number;
   maxHealth: number;
   maxMana: number;
+  maxStamina: number;
+  staminaRegenPerSecond: number;
   armor: number;
   weaponPower: number;
   mainHandWeaponPower: number;

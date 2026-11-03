@@ -68,6 +68,16 @@ describe('FPS-R4B mouse and overlay input handling', () => {
     input.dispose();
   });
 
+  it('maps Q and the touch trigger to a one-frame shield parry input', () => {
+    const { input, browserWindow } = setup();
+    browserWindow.emit('keydown', { code: 'KeyQ', repeat: false, preventDefault: () => undefined });
+    expect(input.readFrame().parryPressed).toBe(true);
+    expect(input.readFrame().parryPressed).toBe(false);
+    input.triggerParry();
+    expect(input.readFrame().parryPressed).toBe(true);
+    input.dispose();
+  });
+
   it('cancels a touch movement pointer without retaining the last joystick direction', () => {
     const { input, canvas } = setup();
     canvas.emit('pointerdown', { pointerType: 'touch', pointerId: 7, clientX: 20, clientY: 50, preventDefault: () => undefined });
@@ -94,3 +104,4 @@ describe('FPS-R4B mouse and overlay input handling', () => {
     input.dispose();
   });
 });
+

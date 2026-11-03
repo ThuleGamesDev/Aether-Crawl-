@@ -26,6 +26,8 @@ export interface EnemyAttackDefinition {
   healOwnerRatio?: number;
   phase?: number;
   interruptible?: boolean;
+  /** Only attacks explicitly marked here can be stopped by a timed shield parry. */
+  parryable?: boolean;
 }
 
 const melee = (id: string, name: string, range = 1.35, damageMultiplier = 1, windupSeconds = 0.58): EnemyAttackDefinition => ({
@@ -40,13 +42,13 @@ const projectile = (id: string, name: string, range: number, color: string, stat
 export const ENEMY_ATTACK_SETS: Record<string, readonly EnemyAttackDefinition[]> = {
   // The six early-floor families teach spacing, defense, and attack timing before damage scales up.
   rat: [
-    melee('rat_bite', 'Bite', 1.2, 0.72, 0.42),
+    { ...melee('rat_bite', 'Bite', 1.2, 0.72, 0.42), parryable: true, telegraphColor: '#57b9a9' },
     { ...melee('rat_leap', 'Coiled Leap', 2.6, 0.95, 0.72), shape: 'CHARGE', motion: 'LEAP', motionSpeed: 5.2, recoverySeconds: 0.65, cooldownSeconds: 2.0, telegraphColor: '#e6a452' },
   ],
   revenant: [
-    { ...melee('revenant_xiphos', 'Xiphos Slash', 1.65, 1.0, 0.62), shape: 'CONE', arcRadians: 1.22, telegraphColor: '#db774d' },
+    { ...melee('revenant_xiphos', 'Xiphos Slash', 1.65, 1.0, 0.62), shape: 'CONE', arcRadians: 1.22, parryable: true, telegraphColor: '#57b9a9' },
     { id: 'revenant_shield_guard', name: 'Shield Guard', shape: 'BUFF', range: 1.85, windupSeconds: 0.48, activeSeconds: 0.1, recoverySeconds: 0.3, cooldownSeconds: 3.2, damageMultiplier: 0, guardSeconds: 0.9, statusEffect: { statusId: 'GUARD', durationSeconds: 0.9, magnitude: 0.65 }, telegraphColor: '#d7a853' },
-    { ...melee('revenant_shield_bash', 'Prepared Shield Bash', 1.45, 0.82, 0.86), statusEffect: { statusId: 'STAGGER', durationSeconds: 0.38, magnitude: 0.38 }, telegraphColor: '#e9b955' },
+    { ...melee('revenant_shield_bash', 'Prepared Shield Bash', 1.45, 0.82, 0.86), parryable: true, statusEffect: { statusId: 'STAGGER', durationSeconds: 0.38, magnitude: 0.38 }, telegraphColor: '#57b9a9' },
   ],
   spider: [
     { ...melee('spider_venom_fang', 'Venom Fang', 1.5, 0.82, 0.58), statusEffect: { statusId: 'POISON', durationSeconds: 4, magnitude: 2 }, telegraphColor: '#a4bd48' },
@@ -83,8 +85,8 @@ export const ENEMY_ATTACK_SETS: Record<string, readonly EnemyAttackDefinition[]>
   drake: [{ id: 'drake_cinder', name: 'Cinder Breath', shape: 'CONE', range: 4.2, radius: 4.2, arcRadians: 0.8, windupSeconds: 1.05, activeSeconds: 0.12, recoverySeconds: 0.88, cooldownSeconds: 2, damageMultiplier: 1.1, statusEffect: { statusId: 'BURN', durationSeconds: 3, magnitude: 3 }, telegraphColor: '#ed6447' }],
   champion: [{ id: 'champion_cleave', name: 'Oath-Breaker Cleave', shape: 'CONE', range: 2.8, radius: 2.8, arcRadians: 1.35, windupSeconds: 0.92, activeSeconds: 0.12, recoverySeconds: 0.78, cooldownSeconds: 1.9, damageMultiplier: 1.1, telegraphColor: '#b94e54' }],
   gatekeeper: [
-    { ...melee('gatekeeper_shield_bash', 'Shield Bash', 1.8, 0.95, 0.72), statusEffect: { statusId: 'STAGGER', durationSeconds: 0.38, magnitude: 0.38 }, telegraphColor: '#e9b955' },
-    { ...melee('gatekeeper_sweep', 'Broad Sword Sweep', 2.75, 1.1, 1.0), shape: 'CONE', arcRadians: 1.65, recoverySeconds: 0.78, cooldownSeconds: 1.9, telegraphColor: '#f06444' },
+    { ...melee('gatekeeper_shield_bash', 'Shield Bash', 1.8, 0.95, 0.72), parryable: true, statusEffect: { statusId: 'STAGGER', durationSeconds: 0.38, magnitude: 0.38 }, telegraphColor: '#57b9a9' },
+    { ...melee('gatekeeper_sweep', 'Broad Sword Sweep', 2.75, 1.1, 1.0), shape: 'CONE', arcRadians: 1.65, parryable: true, recoverySeconds: 0.78, cooldownSeconds: 1.9, telegraphColor: '#57b9a9' },
     { id: 'gatekeeper_guard', name: 'Short Guard', shape: 'BUFF', range: 2.8, windupSeconds: 0.58, activeSeconds: 0.1, recoverySeconds: 0.32, cooldownSeconds: 3.4, damageMultiplier: 0, statusEffect: { statusId: 'GUARD', durationSeconds: 0.85, magnitude: 0.62 }, telegraphColor: '#d7a853' },
   ],
   serpent_priestess: [
@@ -134,4 +136,10 @@ export function getEnemyAttackDefinition(attackSetId: string | undefined, attack
   const attacks = getEnemyAttackSet(attackSetId, phase);
   const canonicalId = attackId ? LEGACY_ENEMY_ATTACK_ALIASES[attackId] ?? attackId : undefined;
   return attacks.find(attack => attack.id === canonicalId) ?? attacks[0];
+}
+
+export function isEnemyAttackParryable(attackSetId: string | undefined, attackId: string | undefined, phase = 1): boolean {
+  if (!attackId) return false;
+  const canonicalId = LEGACY_ENEMY_ATTACK_ALIASES[attackId] ?? attackId;
+  return getEnemyAttackSet(attackSetId, phase).some(attack => attack.id === canonicalId && attack.parryable === true);
 }

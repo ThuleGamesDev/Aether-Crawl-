@@ -50,6 +50,9 @@ export function createPlayerCharacter(classId: ClassType, spawn = { x: 1.5, y: 0
     maxMp: template.stats.maxMp,
     baseMaxHp: template.stats.maxHp,
     baseMaxMp: template.stats.maxMp,
+    baseMaxStamina: 100,
+    stamina: 100,
+    staminaRegenDelaySeconds: 0,
     str: template.stats.str,
     dex: template.stats.dex,
     int: template.stats.int,
@@ -297,18 +300,22 @@ export function removeInventoryUnit(player: PlayerCharacter, instanceId: string)
 export function refreshPlayerDerivedCaps(player: PlayerCharacter): PlayerCharacter {
   const baseMaxHp = Math.max(1, Number.isFinite(player.stats.baseMaxHp) ? player.stats.baseMaxHp! : player.stats.maxHp);
   const baseMaxMp = Math.max(0, Number.isFinite(player.stats.baseMaxMp) ? player.stats.baseMaxMp! : player.stats.maxMp);
-  const withBaseCaps = { ...player, stats: { ...player.stats, baseMaxHp, baseMaxMp, baseArmor: Math.max(0, player.stats.baseArmor ?? 0) } };
+  const baseMaxStamina = Math.max(1, Number.isFinite(player.stats.baseMaxStamina) ? player.stats.baseMaxStamina! : 100);
+  const withBaseCaps = { ...player, stats: { ...player.stats, baseMaxHp, baseMaxMp, baseMaxStamina, baseArmor: Math.max(0, player.stats.baseArmor ?? 0) } };
   const derived = calculateDerivedStats(withBaseCaps);
   return { ...player, stats: {
     ...player.stats,
     baseMaxHp,
     baseMaxMp,
+    baseMaxStamina,
     baseArmor: withBaseCaps.stats.baseArmor,
     maxHp: derived.maxHealth,
     maxMp: derived.maxMana,
     armor: derived.armor,
     hp: Math.max(0, Math.min(derived.maxHealth, Number.isFinite(player.stats.hp) ? player.stats.hp : derived.maxHealth)),
     mp: Math.max(0, Math.min(derived.maxMana, Number.isFinite(player.stats.mp) ? player.stats.mp : derived.maxMana)),
+    stamina: Math.max(0, Math.min(derived.maxStamina, Number.isFinite(player.stats.stamina) ? player.stats.stamina! : derived.maxStamina)),
+    staminaRegenDelaySeconds: Math.max(0, Math.min(10, Number.isFinite(player.stats.staminaRegenDelaySeconds) ? player.stats.staminaRegenDelaySeconds! : 0)),
   } };
 }
 
