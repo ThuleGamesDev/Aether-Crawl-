@@ -4,6 +4,7 @@ import { getClassSkillKit } from '../data/classSkillKits';
 import { getRankedAbility, type SkillUpgradeOption } from '../player/SkillProgression';
 import { calculateDerivedStats } from '../player/DerivedStats';
 import type { PlayerCharacter } from '../types';
+import ActionGlyph, { actionGlyphForSkill } from './ActionGlyph';
 
 interface SkillUpgradeScreenProps {
   player: PlayerCharacter;
@@ -29,12 +30,12 @@ const SkillUpgradeScreen: React.FC<SkillUpgradeScreenProps> = ({ player, options
         if (!base || !current || !next) return null;
         const preview = getPreview(current, next, option.action);
         return <button className="fps-skill-choice" key={option.abilityId} onClick={() => onChoose(option.abilityId)}>
-          <span className="fps-skill-choice-role">{option.action === 'UNLOCK' ? 'NEW ACTIVE SKILL' : option.role.toUpperCase()}</span>
-          <strong>{option.name}</strong>
+          <span className="fps-skill-choice-heading"><ActionGlyph kind={actionGlyphForSkill(next)} /><span><small className="fps-skill-choice-role">{option.action === 'UNLOCK' ? 'NEW ACTIVE SKILL' : option.role.toUpperCase()}</small><strong>{option.name}</strong></span></span>
           <span className="fps-skill-choice-rank">{option.action === 'UNLOCK' ? 'Unlock · Rank 1' : `Rank ${option.currentRank} → ${option.nextRank}`}</span>
+          <span className="fps-skill-choice-unlock">Level {option.unlockLevel} requirement met</span>
           <span className="fps-skill-choice-copy">{option.description}</span>
           <span className="fps-skill-choice-preview">{preview.join(' · ')}</span>
-          <span className="fps-skill-choice-cost">{(next.manaCost * derived.manaCostMultiplier).toFixed(next.manaCost * derived.manaCostMultiplier % 1 ? 1 : 0)} MP · {(next.cooldownSeconds * derived.cooldownMultiplier).toFixed(1)}s cooldown</span>
+          <span className="fps-skill-choice-cost">1 skill point · {(next.manaCost * derived.manaCostMultiplier).toFixed(next.manaCost * derived.manaCostMultiplier % 1 ? 1 : 0)} MP · {(next.cooldownSeconds * derived.cooldownMultiplier).toFixed(1)}s cooldown</span>
         </button>;
       })}
     </div> : <p className="fps-skill-mastered">All four active skills have reached Rank 5. This point remains saved.</p>}

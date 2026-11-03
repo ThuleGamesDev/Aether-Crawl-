@@ -6,6 +6,12 @@ import { findWallMount } from './architecture';
 
 const WALL_HEIGHT = 2.6;
 const MAX_LOCAL_LIGHTS = 6;
+export const WALL_TEXTURE_VARIANT_COUNT = 3;
+
+export function wallTextureVariantForCell(x: number, z: number): number {
+  const mixed = Math.imul(x, 73856093) ^ Math.imul(z, 19349663);
+  return (mixed >>> 0) % WALL_TEXTURE_VARIANT_COUNT;
+}
 
 interface FlickeringLight {
   light: THREE.PointLight;
@@ -132,15 +138,17 @@ export class WorldGeometry {
       if (tile === TileType.WALL && world.decorations[z]?.[x] === DungeonDecoration.PILLAR) pillarCells.push({ x, z });
       else if (tile === TileType.WALL || tile === TileType.DOOR || tile === TileType.LOCKED || tile === TileType.SECRET) wallCells.push({ x, z, tile });
     }));
-    const grouped = new Map<number, Array<{ x: number; z: number }>>();
+    const grouped = new Map<string, { tile: number; variant: number; cells: Array<{ x: number; z: number }> }>();
     for (const cell of wallCells) {
-      const entries = grouped.get(cell.tile) ?? [];
-      entries.push(cell);
-      grouped.set(cell.tile, entries);
+      const variant = cell.tile === TileType.WALL ? wallTextureVariantForCell(cell.x, cell.z) : 0;
+      const key = `${cell.tile}:${variant}`;
+      const group = grouped.get(key) ?? { tile: cell.tile, variant, cells: [] };
+      group.cells.push(cell);
+      grouped.set(key, group);
     }
-    for (const [tile, cells] of grouped) {
+    for (const { tile, variant, cells } of grouped.values()) {
       const kind = tile === TileType.DOOR ? 'door' : 'wall';
-      const texture = assets.texture(kind, world.biome);
+      const texture = assets.texture(kind, world.biome, variant);
       const material = new THREE.MeshStandardMaterial({
         map: texture,
         color: tile === TileType.LOCKED ? 0x756168 : tile === TileType.SECRET ? 0x797d71 : 0xffffff,
@@ -150,14 +158,15 @@ export class WorldGeometry {
       });
       const geometry = new THREE.BoxGeometry(1, WALL_HEIGHT, 1);
       const mesh = new THREE.InstancedMesh(geometry, material, cells.length);
-      mesh.name = tile === TileType.DOOR ? 'DungeonDoors' : tile === TileType.LOCKED ? 'LockedWalls' : tile === TileType.SECRET ? 'SecretWalls' : 'DungeonWalls';
+      mesh.name = tile === TileType.DOOR ? 'DungeonDoors' : tile === TileType.LOCKED ? 'LockedWalls' : tile === TileType.SECRET ? 'SecretWalls' : `DungeonWalls_V${variant + 1}`;
       const matrix = new THREE.Matrix4();
       const color = new THREE.Color();
       cells.forEach((cell, index) => {
         matrix.makeTranslation(cell.x + 0.5, WALL_HEIGHT / 2, cell.z + 0.5);
         mesh.setMatrixAt(index, matrix);
-        if (tile === TileType.WALL && (cell.x + cell.z) % 5 === 0) {
-          color.setHex(0xb2a18e);
+        if (tile === TileType.WALL) {
+          const tint = [0xf3e7d2, 0xe4d3b8, 0xd8c6aa, 0xf7ead4][((cell.x * 7 + cell.z * 11) >>> 0) % 4];
+          color.setHex(tint);
           mesh.setColorAt(index, color);
         }
       });

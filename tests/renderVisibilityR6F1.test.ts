@@ -221,6 +221,11 @@ describe('R6F1 render visibility recovery', () => {
         if (!textures.has(key)) textures.set(key, new THREE.Texture());
         return textures.get(key)!;
       }),
+      vfxTexture: vi.fn((effectId: string) => {
+        const key = `vfx:${effectId}`;
+        if (!textures.has(key)) textures.set(key, new THREE.Texture());
+        return textures.get(key)!;
+      }),
     } as unknown as AssetManager;
     const camera = new THREE.PerspectiveCamera();
     const presenter = new WeaponPresenter(camera, assets);
