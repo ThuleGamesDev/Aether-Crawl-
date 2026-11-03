@@ -73,7 +73,7 @@ export function createPlayerCharacter(classId: ClassType, spawn = { x: 1.5, y: 0
     inventory,
     inventoryGrid: syncInventoryGrid(inventory),
     uniqueEffectStates: [],
-    skills: [{ abilityId: CLASS_ABILITY_LOADOUT[classId].skill, rank: 1 }],
+    skills: [{ abilityId: getClassSkillKit(classId)?.skills[0]?.abilityId ?? CLASS_ABILITY_LOADOUT[classId].skill, rank: 1 }],
     skillPoints: 0,
     skillProgressionVersion: 1,
     classPassiveState: createClassPassiveState(classId),

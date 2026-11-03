@@ -83,6 +83,8 @@ export const VFX_DEFINITIONS = {
     layer('metal_sparks', 'IMPACT', 4, 0.22, 0.24, ['#e8c37a', '#f4dfae'], 'directional', 'billboard', 'flash', 'contract', 5, 1.15, 0.7)),
   spear_thrust: define('spear_thrust', 'ordinary_hit', 4,
     layer('spear_thrust', 'ARC', 1, 0.18, 0.72, ['#f4dfae'], 'directional', 'direction', 'flash', 'contract', 5, 0.08)),
+  arrow_trail: define('arrow_trail', 'ordinary_hit', 4,
+    layer('spear_thrust', 'TRAIL', 2, 0.16, 0.18, ['#f4dfae', '#d5b77a'], 'directional', 'direction', 'fade', 'contract', 5, 0.18)),
   aspis_impact: define('aspis_impact', 'critical_hit', 7,
     layer('shield_impact', 'RING', 1, 0.32, 0.72, ['#f4d27d'], 'expand', 'ground', 'fade', 'expand', 4, 0)),
   shield_impact: define('shield_impact', 'critical_hit', 7,

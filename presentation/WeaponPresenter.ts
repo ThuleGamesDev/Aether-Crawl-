@@ -5,10 +5,12 @@ import { AssetManager } from './AssetManager';
 import { getAbility } from '../combat/AbilityRegistry';
 import { isFocusItem, isShieldItem, isTwoHandedItem } from '../services/equipmentRules';
 import type { OffHandVisualType } from '../data/assetRegistry';
+import type { WeaponAnimationProfile } from '../data/weaponActionRegistry';
+import { getWeaponVisualForItem } from '../data/weaponActionRegistry';
+import { getClassSkill } from '../data/classSkillKits';
 
 export const getWeaponVisualTypeForPlayer = (player: PlayerCharacter): WeaponVisualType =>
-  player.equipment.mainHand?.visualType ??
-  (player.classId === 'MONK' ? 'unarmed' : player.classId === 'SORCERER' || player.classId === 'NECROMANCER' ? 'staff' : 'sword');
+  getWeaponVisualForItem(player.equipment.mainHand);
 
 export interface WeaponPresentationPoseInput {
   weapon: WeaponVisualType;
@@ -20,6 +22,7 @@ export interface WeaponPresentationPoseInput {
   hasShield: boolean;
   elapsedSeconds: number;
   actionHand?: 'mainHand' | 'offHand';
+  animationProfile?: WeaponAnimationProfile | 'CLASS_SKILL';
   offHandPose?: 'empty' | 'weapon' | 'shield' | 'focus' | 'twoHandGrip' | 'bowDraw';
   viewmodelEvent?: 'DODGE' | 'HIT_RECOIL' | 'ITEM_USE' | null;
   viewmodelEventProgress?: number;
@@ -87,8 +90,8 @@ export function getOffHandPose(player: PlayerCharacter): NonNullable<WeaponPrese
   if (isShieldItem(item)) return 'shield';
   if (isFocusItem(item)) return 'focus';
   if (item?.type === 'WEAPON') return 'weapon';
-  if (isTwoHandedItem(player.equipment.mainHand)) return player.equipment.mainHand?.visualType === 'bow' ? 'bowDraw' : 'twoHandGrip';
-  if (player.equipment.mainHand?.visualType === 'spear') return 'twoHandGrip';
+  if (isTwoHandedItem(player.equipment.mainHand)) return getWeaponVisualForItem(player.equipment.mainHand) === 'bow' ? 'bowDraw' : 'twoHandGrip';
+  if (getWeaponVisualForItem(player.equipment.mainHand) === 'spear') return 'twoHandGrip';
   return 'empty';
 }
 
@@ -99,8 +102,9 @@ export function getOffHandVisual(player: PlayerCharacter, pose: NonNullable<Weap
   if (pose === 'twoHandGrip') return 'twoHandGrip';
   if (pose === 'bowDraw') return 'bowDraw';
   if (pose === 'weapon' && item) {
-    if (item.visualType === 'dagger') return 'dagger';
-    if (item.visualType === 'spear') return 'spear';
+    const visual = getWeaponVisualForItem(item);
+    if (visual === 'dagger') return 'dagger';
+    if (visual === 'spear') return 'spear';
     return 'sword';
   }
   return 'empty';
@@ -135,7 +139,46 @@ export function getWeaponPresentationPose(input: WeaponPresentationPoseInput, ta
   pose.offHandScale = 0.67;
 
   if (phase && ability) {
-    if (input.weapon === 'axe') {
+    if (input.animationProfile === 'CLASS_SKILL') {
+      // Class actions use a neutral, class-driven gesture and never borrow a weapon-specific pose.
+      pose.weaponX = 0.68;
+      pose.weaponY = -0.46 + (phase === 'WINDUP' ? -0.025 * p : phase === 'ACTIVE' ? 0.035 : -0.025 * p);
+      pose.weaponZ = phase === 'ACTIVE' ? -0.94 : -1.05;
+      pose.weaponRotationZ = phase === 'WINDUP' ? -0.06 * p : phase === 'ACTIVE' ? 0.08 : 0.06 * (1 - p);
+    } else if (input.animationProfile === 'KOPIS') {
+      if (phase === 'WINDUP') {
+        pose.weaponX = 0.7 + p * 0.025; pose.weaponY = -0.47 + p * 0.08; pose.weaponZ = -1.11;
+        pose.weaponRotationZ = 0.38 * p;
+      } else if (phase === 'ACTIVE') {
+        pose.weaponX = 0.64 - p * 0.04; pose.weaponY = -0.42; pose.weaponZ = -0.9;
+        pose.weaponRotationZ = -0.74 + p * 0.16;
+      } else {
+        pose.weaponY = -0.43 - p * 0.04; pose.weaponZ = -0.96;
+        pose.weaponRotationZ = -0.52 * (1 - p);
+      }
+    } else if (input.animationProfile === 'DAGGERS') {
+      if (phase === 'WINDUP') {
+        pose.weaponX = 0.69; pose.weaponY = -0.48 + p * 0.055; pose.weaponZ = -1.1;
+        pose.weaponRotationZ = 0.2 * p;
+      } else if (phase === 'ACTIVE') {
+        pose.weaponX = 0.63; pose.weaponY = -0.45; pose.weaponZ = -0.84;
+        pose.weaponRotationZ = -0.24 + p * 0.06;
+      } else {
+        pose.weaponY = -0.45 - p * 0.03; pose.weaponZ = -0.96;
+        pose.weaponRotationZ = -0.2 * (1 - p);
+      }
+    } else if (input.animationProfile === 'MAUL') {
+      if (phase === 'WINDUP') {
+        pose.weaponX = 0.73; pose.weaponY = -0.29 + p * 0.18; pose.weaponZ = -1.14;
+        pose.weaponRotationZ = -0.72 * p;
+      } else if (phase === 'ACTIVE') {
+        pose.weaponX = 0.66; pose.weaponY = -0.31 - 0.04 * p; pose.weaponZ = -0.84;
+        pose.weaponRotationZ = 0.66 - 0.2 * p;
+      } else {
+        pose.weaponX = 0.68; pose.weaponY = -0.35 - p * 0.08; pose.weaponZ = -0.96;
+        pose.weaponRotationZ = 0.4 * (1 - p);
+      }
+    } else if (input.weapon === 'axe') {
       if (phase === 'WINDUP') {
         pose.weaponX = 0.74 - p * 0.025; pose.weaponY = -0.42 + p * 0.12; pose.weaponZ = -1.13;
         pose.weaponRotationZ = -0.92 * p - 0.08;
@@ -169,18 +212,7 @@ export function getWeaponPresentationPose(input: WeaponPresentationPoseInput, ta
         pose.weaponRotationZ = 0.38 * (1 - p);
       }
     } else if (input.weapon === 'spear') {
-      const javelin = input.abilityId === 'ranger_volley' || (input.abilityId?.includes('javelin') ?? false);
-      if (javelin) {
-        if (phase === 'WINDUP') {
-          pose.weaponX = 0.66; pose.weaponY = -0.33 + p * 0.03; pose.weaponZ = -1.16;
-          pose.weaponRotationZ = -0.38 * p;
-        } else if (phase === 'ACTIVE') {
-          pose.weaponX = 0.63; pose.weaponY = -0.36; pose.weaponZ = -0.8;
-          pose.weaponRotationZ = 0.08;
-        } else {
-          pose.weaponY = -0.42; pose.weaponZ = -0.98; pose.weaponRotationZ = 0.12 * (1 - p);
-        }
-      } else if (phase === 'WINDUP') {
+      if (phase === 'WINDUP') {
         pose.weaponX = 0.61; pose.weaponY = -0.49 + p * 0.025; pose.weaponZ = -1.12;
         pose.weaponRotationZ = -0.08 * p;
       } else if (phase === 'ACTIVE') {
@@ -252,7 +284,8 @@ export function getWeaponPresentationPose(input: WeaponPresentationPoseInput, ta
       pose.shieldScale = phase === 'ACTIVE' ? 0.44 : 0.42;
     }
   }
-  const offHandPose = input.offHandPose ?? (input.hasShield ? 'shield' : 'empty');
+  const offHandPose = input.animationProfile === 'CLASS_SKILL' && input.offHandPose === 'bowDraw'
+    ? 'twoHandGrip' : input.offHandPose ?? (input.hasShield ? 'shield' : 'empty');
   if (offHandPose === 'shield') {
     pose.offHandX = pose.shieldX;
     pose.offHandY = pose.shieldY;
@@ -289,7 +322,7 @@ export function getWeaponPresentationPose(input: WeaponPresentationPoseInput, ta
     }
   }
 
-  if (input.actionHand === 'offHand' && phase && ability) {
+  if (input.actionHand === 'offHand' && input.animationProfile !== 'FOCUS' && phase && ability) {
     // Move the captured melee action to the authored left-hand sprite; the main hand stays at idle.
     pose.weaponX = 0.68;
     pose.weaponY = -0.48 + moving * 0.045;
@@ -297,15 +330,32 @@ export function getWeaponPresentationPose(input: WeaponPresentationPoseInput, ta
     pose.weaponRotationZ = input.moving ? moving * 0.025 : 0;
     pose.weaponScaleX = 0.72;
     pose.weaponScaleY = 0.72;
-    pose.offHandX = phase === 'WINDUP' ? -0.72 + p * 0.035 : phase === 'ACTIVE' ? -0.56 + p * 0.04 : -0.62 - p * 0.04;
-    pose.offHandY = phase === 'WINDUP' ? -0.45 + p * 0.06 : phase === 'ACTIVE' ? -0.38 : -0.42 - p * 0.04;
+    const kopis = input.animationProfile === 'KOPIS';
+    const daggers = input.animationProfile === 'DAGGERS';
+    pose.offHandX = phase === 'WINDUP' ? -0.72 + p * (kopis ? 0.05 : 0.035) : phase === 'ACTIVE' ? -0.56 + p * 0.04 : -0.62 - p * 0.04;
+    pose.offHandY = phase === 'WINDUP' ? -0.45 + p * (kopis ? 0.075 : daggers ? 0.045 : 0.06) : phase === 'ACTIVE' ? -0.38 : -0.42 - p * 0.04;
     pose.offHandZ = phase === 'WINDUP' ? -1.12 : phase === 'ACTIVE' ? -0.82 : -0.91;
-    pose.offHandRotationZ = phase === 'WINDUP' ? 0.42 * p : phase === 'ACTIVE' ? -0.52 + p * 0.12 : -0.34 * (1 - p);
+    pose.offHandRotationZ = phase === 'WINDUP'
+      ? (kopis ? 0.38 : daggers ? 0.2 : -0.56) * p
+      : phase === 'ACTIVE'
+        ? (kopis ? -0.74 : daggers ? -0.24 : 0.54) + p * (kopis ? 0.16 : daggers ? 0.06 : -0.12)
+        : (kopis ? -0.52 : daggers ? -0.2 : 0.38) * (1 - p);
     pose.offHandScale = 0.55;
     if (ability.id === 'monk_flying_kick') {
       pose.weaponY -= phase === 'WINDUP' ? 0.04 * p : phase === 'ACTIVE' ? 0.08 : 0;
       pose.offHandY += phase === 'WINDUP' ? 0.05 * p : phase === 'ACTIVE' ? 0.08 : 0;
     }
+  }
+
+  if (input.animationProfile === 'FOCUS' && phase && ability) {
+    pose.weaponX = 0.68;
+    pose.weaponY = -0.48 + moving * 0.045;
+    pose.weaponZ = -1.05;
+    pose.weaponRotationZ = input.moving ? moving * 0.025 : 0;
+    pose.offHandX = phase === 'WINDUP' ? -0.62 - p * 0.04 : phase === 'ACTIVE' ? -0.43 : -0.49 + p * 0.04;
+    pose.offHandY = phase === 'WINDUP' ? -0.44 + p * 0.06 : phase === 'ACTIVE' ? -0.34 : -0.38 - p * 0.03;
+    pose.offHandZ = phase === 'ACTIVE' ? -0.78 : -0.96;
+    pose.offHandRotationZ = phase === 'WINDUP' ? -0.1 * p : phase === 'ACTIVE' ? 0.08 : 0.05 * (1 - p);
   }
 
   if (input.abilityId === 'monk_flying_kick' && phase && ability) {
@@ -371,9 +421,9 @@ export class WeaponPresenter {
   update(player: PlayerCharacter, action: ActivePlayerAction | null, isMoving: boolean, guarding: boolean, elapsedSeconds: number, viewmodelEvent: WeaponPresentationPoseInput['viewmodelEvent'] = null, viewmodelEventProgress = 0): void {
     const mainItem = player.equipment.mainHand;
     const equippedWeapon = getWeaponVisualTypeForPlayer(player);
-    const weapon = action?.abilityId === 'ranger_volley' ? 'spear' : equippedWeapon;
+    const weapon = equippedWeapon;
     const actionWeaponItem = action?.weaponSlot === 'offHand' ? player.equipment.offHand : mainItem;
-    const actionWeapon = action?.abilityId === 'ranger_volley' ? 'spear' : actionWeaponItem?.visualType ?? equippedWeapon;
+    const actionWeapon = getWeaponVisualForItem(actionWeaponItem) ?? equippedWeapon;
     const offHandItem = player.equipment.offHand;
     const offHandPose = getOffHandPose(player);
     const offHandVisual = getOffHandVisual(player, offHandPose);
@@ -405,6 +455,9 @@ export class WeaponPresenter {
     input.hasShield = isShieldItem(offHandItem);
     input.elapsedSeconds = elapsedSeconds;
     input.actionHand = action?.weaponSlot ?? 'mainHand';
+    const isClassSkill = action?.actionSource === 'CLASS_SKILL'
+      || (action?.actionSource === 'LEGACY' && Boolean(action && getClassSkill(player.classId, action.abilityId)));
+    input.animationProfile = isClassSkill ? 'CLASS_SKILL' : action?.presentationProfile?.animationProfile;
     input.offHandPose = offHandPose;
     input.viewmodelEvent = viewmodelEvent;
     input.viewmodelEventProgress = viewmodelEventProgress;

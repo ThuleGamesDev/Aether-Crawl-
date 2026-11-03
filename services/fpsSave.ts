@@ -4,6 +4,7 @@ import { isWorldSolid } from '../world/CollisionWorld';
 import type { PlayerCombatSaveState } from '../player/PlayerCombat';
 import { isValidFloorState } from './dungeonSave';
 import { CLASS_ABILITY_LOADOUT, getAbility } from '../combat/AbilityRegistry';
+import { getClassSkillKit } from '../data/classSkillKits';
 import { calculateDerivedStats } from '../player/DerivedStats';
 import { getItemBase } from '../data/itemBases';
 import { getClassSkill } from '../data/classSkillKits';
@@ -106,7 +107,7 @@ function isPlayerCharacter(value: unknown, allowDerivedCaps = false, requireBase
       && (value.equipment[slot] === null || isItemInstance(value.equipment[slot], requireBaseId) && value.equipment[slot].type === type))) return false;
   }
   const classId = value.classId as PlayerCharacter['classId'];
-  const allowedSkills = new Set(CLASS_ABILITY_LOADOUT[classId].skillSlots.filter((id): id is string => Boolean(id)));
+  const allowedSkills = new Set(getClassSkillKit(classId)?.skills.map(skill => skill.abilityId) ?? CLASS_ABILITY_LOADOUT[classId].skillSlots.filter((id): id is string => Boolean(id)));
   if (!Array.isArray(value.skills) || value.skills.length > 4
     || !value.skills.every(skill => isRecord(skill) && typeof skill.abilityId === 'string' && allowedSkills.has(skill.abilityId)
       && Number.isInteger(skill.rank) && skill.rank >= 1 && skill.rank <= 5 && Boolean(getAbility(skill.abilityId))

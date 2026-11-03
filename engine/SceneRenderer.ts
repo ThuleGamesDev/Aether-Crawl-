@@ -487,7 +487,8 @@ function itemTextureKey(drop: WorldLootDrop): string {
 
 function projectileTrailEffect(abilityId: string, statusId?: string): PixelEffectId {
   if (statusId === 'CURSE' || /necromancer_|shade_mark|death_burst|soul_drain|chthonic|underworld/i.test(abilityId)) return 'soul_ash';
-  if (/ranger_|javelin/i.test(abilityId)) return 'dory_thrust';
+  if (abilityId === 'weapon_bow_arrow_shot' || abilityId === 'weapon_bow_charged_arrow' || abilityId === 'ranger_shortbow' || abilityId === 'ranger_piercing_arrow') return 'arrow_trail';
+  if (abilityId === 'ranger_volley' || abilityId === 'ranger_piercing_hunt' || abilityId === 'rogue_knife_fan') return 'ariadne_thread';
   if (statusId === 'POISON') return 'venom_droplets';
   if (statusId === 'BURN') return 'fire_embers';
   if (statusId === 'SLOW') return 'web_threads';
