@@ -1,6 +1,7 @@
 import type { WorldEnemy } from '../types';
 import { getEnemyAttackDefinition, type EnemyAttackDefinition } from './enemyAttacks';
 import { getCharacterRigDefinition } from './characterRigs';
+import { ENEMY_DEATH_ANIMATION_SECONDS } from '../constants/enemyDeath';
 
 export type EnemyCharacterAnimationMode = 'IDLE' | 'ALERT' | 'RUN' | 'WINDUP' | 'IMPACT' | 'RECOVERY' | 'CAST' | 'GUARD' | 'HURT' | 'STAGGER' | 'DEAD';
 export type EnemyAttackAnimationProfile = 'melee' | 'cast' | 'guard' | 'lunge' | 'leap';
@@ -42,7 +43,7 @@ export function getEnemyAttackAnimationProfile(enemy: WorldEnemy, attack?: Enemy
 /** Selects a deterministic visual clip from the current combat snapshot; it owns no gameplay state. */
 export function selectEnemyCharacterAnimation(enemy: WorldEnemy): EnemyCharacterAnimationSelection {
   if (enemy.state === 'DEAD' || enemy.health <= 0) {
-    return { mode: 'DEAD', clipName: 'death', progress: progressFor(enemy.stateTimer, 1.1) };
+    return { mode: 'DEAD', clipName: 'death', progress: progressFor(enemy.stateTimer, ENEMY_DEATH_ANIMATION_SECONDS) };
   }
   if (enemy.state === 'STAGGER') {
     return { mode: 'STAGGER', clipName: 'stagger', progress: progressFor(enemy.stateTimer, 0.42) };

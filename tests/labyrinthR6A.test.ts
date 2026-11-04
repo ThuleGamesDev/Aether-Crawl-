@@ -216,6 +216,9 @@ describe('R6A labyrinth architecture, rooms, and lighting', () => {
     }
     expect(geometry.group.children.some(child => child.name === 'KnossianLimestonePillars')).toBe(true);
     expect(geometry.group.children.some(child => child.name === 'BronzePillarBands')).toBe(true);
+    expect(geometry.group.children.some(child => child.name === 'PalaceExitArch')).toBe(true);
+    expect(geometry.group.children.some(child => child.name === 'PalaceExitFrameTrim')).toBe(true);
+    expect(geometry.group.children.some(child => child.name === 'PalaceExitKeystone')).toBe(true);
     const lights = geometry.group.children.filter(child => child instanceof THREE.PointLight) as THREE.PointLight[];
     expect(lights.length).toBeGreaterThan(0);
     expect(lights.length).toBeLessThanOrEqual(6);

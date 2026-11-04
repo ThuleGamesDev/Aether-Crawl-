@@ -5,6 +5,7 @@ import { enemyDamageTakenMultiplier, incomingDamageMultiplier, outgoingDamageMul
 import { calculateDerivedStats } from '../player/DerivedStats';
 import { getWeaponPowerForSlot } from '../player/DerivedStats';
 import type { EquipmentSlot } from '../types';
+import { ENEMY_DEATH_ANIMATION_SECONDS } from '../constants/enemyDeath';
 
 export function calculatePlayerDamage(player: PlayerCharacter, ability: AbilityDefinition, multiplier = 1, criticalRoll = 1, weaponSlot: Extract<EquipmentSlot, 'mainHand' | 'offHand'> = 'mainHand', includeWeaponPower = true): number {
   const derived = calculateDerivedStats(player);
@@ -40,7 +41,7 @@ export function applyEnemyDamage(enemy: WorldEnemy, amount: number): { enemy: Wo
   const phaseLocked = (enemy.phaseTransitionLockSeconds ?? 0) > 0 && enemy.state === 'RECOVER';
   const poiseBreakLocked = (enemy.poiseBreakRecoverySeconds ?? 0) > 0 && enemy.state === 'STAGGER';
   return {
-    enemy: { ...enemy, health, state: defeated ? 'DEAD' : phaseLocked ? 'RECOVER' : poiseBreakLocked ? 'STAGGER' : 'HURT', stateTimer: defeated ? 1.1 : phaseLocked ? Math.max(enemy.stateTimer, enemy.phaseTransitionLockSeconds ?? 0) : poiseBreakLocked ? Math.max(enemy.stateTimer, enemy.poiseBreakRecoverySeconds ?? 0) : 0.2 },
+    enemy: { ...enemy, health, state: defeated ? 'DEAD' : phaseLocked ? 'RECOVER' : poiseBreakLocked ? 'STAGGER' : 'HURT', stateTimer: defeated ? ENEMY_DEATH_ANIMATION_SECONDS : phaseLocked ? Math.max(enemy.stateTimer, enemy.phaseTransitionLockSeconds ?? 0) : poiseBreakLocked ? Math.max(enemy.stateTimer, enemy.poiseBreakRecoverySeconds ?? 0) : 0.2 },
     defeated,
   };
 }

@@ -4,10 +4,11 @@ import { resolve } from 'node:path';
 import * as THREE from 'three';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CHARACTER_RIG_MANIFEST, getCharacterRigDefinition, validateCharacterRigManifest } from '../data/characterRigs';
-import { getPixelRenderSize, RENDER_QUALITY_SCALES, attachCameraToScene } from '../engine/SceneRenderer';
+import { getPixelRenderSize, parseRenderQualityPreference, RENDER_QUALITY_SCALES, attachCameraToScene } from '../engine/SceneRenderer';
 import { AssetManager } from '../presentation/AssetManager';
 import { CharacterRigAnimator } from '../presentation/CharacterRigAnimator';
-import { getOffHandPose, getOffHandVisual, getWeaponPresentationPose, WeaponPresenter } from '../presentation/WeaponPresenter';
+import { getOffHandPose, getOffHandVisual, getWeaponPresentationPose, isWeaponPresentationCenterClear, WeaponPresenter } from '../presentation/WeaponPresenter';
+import { getEnemyCorpseVisualPhase, getEnemyDeathProgress, shouldReplaceWithCorpse } from '../presentation/enemyCorpsePresentation';
 import type { PlayerCharacter, WorldEnemy, WeaponVisualType } from '../types';
 
 const pilotIds = [
@@ -288,21 +289,46 @@ describe('R6F1 render visibility recovery', () => {
     }
   });
 
-  it('provides bounded performance, balanced, and sharp render sizes at desktop and mobile resolutions', () => {
+  it('provides production render presets at desktop and lower-cost mobile resolutions', () => {
     expect(RENDER_QUALITY_SCALES).toEqual({
-      performance: { desktop: 0.48, mobile: 0.4 },
-      balanced: { desktop: 0.68, mobile: 0.54 },
-      sharp: { desktop: 0.84, mobile: 0.68 },
+      performance: { desktop: 0.75, mobile: 0.45 },
+      balanced: { desktop: 0.9, mobile: 0.58 },
+      crisp: { desktop: 1, mobile: 0.72 },
     });
     for (const [width, height] of [[1280, 720], [1920, 1080], [390, 844]]) {
       const mobile = width < 768;
-      const results = (['performance', 'balanced', 'sharp'] as const).map(quality => getPixelRenderSize(width, height, mobile, quality));
+      const results = (['performance', 'balanced', 'crisp'] as const).map(quality => getPixelRenderSize(width, height, mobile, quality));
       expect(results[0].scale).toBeLessThan(results[1].scale);
       expect(results[1].scale).toBeLessThan(results[2].scale);
-      expect(results[2].width).toBeLessThan(width);
-      expect(results[2].height).toBeLessThan(height);
+      expect(results[2].width).toBe(mobile ? Math.round(width * RENDER_QUALITY_SCALES.crisp.mobile) : width);
+      expect(results[2].height).toBe(mobile ? Math.round(height * RENDER_QUALITY_SCALES.crisp.mobile) : height);
       expect(results.every(result => result.width > 0 && result.height > 0)).toBe(true);
     }
+    expect(getPixelRenderSize(1280, 720, false).scale).toBe(0.9);
+    expect(parseRenderQualityPreference('sharp')).toBe('crisp');
+    expect(parseRenderQualityPreference('crisp')).toBe('crisp');
+    expect(parseRenderQualityPreference('unknown')).toBeNull();
+  });
+
+  it('transitions a defeated enemy through one fall into a stable noninteractive corpse visual', () => {
+    const living = worldEnemy('bronze_revenant');
+    const falling = { ...living, health: 0, state: 'DEAD' as const, stateTimer: 0.55 };
+    const settled = { ...falling, stateTimer: 0 };
+    expect(getEnemyCorpseVisualPhase(living)).toBe('alive');
+    expect(getEnemyCorpseVisualPhase(falling)).toBe('falling');
+    expect(getEnemyDeathProgress(falling)).toBeCloseTo(0.5);
+    expect(getEnemyCorpseVisualPhase(settled)).toBe('corpse');
+    expect(shouldReplaceWithCorpse('rig', settled)).toBe(true);
+    expect(shouldReplaceWithCorpse('legacy', settled)).toBe(true);
+    expect(shouldReplaceWithCorpse('corpse', settled)).toBe(false);
+  });
+
+  it('keeps idle and shield viewmodels larger while leaving the center reticle clear', () => {
+    const pose = getWeaponPresentationPose({ weapon: 'spear', moving: false, guarding: false, hasShield: true, elapsedSeconds: 0, offHandPose: 'shield' });
+    expect(pose.weaponScaleX).toBeGreaterThan(0.72);
+    expect(pose.weaponScaleY).toBeGreaterThan(0.72);
+    expect(pose.shieldScale).toBeGreaterThan(0.38);
+    expect(isWeaponPresentationCenterClear(pose)).toBe(true);
   });
 
   it('retains procedural fallbacks on async weapon texture errors and ignores stale loads after disposal', () => {
@@ -310,6 +336,9 @@ describe('R6F1 render visibility recovery', () => {
     const manager = new AssetManager();
     const texture = manager.weaponTexture('sword', 'PALADIN');
     const fallback = texture.source.data;
+    expect(fallback).toMatchObject({ width: 128, height: 160 });
+    const offHandFallback = manager.offhandTexture('shield').source.data;
+    expect(offHandFallback).toMatchObject({ width: 128, height: 160 });
     expect(manager.getDiagnostics().localTextures['/assets/maze/hands/xiphos.png']).toBe('loading');
     DeferredImage.instances[0].onerror?.();
     expect(manager.weaponTexture('sword', 'PALADIN')).toBe(texture);

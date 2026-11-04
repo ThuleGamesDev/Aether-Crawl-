@@ -8,6 +8,7 @@ import { LABYRINTH_THEMES } from './data/mazeContent';
 import type { ClassType } from './types';
 import type { InputSystem } from './engine/InputSystem';
 import type { RenderQuality } from './engine/SceneRenderer';
+import { isUiScaleValue, loadDisplaySettings, saveRenderQualityPreference, saveUiScalePreference } from './services/displaySettings';
 import type { VFXMode } from './presentation/vfxDefinitions';
 import { shouldReleasePointerLockForUi } from './services/uiInputPolicy';
 import InventoryPanel from './components/InventoryPanel';
@@ -47,10 +48,9 @@ const App: React.FC = () => {
       if (Number.isFinite(savedSensitivity) && savedSensitivity >= 0.001 && savedSensitivity <= 0.006) setMouseSensitivity(savedSensitivity);
       const savedVfxMode = window.localStorage.getItem('aether_fps_vfx_mode_r3b');
       if (savedVfxMode === 'full' || savedVfxMode === 'reduced' || savedVfxMode === 'off') setVfxMode(savedVfxMode);
-      const savedRenderQuality = window.localStorage.getItem('aether_fps_render_quality_r6f1');
-      if (savedRenderQuality === 'performance' || savedRenderQuality === 'balanced' || savedRenderQuality === 'sharp') setRenderQuality(savedRenderQuality);
-      const savedUiScale = Number(window.localStorage.getItem('aether_fps_ui_scale_r6f3'));
-      if ([0.9, 1, 1.15, 1.25].includes(savedUiScale)) setUiScale(savedUiScale);
+      const displaySettings = loadDisplaySettings(window.localStorage);
+      if (displaySettings.renderQuality) setRenderQuality(displaySettings.renderQuality);
+      if (displaySettings.uiScale) setUiScale(displaySettings.uiScale);
     } catch { /* Sensitivity storage is optional. */ }
   }, []);
 
@@ -157,13 +157,13 @@ const App: React.FC = () => {
 
   const updateRenderQuality = (value: RenderQuality) => {
     setRenderQuality(value);
-    try { window.localStorage.setItem('aether_fps_render_quality_r6f1', value); } catch { /* Display settings are optional. */ }
+    try { saveRenderQualityPreference(window.localStorage, value); } catch { /* Display settings are optional. */ }
   };
 
   const updateUiScale = (value: number) => {
-    if (![0.9, 1, 1.15, 1.25].includes(value)) return;
+    if (!isUiScaleValue(value)) return;
     setUiScale(value);
-    try { window.localStorage.setItem('aether_fps_ui_scale_r6f3', String(value)); } catch { /* UI scale storage is optional. */ }
+    try { saveUiScalePreference(window.localStorage, value); } catch { /* UI scale storage is optional. */ }
   };
 
   const openPauseMenu = () => {
@@ -274,7 +274,7 @@ const App: React.FC = () => {
           <select value={renderQuality} onChange={event => updateRenderQuality(event.target.value as RenderQuality)}>
             <option value="performance">Performance</option>
             <option value="balanced">Balanced</option>
-            <option value="sharp">Sharp</option>
+            <option value="crisp">Crisp</option>
           </select>
         </label>
         <UiScaleControl value={uiScale} onChange={updateUiScale} />

@@ -232,11 +232,13 @@ export class WorldGeometry {
     const exit = world.floor.rooms.find(room => room.type === 'BOSS');
     if (!exit) return;
     const x = exit.anchor.x + 0.5, z = exit.anchor.y + 0.5;
-    const stoneMaterial = new THREE.MeshStandardMaterial({ color: 0x615243, roughness: 1, flatShading: true });
+    const stoneMaterial = new THREE.MeshStandardMaterial({ color: 0x806d54, roughness: 0.96, flatShading: true });
     const glowMaterial = new THREE.MeshBasicMaterial({ map: assets.texture('exit', world.biome), transparent: true, depthWrite: false });
+    const frameMaterial = new THREE.MeshStandardMaterial({ color: 0xb48a54, roughness: 0.72, metalness: 0.16, flatShading: true, side: THREE.DoubleSide });
     const pillarGeometry = new THREE.BoxGeometry(0.22, 2.25, 0.25);
     const lintelGeometry = new THREE.BoxGeometry(1.18, 0.26, 0.28);
     const portalGeometry = new THREE.PlaneGeometry(0.72, 1.75);
+    const frameGeometries: THREE.BufferGeometry[] = [];
     const left = new THREE.Mesh(pillarGeometry, stoneMaterial);
     const right = new THREE.Mesh(pillarGeometry, stoneMaterial);
     const lintel = new THREE.Mesh(lintelGeometry, stoneMaterial);
@@ -251,9 +253,42 @@ export class WorldGeometry {
     right.position.set(x + 0.48, 1.12, z);
     lintel.position.set(x, 2.22, z);
     portal.position.set(x, 1.08, z - 0.04);
-    for (const mesh of [left, right, lintel, portal, bull]) this.group.add(mesh);
+    const architecture: THREE.Object3D[] = [left, right, lintel, portal, bull];
+    if (world.biome === 'dungeon') {
+      const baseGeometry = new THREE.BoxGeometry(0.4, 0.16, 0.36);
+      const capitalGeometry = new THREE.BoxGeometry(0.4, 0.18, 0.36);
+      const sideTrimGeometry = new THREE.BoxGeometry(0.045, 1.68, 0.055);
+      const keystoneGeometry = new THREE.BoxGeometry(0.16, 0.2, 0.08);
+      const outerArchGeometry = new THREE.TorusGeometry(0.61, 0.055, 4, 16, Math.PI);
+      const innerArchGeometry = new THREE.TorusGeometry(0.48, 0.025, 4, 16, Math.PI);
+      frameGeometries.push(baseGeometry, capitalGeometry, sideTrimGeometry, keystoneGeometry, outerArchGeometry, innerArchGeometry);
+      for (const side of [-1, 1]) {
+        const base = new THREE.Mesh(baseGeometry, stoneMaterial);
+        base.position.set(x + side * 0.48, 0.08, z - 0.035);
+        base.name = 'PalaceExitColumnBase';
+        const capital = new THREE.Mesh(capitalGeometry, stoneMaterial);
+        capital.position.set(x + side * 0.48, 2.1, z - 0.035);
+        capital.name = 'PalaceExitColumnCapital';
+        const trim = new THREE.Mesh(sideTrimGeometry, frameMaterial);
+        trim.position.set(x + side * 0.36, 1.1, z - 0.145);
+        trim.name = 'PalaceExitFrameTrim';
+        architecture.push(base, capital, trim);
+      }
+      const outerArch = new THREE.Mesh(outerArchGeometry, stoneMaterial);
+      outerArch.position.set(x, 1.82, z - 0.07);
+      outerArch.name = 'PalaceExitArch';
+      const innerArch = new THREE.Mesh(innerArchGeometry, frameMaterial);
+      innerArch.position.set(x, 1.82, z - 0.15);
+      innerArch.name = 'PalaceExitArchTrim';
+      const keystone = new THREE.Mesh(keystoneGeometry, frameMaterial);
+      keystone.position.set(x, 2.41, z - 0.15);
+      keystone.name = 'PalaceExitKeystone';
+      architecture.push(outerArch, innerArch, keystone);
+    }
+    for (const mesh of architecture) this.group.add(mesh);
     this.ownedGeometries.push(pillarGeometry, lintelGeometry, portalGeometry);
-    this.ownedMaterials.push(stoneMaterial, glowMaterial, bullMaterial);
+    this.ownedGeometries.push(...frameGeometries);
+    this.ownedMaterials.push(stoneMaterial, glowMaterial, bullMaterial, frameMaterial);
   }
 
   private addProps(world: DungeonWorldState, assets: AssetManager): void {

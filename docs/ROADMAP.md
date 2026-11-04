@@ -66,7 +66,9 @@ Implemented in the R6D3 PR. Adds three explicit, bounded Law pairings (Echo-Pack
 
 ## FPS-R6 — Floors 1–5 Action-RPG Vertical Slice & Quality Pass
 
-Next: carry out the user's first-person playtest of floors 1–5 across movement, enemy telegraphs, loot, class progression, room events, save/load, Guardian arenas, and Thread Anchors. Keep content expansion bounded until the full progression loop is integrated.
+R6F5 implements the high-resolution pixel readability and viewmodel pass: desktop render presets, larger hand/weapon sheets, a settled non-interactive corpse phase, and a Palace exit arch. Typecheck, unit tests, build, and deterministic asset generation pass. Browser visual acceptance and target-GPU timing remain open because Playwright Chromium is unavailable in the current environment. See [R6F5 implementation notes](R6F5_IMPLEMENTATION.md).
+
+Next: carry out the user's first-person playtest of floors 1–5 across movement, enemy telegraphs, loot, class progression, room events, save/load, Guardian arenas, and Thread Anchors. Include R6F5's real-browser visual and performance capture before marking this pass visually accepted. Keep content expansion bounded until the full progression loop is integrated.
 
 ## Later
 

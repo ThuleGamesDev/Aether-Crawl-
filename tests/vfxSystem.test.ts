@@ -149,6 +149,8 @@ describe('R3B mythic VFX definitions and runtime', () => {
       lootTier: 'GUARDIAN',
       isBoss: false,
     }];
+    runtime.player = { ...runtime.player, rotation: { ...runtime.player.rotation, pitch: Math.atan2(-0.72, 0.5) } };
+    expect(runtime.getSnapshot().targetEnemy?.id).toBe('r3b-one-shot-target');
     runtime.projectiles = [{
       id: 900,
       position: { x: 3.5, y: 0.72, z: 3.5 },
@@ -174,6 +176,8 @@ describe('R3B mythic VFX definitions and runtime', () => {
     runtime.update(0.05, input);
     expect(runtime.getRenderState().events.filter(event => event.kind === 'enemyDeath')).toHaveLength(0);
     expect(runtime.enemies.find(enemy => enemy.id === 'r3b-one-shot-target')?.rewardGranted).toBe(true);
+    expect(runtime.getSnapshot().targetEnemy).toBeNull();
+    expect(runtime.enemies.find(enemy => enemy.id === 'r3b-one-shot-target')?.position).toEqual({ x: 4, y: 0, z: 3.5 });
   });
 
   it('uses a bounded, world-space pool, freezes on pause, clears on floor changes, and honors Off', () => {
