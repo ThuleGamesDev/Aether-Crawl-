@@ -7,10 +7,26 @@ import { findWallMount } from './architecture';
 const WALL_HEIGHT = 2.6;
 const MAX_LOCAL_LIGHTS = 6;
 export const WALL_TEXTURE_VARIANT_COUNT = 3;
+export const PALACE_FOUNDATIONS_TEXTURE_PATCH_SIZE = 4;
 
 export function wallTextureVariantForCell(x: number, z: number): number {
-  const mixed = Math.imul(x, 73856093) ^ Math.imul(z, 19349663);
-  return (mixed >>> 0) % WALL_TEXTURE_VARIANT_COUNT;
+  // Keep material families in small authored clusters so decorative stones do not form a noisy checkerboard.
+  const regionX = Math.floor(x / 2);
+  const regionZ = Math.floor(z / 2);
+  const mixed = Math.imul(regionX, 73856093) ^ Math.imul(regionZ, 19349663);
+  const bucket = (mixed >>> 0) % 100;
+  return bucket < 85 ? 0 : bucket < 97 ? 1 : 2;
+}
+
+export function configureWorldSurfaceTexture(texture: THREE.Texture, columns: number, rows: number, biome: BiomeId): void {
+  if (biome === 'dungeon') {
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+    texture.repeat.set(columns / PALACE_FOUNDATIONS_TEXTURE_PATCH_SIZE, rows / PALACE_FOUNDATIONS_TEXTURE_PATCH_SIZE);
+  } else {
+    texture.repeat.set(columns, rows);
+  }
+  texture.needsUpdate = true;
 }
 
 interface FlickeringLight {
@@ -108,11 +124,9 @@ export class WorldGeometry {
 
   private addGround(columns: number, rows: number, biome: BiomeId, assets: AssetManager): void {
     const groundTexture = assets.texture('floor', biome).clone();
-    groundTexture.repeat.set(columns, rows);
-    groundTexture.needsUpdate = true;
+    configureWorldSurfaceTexture(groundTexture, columns, rows, biome);
     const ceilingTexture = assets.texture('ceiling', biome).clone();
-    ceilingTexture.repeat.set(columns, rows);
-    ceilingTexture.needsUpdate = true;
+    configureWorldSurfaceTexture(ceilingTexture, columns, rows, biome);
     this.ownedTextures.push(groundTexture, ceilingTexture);
     const floorMaterial = new THREE.MeshStandardMaterial({ map: groundTexture, color: 0xffffff, roughness: 1, metalness: 0, side: THREE.DoubleSide, flatShading: true });
     const ceilingMaterial = new THREE.MeshStandardMaterial({ map: ceilingTexture, color: 0xb7bac0, roughness: 1, metalness: 0, side: THREE.DoubleSide, flatShading: true });

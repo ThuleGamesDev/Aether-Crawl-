@@ -11,6 +11,8 @@ import { AssetManager } from '../presentation/AssetManager';
 import { getWeaponActionPresentation } from '../data/weaponActionRegistry';
 import { getWeaponPresentationPose, isWeaponPresentationCenterClear, WeaponPresenter } from '../presentation/WeaponPresenter';
 import { wallTextureVariantForCell, WALL_TEXTURE_VARIANT_COUNT } from '../world/WorldGeometry';
+import { createDungeonWorld } from '../world/DungeonWorld';
+import { TileType } from '../types';
 
 describe('R6F3 authored labyrinth walls', () => {
   it('registers three distinct local 128×320 wall maps for every biome', () => {
@@ -41,6 +43,40 @@ describe('R6F3 authored labyrinth walls', () => {
     expect(secondPass).toEqual(firstPass);
     expect(new Set(firstPass)).toEqual(new Set([0, 1, 2]));
     expect(firstPass.every(variant => variant >= 0 && variant < WALL_TEXTURE_VARIANT_COUNT)).toBe(true);
+  });
+
+  it('keeps decorative materials in two-cell patches with a restrained weighted distribution', () => {
+    const variants = Array.from({ length: 48 * 48 }, (_, index) => wallTextureVariantForCell(index % 48, Math.floor(index / 48)));
+    const counts = [0, 1, 2].map(variant => variants.filter(value => value === variant).length);
+    expect(counts[0]).toBeGreaterThan(counts[1]);
+    expect(counts[1]).toBeGreaterThan(counts[2]);
+    for (let z = 0; z < 48; z += 2) for (let x = 0; x < 48; x += 2) {
+      const patch = wallTextureVariantForCell(x, z);
+      expect(wallTextureVariantForCell(x + 1, z)).toBe(patch);
+      expect(wallTextureVariantForCell(x, z + 1)).toBe(patch);
+      expect(wallTextureVariantForCell(x + 1, z + 1)).toBe(patch);
+    }
+  });
+
+  it('produces a different stable material layout for distinct Palace seeds', () => {
+    const layout = (seed: number) => {
+      const world = createDungeonWorld(1, seed);
+      return world.map.flatMap((row, z) => row.map((tile, x) => tile === TileType.WALL ? wallTextureVariantForCell(x, z) : -1));
+    };
+    const first = layout(14031);
+    expect(layout(14031)).toEqual(first);
+    expect(layout(97223)).not.toEqual(first);
+  });
+
+  it('registers a four-cell authored floor and ceiling patch for Palace Foundations', () => {
+    for (const kind of ['floor', 'ceiling'] as const) {
+      const path = biomeVisuals.dungeon[kind];
+      const absolutePath = resolve(process.cwd(), 'public', path.replace(/^\//, ''));
+      const png = readFileSync(absolutePath);
+      expect(existsSync(absolutePath)).toBe(true);
+      expect(png.readUInt32BE(16)).toBe(256);
+      expect(png.readUInt32BE(20)).toBe(256);
+    }
   });
 });
 

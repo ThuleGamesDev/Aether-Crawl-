@@ -3,6 +3,9 @@
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 import hashlib
+import subprocess
+import sys
+from random import Random
 from character_rig_authoring import generate_character_rig_assets
 from mythic_vfx_atlas import generate_mythic_vfx_atlas
 
@@ -56,29 +59,61 @@ def palace_texture(kind):
             d.point((x + 1, y + 3), fill=teal)
         return im
     if kind == 'floor':
-        im = Image.new('RGB', (64, 64), rgb('#353129')); d = ImageDraw.Draw(im)
-        for y in range(0, 64, 16):
-            for x in range(0, 64, 16):
-                shade = rgb('#9a8769') if (x // 16 + y // 16) % 3 else rgb('#8c795e')
-                d.rectangle((x + 1, y + 1, x + 14, y + 14), fill=shade)
-                line(d, [(x + 2, y + 13), (x + 13, y + 13)], rgb('#625846'), 1)
-                d.point((x + 4, y + 4), fill=rgb('#c3ad85'))
-        # Small inset bronze squares and a broken running wave keep the repeated floor readable in motion.
-        for x, y in [(6, 6), (38, 22), (22, 38), (54, 54)]:
-            d.rectangle((x, y, x + 3, y + 3), fill=bronze)
-            d.point((x + 1, y + 1), fill=light)
-        line(d, [(17, 30), (20, 27), (24, 28), (27, 25)], shadow, 1)
-        line(d, [(45, 44), (48, 41), (52, 42)], teal, 1)
+        im = Image.new('RGB', (256, 256), rgb('#332e27')); d = ImageDraw.Draw(im)
+        stone_colors = [rgb('#75644e'), rgb('#88745a'), rgb('#675946'), rgb('#968063'), rgb('#7e6a52')]
+        for cell_y in range(4):
+            for cell_x in range(4):
+                seed = int.from_bytes(hashlib.sha256(f'palace-floor:{cell_x}:{cell_y}'.encode()).digest()[:8], 'big')
+                rng = Random(seed)
+                ox, oy = cell_x * 64, cell_y * 64
+                pattern = (cell_x * 3 + cell_y * 5) % 3
+                if pattern == 0:
+                    seam_x, seam_y = 31 + (cell_x * 5 % 7) - 3, 32 + (cell_y * 7 % 9) - 4
+                    plates = [(2, 2, seam_x - 2, seam_y - 2), (seam_x + 2, 2, 61, seam_y - 2),
+                              (2, seam_y + 2, seam_x - 2, 61), (seam_x + 2, seam_y + 2, 61, 61)]
+                elif pattern == 1:
+                    plates = [(2, 2, 61, 24), (2, 28, 27, 61), (32, 28, 61, 61)]
+                else:
+                    plates = [(2, 2, 27, 61), (32, 2, 61, 30), (32, 34, 61, 61)]
+                for plate_index, (left, top, right, bottom) in enumerate(plates):
+                    left += ox; right += ox; top += oy; bottom += oy
+                    cut = 3 if (cell_x + cell_y + plate_index) % 4 else 5
+                    stone = stone_colors[rng.randrange(len(stone_colors))]
+                    if (cell_x * 7 + cell_y * 11 + plate_index * 5) % 23 == 0:
+                        polygon = [(left + cut, top), (right - cut - 5, top), (right - cut, top + 4),
+                                   (right, top + cut + 2), (right, bottom - cut), (right - cut, bottom),
+                                   (left + cut, bottom), (left, bottom - cut), (left, top + cut)]
+                    else:
+                        polygon = [(left + cut, top), (right - cut, top), (right, top + cut),
+                                   (right - 1, bottom - cut), (right - cut, bottom),
+                                   (left + cut, bottom - 1), (left, bottom - cut), (left + 1, top + cut)]
+                    d.polygon(polygon, fill=stone)
+                    line(d, [(left + cut, top + 1), (right - cut, top + 1)], rgb('#b49a72'), 2)
+                    line(d, [(left + 1, top + cut), (left + cut, top + 1)], rgb('#9e896a'), 2)
+                    line(d, [(left + 3, bottom - cut), (right - cut, bottom - 1)], rgb('#51483c'), 2)
+                    if (cell_x * 5 + cell_y * 13 + plate_index * 3) % 17 == 0:
+                        crack_x = left + (right - left) // 2
+                        crack_y = top + (bottom - top) // 2
+                        line(d, [(crack_x, crack_y), (crack_x + 3, crack_y + 4), (crack_x + 1, crack_y + 8)], rgb('#40382f'), 1)
+                    # A few broad scuff strokes describe wear while leaving most of each slab calm.
+                    wear_x = left + 8 + (cell_x * 7 + plate_index * 11) % max(1, right - left - 14)
+                    wear_y = top + 7 + (cell_y * 5 + plate_index * 3) % max(1, bottom - top - 14)
+                    line(d, [(wear_x, wear_y), (wear_x + 4, wear_y)], rgb('#aa916a'), 1)
         return im
     if kind == 'ceiling':
-        im = Image.new('RGB', (64, 64), rgb('#282725')); d = ImageDraw.Draw(im)
-        for y in range(0, 64, 16):
-            d.rectangle((0, y + 1, 63, y + 13), fill=rgb('#423a32'))
-            line(d, [(0, y + 13), (63, y + 13)], ink, 2)
-            for x in range(6, 64, 16):
-                d.rectangle((x, y + 3, x + 7, y + 9), fill=rgb('#64513b'))
-                d.point((x + 2, y + 4), fill=bronze)
-        greek_band(d, 0, rgb('#84663f'), ink)
+        im = Image.new('RGB', (256, 256), rgb('#211f1d')); d = ImageDraw.Draw(im)
+        for cell_y in range(4):
+            for cell_x in range(4):
+                x, y = cell_x * 64, cell_y * 64
+                d.rectangle((x + 2, y + 2, x + 61, y + 61), fill=rgb('#302b26'))
+                d.line((x + 4, y + 5, x + 59, y + 5), fill=rgb('#51463a'), width=2)
+                d.line((x + 5, y + 5, x + 5, y + 59), fill=rgb('#463c32'), width=2)
+                d.rectangle((x + 10, y + 10, x + 55, y + 55), fill=rgb('#242220'))
+                d.line((x + 12, y + 12, x + 53, y + 12), fill=rgb('#39332d'), width=2)
+                d.line((x + 13, y + 13, x + 13, y + 53), fill=rgb('#36302a'), width=2)
+                if (cell_x + cell_y) % 3 == 0:
+                    d.rectangle((x + 28, y + 28, x + 35, y + 35), outline=rgb('#65533d'), width=1)
+                    d.point((x + 31, y + 31), fill=rgb('#79603f'))
         return im
     if kind == 'door':
         im = Image.new('RGB', (64, 64), rgb('#31251f')); d = ImageDraw.Draw(im)
@@ -159,6 +194,8 @@ def texture(theme, kind, cols):
 
 for theme,cols in THEMES.items():
     for kind in ['wall','floor','ceiling','door','exit']:
+        if theme == 'palace_foundations' and kind == 'wall':
+            continue  # The authored 128×320 Palace walls come from generate-wall-textures.py.
         texture(theme,kind,cols).save(ROOT/'tiles'/f'{theme}_{kind}.png', optimize=True)
 
 # Draw a compact 64 px sprite with a distinctive role silhouette and stable palette.
@@ -377,5 +414,6 @@ def production_contact_sheet():
     row_cards('EQUIPMENT · two-hand set pairings and supported pilot silhouettes', 338, equipment, 176, 118, (4, 2, 168, 92))
     output.save(repo_root / 'docs/previews/R6E_WORLD_EQUIPMENT_SHEET.png', optimize=True)
 
+subprocess.run([sys.executable, str(Path(__file__).with_name('generate-wall-textures.py'))], check=True)
 production_contact_sheet()
 print('Generated static Maze of the Minotaur pixel art:', sum(1 for p in ROOT.rglob('*.png')), 'PNG files at', ROOT)
