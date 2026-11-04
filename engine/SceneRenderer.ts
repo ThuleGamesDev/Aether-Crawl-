@@ -14,26 +14,35 @@ import { getEnemyAttackTelegraphDescriptor } from '../data/enemyAttackTelegraph'
 import { getVfxPoolCapacity, resolveSurfaceEffect } from '../presentation/vfxDefinitions';
 import type { VFXSurface } from '../presentation/vfxDefinitions';
 import type { CombatCue } from '../services/combatAudioPolicy';
+import { getEnemyCorpseVisualPhase, shouldReplaceWithCorpse } from '../presentation/enemyCorpsePresentation';
+import { enemyVisuals } from '../data/assetRegistry';
 
 type EnemyVisualInstance =
   | { kind: 'legacy'; sprite: THREE.Sprite }
-  | { kind: 'rig'; animator: CharacterRigAnimator };
+  | { kind: 'rig'; animator: CharacterRigAnimator }
+  | { kind: 'corpse'; mesh: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial> };
 
-export type RenderQuality = 'performance' | 'balanced' | 'sharp';
+export type RenderQuality = 'performance' | 'balanced' | 'crisp';
 
 export const RENDER_QUALITY_SCALES: Record<RenderQuality, { desktop: number; mobile: number }> = {
-  performance: { desktop: 0.48, mobile: 0.4 },
-  balanced: { desktop: 0.68, mobile: 0.54 },
-  sharp: { desktop: 0.84, mobile: 0.68 },
+  performance: { desktop: 0.75, mobile: 0.45 },
+  balanced: { desktop: 0.9, mobile: 0.58 },
+  crisp: { desktop: 1, mobile: 0.72 },
 };
 export const DEFAULT_PIXEL_RENDER_SCALE = RENDER_QUALITY_SCALES.balanced.desktop;
 export const MOBILE_PIXEL_RENDER_SCALE = RENDER_QUALITY_SCALES.balanced.mobile;
+
+export function parseRenderQualityPreference(value: string | null): RenderQuality | null {
+  if (value === 'performance' || value === 'balanced' || value === 'crisp') return value;
+  if (value === 'sharp') return 'crisp';
+  return null;
+}
 
 export function getPixelRenderSize(viewportWidth: number, viewportHeight: number, isMobile: boolean, quality: RenderQuality = 'balanced'): { width: number; height: number; scale: number } {
   if (viewportWidth <= 0 || viewportHeight <= 0) return { width: 0, height: 0, scale: 0 };
   const requestedScale = isMobile ? RENDER_QUALITY_SCALES[quality].mobile : RENDER_QUALITY_SCALES[quality].desktop;
   const minimumScale = Math.min(1, Math.max(160 / viewportWidth, 120 / viewportHeight));
-  const scale = Math.min(0.92, Math.max(requestedScale, minimumScale));
+  const scale = Math.min(1, Math.max(requestedScale, minimumScale));
   return { width: Math.max(1, Math.round(viewportWidth * scale)), height: Math.max(1, Math.round(viewportHeight * scale)), scale };
 }
 
@@ -230,11 +239,11 @@ export class SceneRenderer {
     this.diagnosticsFrustum.setFromProjectionMatrix(this.diagnosticsMatrix);
     let inCamera = 0;
     for (const visual of this.enemyVisuals.values()) {
-      const root = visual.kind === 'rig' ? visual.animator.group : visual.sprite;
+      const root = visual.kind === 'rig' ? visual.animator.group : visual.kind === 'corpse' ? visual.mesh : visual.sprite;
       if (!root.visible || !isInSceneGraph(this.scene, root)) continue;
       root.getWorldPosition(this.diagnosticsPoint);
       this.diagnosticsSphere.center.copy(this.diagnosticsPoint);
-      this.diagnosticsSphere.radius = visual.kind === 'rig' ? visual.animator.definition.worldHeight * 0.55 : 1.1;
+      this.diagnosticsSphere.radius = visual.kind === 'rig' ? visual.animator.definition.worldHeight * 0.55 : visual.kind === 'corpse' ? 1.4 : 1.1;
       if (this.diagnosticsFrustum.intersectsSphere(this.diagnosticsSphere)) inCamera += 1;
     }
     const bounds = this.canvas.getBoundingClientRect();
@@ -264,6 +273,29 @@ export class SceneRenderer {
       const definition = getCharacterRigDefinition(enemy.visualId);
       const shouldUseRig = Boolean(definition && atlas && !this.rigConstructionFailures.has(enemy.visualId));
       let visual = this.enemyVisuals.get(enemy.id);
+      const visualPhase = getEnemyCorpseVisualPhase(enemy);
+      if (visualPhase === 'corpse') {
+        const staleWarning = this.enemyTelegraphs.get(enemy.id);
+        if (staleWarning) {
+          this.disposeTelegraph(staleWarning);
+          this.enemyTelegraphs.delete(enemy.id);
+        }
+        if (shouldReplaceWithCorpse(visual?.kind ?? null, enemy)) {
+          if (visual) this.disposeEnemyVisual(visual);
+          const corpseVisual = this.createCorpseVisual(enemy, world, definition?.fallbackSprite);
+          visual = corpseVisual;
+          this.enemyVisuals.set(enemy.id, corpseVisual);
+          this.scene.add(corpseVisual.mesh);
+        }
+        const corpse = visual && visual.kind === 'corpse' ? visual.mesh : undefined;
+        if (corpse) corpse.position.set(enemy.position.x, enemy.position.y + 0.025, enemy.position.z);
+        continue;
+      }
+      if (visual?.kind === 'corpse') {
+        this.disposeEnemyVisual(visual);
+        this.enemyVisuals.delete(enemy.id);
+        visual = undefined;
+      }
       if (visual && ((visual.kind === 'rig') !== shouldUseRig)) {
         this.disposeEnemyVisual(visual);
         this.enemyVisuals.delete(enemy.id);
@@ -360,6 +392,35 @@ export class SceneRenderer {
     }
   }
 
+  private createCorpseVisual(enemy: WorldEnemy, world: DungeonWorldState, fallbackPath?: string): Extract<EnemyVisualInstance, { kind: 'corpse' }> {
+    const size = enemyVisuals[enemy.visualId]?.scale ?? 1;
+    const width = (enemy.isBoss ? 1.02 : 0.72) * size;
+    const length = (enemy.isBoss ? 1.72 : 1.24) * size;
+    const geometry = new THREE.PlaneGeometry(width, length);
+    const material = new THREE.MeshBasicMaterial({
+      map: this.assets.enemyTexture(enemy.visualId, world.biome, fallbackPath),
+      color: 0xc2b7a9,
+      transparent: true,
+      opacity: 0.94,
+      alphaTest: 0.08,
+      depthTest: true,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      toneMapped: false,
+    });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.name = 'EnemyCorpse_' + enemy.id;
+    mesh.frustumCulled = false;
+    mesh.renderOrder = 1;
+    const floorOrientation = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2);
+    const facingOrientation = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), enemy.facingYaw ?? 0);
+    mesh.quaternion.copy(facingOrientation.multiply(floorOrientation));
+    mesh.position.set(enemy.position.x, enemy.position.y + 0.025, enemy.position.z);
+    mesh.userData.interactive = false;
+    mesh.userData.corpseOwnerId = enemy.id;
+    return { kind: 'corpse', mesh };
+  }
+
   private syncProjectiles(projectiles: WorldProjectile[]): void {
     const active = new Set(projectiles.map(projectile => projectile.id));
     this.vfx.retainProjectileTrails(active);
@@ -426,6 +487,12 @@ export class SceneRenderer {
   private disposeEnemyVisual(visual: EnemyVisualInstance): void {
     if (visual.kind === 'rig') {
       visual.animator.dispose();
+      return;
+    }
+    if (visual.kind === 'corpse') {
+      this.scene.remove(visual.mesh);
+      visual.mesh.geometry.dispose();
+      visual.mesh.material.dispose();
       return;
     }
     this.scene.remove(visual.sprite);

@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import type { BiomeId, WorldEnemy } from '../types';
 import { AssetManager } from './AssetManager';
 import { enemyVisuals } from '../data/assetRegistry';
+import { getEnemyDeathProgress } from './enemyCorpsePresentation';
+import { ENEMY_CORPSE_SETTLE_SECONDS } from '../constants/enemyDeath';
 
 export function createEnemySprite(enemy: WorldEnemy, biome: BiomeId, assets: AssetManager, fallbackPath?: string): THREE.Sprite {
   const material = new THREE.SpriteMaterial({ map: assets.enemyTexture(enemy.visualId, biome, fallbackPath), transparent: true, alphaTest: 0.08, depthTest: true, depthWrite: false, color: 0xffffff });
@@ -66,12 +68,13 @@ export function animateEnemySprite(sprite: THREE.Sprite, enemy: WorldEnemy, elap
     tilt = Math.sin(elapsedSeconds * 24) * 0.11;
     tint = '#e9e4ce';
   } else if (enemy.state === 'DEAD') {
-    const death = Math.max(0, Math.min(1, enemy.stateTimer / 1.1));
-    scaleY *= Math.max(0.12, 0.18 + death * 0.82);
-    scaleX *= 1 + (1 - death) * 0.14;
-    tilt = (enemy.id.charCodeAt(enemy.id.length - 1) % 2 ? 1 : -1) * (1 - death) * 0.42;
-    opacity = death;
-    tint = '#8f7b78';
+    const fall = getEnemyDeathProgress(enemy);
+    const settled = fall * fall * (3 - 2 * fall);
+    scaleY *= 1 - settled * 0.16;
+    scaleX *= 1 + settled * 0.08;
+    tilt = (enemy.id.charCodeAt(enemy.id.length - 1) % 2 ? 1 : -1) * settled * 1.28;
+    opacity = 1 - settled * 0.12;
+    tint = '#b3a39a';
   }
 
   const status = enemy.statusEffects?.find(effect => effect.durationSeconds > 0);
@@ -84,5 +87,5 @@ export function animateEnemySprite(sprite: THREE.Sprite, enemy: WorldEnemy, elap
   sprite.scale.set(scaleX, scaleY, 1);
   material.color.set(tint);
   material.opacity = opacity;
-  sprite.visible = enemy.state !== 'DEAD' || enemy.stateTimer > 0.02;
+  sprite.visible = enemy.state !== 'DEAD' || enemy.stateTimer > ENEMY_CORPSE_SETTLE_SECONDS;
 }

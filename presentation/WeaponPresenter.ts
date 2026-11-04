@@ -115,28 +115,28 @@ export function getWeaponPresentationPose(input: WeaponPresentationPoseInput, ta
   const ability = input.abilityId ? getAbility(input.abilityId) : undefined;
   const p = smooth(phaseProgress(input));
   const phase = input.phase;
-  const moving = input.moving ? Math.sin(input.elapsedSeconds * 9.5) : Math.sin(input.elapsedSeconds * 1.5) * 0.08;
+  const moving = input.moving ? Math.sin(input.elapsedSeconds * 9.5) : Math.sin(input.elapsedSeconds * 1.5) * 0.1;
   const pose = target;
   pose.weaponX = 0.68;
-  pose.weaponY = -0.48 + moving * 0.045;
+  pose.weaponY = -0.48 + moving * 0.06;
   pose.weaponZ = -1.05;
   pose.weaponRotationX = 0;
   pose.weaponRotationY = 0;
-  pose.weaponRotationZ = input.moving ? moving * 0.025 : 0;
-  pose.weaponScaleX = 0.72;
-  pose.weaponScaleY = 0.72;
+  pose.weaponRotationZ = input.moving ? moving * 0.038 : 0;
+  pose.weaponScaleX = 0.84;
+  pose.weaponScaleY = 0.96;
   pose.shieldVisible = input.hasShield;
   pose.shieldX = -0.66 + moving * 0.018;
-  pose.shieldY = -0.43 + moving * 0.035;
+  pose.shieldY = -0.43 + moving * 0.045;
   pose.shieldZ = -1.12;
   pose.shieldRotationZ = 0;
-  pose.shieldScale = 0.38;
+  pose.shieldScale = 0.5;
   pose.offHandVisible = true;
   pose.offHandX = -0.66 + moving * 0.018;
-  pose.offHandY = -0.45 + moving * 0.035;
+  pose.offHandY = -0.45 + moving * 0.05;
   pose.offHandZ = -1.12;
-  pose.offHandRotationZ = input.moving ? -moving * 0.025 : 0;
-  pose.offHandScale = 0.67;
+  pose.offHandRotationZ = input.moving ? -moving * 0.035 : 0;
+  pose.offHandScale = 0.76;
 
   if (phase && ability) {
     if (input.animationProfile === 'CLASS_SKILL') {
@@ -293,6 +293,12 @@ export function getWeaponPresentationPose(input: WeaponPresentationPoseInput, ta
     }
   }
 
+  if (input.weapon === 'spear' && !phase) {
+    const spearSway = Math.sin(input.elapsedSeconds * (input.moving ? 3.4 : 1.25));
+    pose.weaponX += spearSway * (input.moving ? 0.018 : 0.012);
+    pose.weaponRotationZ += spearSway * (input.moving ? 0.032 : 0.018);
+  }
+
   const bash = phase && ability?.meleeStyle === 'BASH';
   if (input.hasShield) {
     if (input.guarding) {
@@ -354,8 +360,8 @@ export function getWeaponPresentationPose(input: WeaponPresentationPoseInput, ta
     pose.weaponY = -0.48 + moving * 0.045;
     pose.weaponZ = -1.05;
     pose.weaponRotationZ = input.moving ? moving * 0.025 : 0;
-    pose.weaponScaleX = 0.72;
-    pose.weaponScaleY = 0.72;
+      pose.weaponScaleX = 0.84;
+      pose.weaponScaleY = 0.96;
     const kopis = input.animationProfile === 'KOPIS';
     const daggers = input.animationProfile === 'DAGGERS';
     pose.offHandX = phase === 'WINDUP' ? -0.72 + p * (kopis ? 0.05 : 0.035) : phase === 'ACTIVE' ? -0.56 + p * 0.04 : -0.62 - p * 0.04;
@@ -366,7 +372,7 @@ export function getWeaponPresentationPose(input: WeaponPresentationPoseInput, ta
       : phase === 'ACTIVE'
         ? (kopis ? -0.74 : daggers ? -0.24 : 0.54) + p * (kopis ? 0.16 : daggers ? 0.06 : -0.12)
         : (kopis ? -0.52 : daggers ? -0.2 : 0.38) * (1 - p);
-    pose.offHandScale = 0.55;
+    pose.offHandScale = 0.62;
     if (ability.id === 'monk_flying_kick') {
       pose.weaponY -= phase === 'WINDUP' ? 0.04 * p : phase === 'ACTIVE' ? 0.08 : 0;
       pose.offHandY += phase === 'WINDUP' ? 0.05 * p : phase === 'ACTIVE' ? 0.08 : 0;

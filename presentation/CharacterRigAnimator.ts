@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { WorldEnemy } from '../types';
 import type { CharacterPoseKeyframe, CharacterPoseTransform, CharacterRigDefinition, CharacterRigLayerDefinition } from '../data/characterRigs';
 import { selectEnemyCharacterAnimation } from '../data/enemyCharacterAnimation';
+import { getEnemyDeathProgress } from './enemyCorpsePresentation';
 
 const ZERO_TRANSFORM: CharacterPoseTransform = Object.freeze({ rotation: 0, x: 0, y: 0 });
 const MOVEMENT_STRIDE_METERS: Record<CharacterRigDefinition['family'], number> = {
@@ -98,6 +99,7 @@ export class CharacterRigAnimator {
   private readonly atlasWidth: number;
   private readonly atlasHeight: number;
   private readonly cellSize: number;
+  private readonly fallLift: number;
   private previousX: number;
   private previousZ: number;
   private gaitCycles = 0;
@@ -145,6 +147,9 @@ export class CharacterRigAnimator {
       node.add(mesh);
       this.layers.push({ definition: layer, node, mesh, baseX, baseY, currentCellKey: layer.cell.join(',') });
     }
+    this.group.updateMatrixWorld(true);
+    const bounds = new THREE.Box3().setFromObject(this.group);
+    this.fallLift = Math.max(0.12, bounds.getSize(new THREE.Vector3()).x * 0.5);
   }
 
   get layerCount(): number { return this.layers.length; }
@@ -159,8 +164,13 @@ export class CharacterRigAnimator {
     this.previousZ = enemy.position.z;
     this.gaitCycles += moved / MOVEMENT_STRIDE_METERS[this.definition.family];
 
-    this.group.position.set(enemy.position.x, enemy.position.y, enemy.position.z);
+    const dead = enemy.health <= 0 || enemy.state === 'DEAD';
+    const deathProgress = dead ? getEnemyDeathProgress(enemy) : 0;
+    const fall = deathProgress * deathProgress * (3 - 2 * deathProgress);
+    const fallDirection = enemy.id.charCodeAt(enemy.id.length - 1) % 2 === 0 ? -1 : 1;
+    this.group.position.set(enemy.position.x, enemy.position.y + fall * this.fallLift, enemy.position.z);
     this.group.rotation.y = getBillboardYaw(enemy, cameraPosition);
+    this.group.rotation.z = fallDirection * fall * 1.5;
     const hasDirectionalViews = this.definition.layers.some(layer => Boolean(layer.viewCells));
     const viewSelection = hasDirectionalViews
       ? getCharacterViewForViewer(enemy, cameraPosition)
@@ -175,8 +185,8 @@ export class CharacterRigAnimator {
     }
 
     const selection = selectEnemyCharacterAnimation(enemy);
-    let clipName = selection.clipName;
-    let progress = selection.progress;
+    let clipName = selection.mode === 'DEAD' ? 'idle' : selection.clipName;
+    let progress = selection.mode === 'DEAD' ? 0 : selection.progress;
     if (selection.mode === 'RUN') {
       if (moved / dt < 0.035) {
         clipName = 'idle';
@@ -189,6 +199,7 @@ export class CharacterRigAnimator {
     }
     const clip = this.definition.clips[clipName] ?? this.definition.clips.idle;
     this.applyClip(clip, progress);
+    if (dead) this.applyDeathLimbPose(fall);
     this.setTint(enemy, selection.mode);
   }
 
@@ -232,6 +243,18 @@ export class CharacterRigAnimator {
       layer.node.position.x = layer.baseX + x * this.pixelScale;
       layer.node.position.y = layer.baseY + y * this.pixelScale;
       layer.node.rotation.z = rotation;
+    }
+  }
+
+  private applyDeathLimbPose(progress: number): void {
+    const offsets: Record<string, number> = this.definition.family === 'quadruped'
+      ? { body: 0.12, head: -0.12, hindUpperL: -0.34, hindUpperR: 0.36, foreUpperL: 0.24, foreUpperR: -0.22, tail: 0.42 }
+      : this.definition.family === 'arachnid'
+        ? { abdomen: 0.18, thorax: 0.1, L1Upper: -0.3, R1Upper: 0.32, L2Upper: -0.24, R2Upper: 0.26, L3Upper: 0.24, R3Upper: -0.22, L4Upper: 0.3, R4Upper: -0.28 }
+        : { torso: 0.16, head: -0.12, armUpperL: -0.46, armUpperR: 0.42, armLowerL: -0.2, armLowerR: 0.22, legUpperL: 0.18, legUpperR: -0.16, legLowerL: -0.12, legLowerR: 0.12, shield: 0.18 };
+    for (const [layerId, offset] of Object.entries(offsets)) {
+      const node = this.layerNodes.get(layerId);
+      if (node) node.rotation.z += offset * progress;
     }
   }
 

@@ -1,11 +1,11 @@
 import React from 'react';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { getAbility } from '../combat/AbilityRegistry';
 import { calculatePlayerDamage } from '../combat/DamageSystem';
-import { offhandVisuals, collectAssetPaths } from '../data/assetRegistry';
+import { offhandVisuals, weaponVisuals, collectAssetPaths } from '../data/assetRegistry';
 import { ITEM_BASES, ITEM_BASE_BY_ID } from '../data/itemBases';
 import { createUniqueInstance } from '../services/uniqueItems';
 import { createPlayerCharacter, createItemInstance, refreshPlayerDerivedCaps, splitInventoryStack, tryEquipItem } from '../player/PlayerProgression';
@@ -218,6 +218,12 @@ describe('R6B first-person equipment presentation', () => {
     const registered = Object.values(offhandVisuals);
     expect(registered).toHaveLength(8);
     for (const path of registered) expect(existsSync(resolve(process.cwd(), 'public', path.replace(/^\//, ''))), path).toBe(true);
+    for (const path of [...registered, ...Object.values(weaponVisuals)]) {
+      const png = readFileSync(resolve(process.cwd(), 'public', path.replace(/^\//, '')));
+      expect([png.readUInt32BE(16), png.readUInt32BE(20)], path).toEqual([128, 160]);
+    }
+    const shield = readFileSync(resolve(process.cwd(), 'public/assets/maze/hands/aspis.png'));
+    expect([shield.readUInt32BE(16), shield.readUInt32BE(20)]).toEqual([128, 128]);
     expect(collectAssetPaths()).toEqual(expect.arrayContaining(registered));
   });
 });

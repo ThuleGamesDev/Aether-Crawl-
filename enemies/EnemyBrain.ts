@@ -2,6 +2,7 @@ import type { PlayerCharacter, WorldEnemy } from '../types';
 import { hasLineOfSight, moveWithEntitySlide, moveWithWallSlide, nextGridStep } from '../world/CollisionWorld';
 import { getEnemyAttackDefinition, getEnemyAttackSet } from '../data/enemyAttacks';
 import { hasRealtimeStatus, movementSpeedMultiplier } from '../combat/StatusSystem';
+import { ENEMY_DEATH_ANIMATION_SECONDS } from '../constants/enemyDeath';
 
 export interface EnemyAIUpdate {
   enemies: WorldEnemy[];
@@ -27,7 +28,11 @@ export function updateEnemyBrains(enemies: WorldEnemy[], map: number[][], player
       pathRefreshSeconds: Math.max(0, (enemy.pathRefreshSeconds ?? 0) - dt),
       statusEffects: enemy.statusEffects?.map(status => ({ ...status })),
     };
-    if (next.health <= 0 || next.state === 'DEAD') { next.state = 'DEAD'; return next; }
+    if (next.health <= 0 || next.state === 'DEAD') {
+      if (next.health <= 0 && enemy.state !== 'DEAD') next.stateTimer = ENEMY_DEATH_ANIMATION_SECONDS;
+      next.state = 'DEAD';
+      return next;
+    }
     if ((next.phaseTransitionLockSeconds ?? 0) > 0) {
       next.state = 'RECOVER';
       next.stateTimer = Math.max(next.stateTimer, next.phaseTransitionLockSeconds ?? 0);

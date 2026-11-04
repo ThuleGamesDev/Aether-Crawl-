@@ -26,6 +26,7 @@ import { calculateDerivedStats } from '../player/DerivedStats';
 import { applyLivingLabyrinth } from '../world/LivingLabyrinth';
 import { createEmptyMazeLawProgress, createLawDraft, openLawDraft, selectMazeLaw } from '../services/lawDraft';
 import { getMazeLaw } from '../data/mazeLaws';
+import { ENEMY_DEATH_ANIMATION_SECONDS } from '../constants/enemyDeath';
 import { rollItemStatusProc } from '../player/ItemCombatEffects';
 import { consumeUniqueCharge, resolveUniqueTrigger, tickUniqueEffects } from '../player/UniqueEffects';
 import { applySkillUpgrade, getClassSkillUnlockLevel, getRankedAbility, getSkillRank, getSkillUpgradeChoices, isClassSkillSlotUnlocked, normalizeSkillProgression, type SkillUpgradeOption } from '../player/SkillProgression';
@@ -887,7 +888,7 @@ export class FPSGameRuntime {
       if (enemy.id !== attacker.id || enemy.health <= 0 || countered) return enemy;
       countered = true;
       const health = Math.max(0, enemy.health - counter.magnitude);
-      return { ...enemy, health, state: health <= 0 ? 'DEAD' : 'HURT', stateTimer: health <= 0 ? 1.1 : 0.18 };
+      return { ...enemy, health, state: health <= 0 ? 'DEAD' : 'HURT', stateTimer: health <= 0 ? ENEMY_DEATH_ANIMATION_SECONDS : 0.18 };
     });
     if (!countered) return;
     this.visualEvents.push({ kind: 'impact', effectId: 'aspis_impact', position: { x: attacker.position.x, y: 0.75, z: attacker.position.z }, color: '#ffd675', scale: 0.72, sound: 'shield', sourceId: 'aspis_bronze_gate', ownerId: attacker.id, priority: 'critical_hit' });
@@ -931,11 +932,13 @@ export class FPSGameRuntime {
           guardianDefeated = true;
           this.world = { ...this.world, floor: { ...this.world.floor, guardianState: 'DESCENT_UNLOCKED' } };
         }
-        return enemy.state === 'DEAD' ? enemy : { ...enemy, state: 'DEAD' };
+        return enemy.state === 'DEAD'
+          ? enemy.stateTimer > 0 ? enemy : { ...enemy, stateTimer: ENEMY_DEATH_ANIMATION_SECONDS }
+          : { ...enemy, state: 'DEAD', stateTimer: ENEMY_DEATH_ANIMATION_SECONDS };
       }
       if (enemy.rewardGranted) return enemy;
       changed = true;
-      const rewarded = { ...enemy, rewardGranted: true, state: 'DEAD' as const };
+      const rewarded = { ...enemy, rewardGranted: true, state: 'DEAD' as const, stateTimer: enemy.state === 'DEAD' && enemy.stateTimer > 0 ? enemy.stateTimer : ENEMY_DEATH_ANIMATION_SECONDS };
       this.player = recordClassKill(this.player);
       const experience = grantExperience(this.player, enemy.xpReward);
       this.player = experience.player;
@@ -995,7 +998,7 @@ export class FPSGameRuntime {
       const tick = tickRealtimeStatuses(enemy.statusEffects, deltaSeconds);
       if (tick.damage <= 0) return { ...enemy, statusEffects: tick.statuses };
       const health = applyEnemyDamage(enemy, tick.damage).enemy.health;
-      return { ...enemy, health, statusEffects: tick.statuses, state: health <= 0 ? 'DEAD' : enemy.state === 'ATTACK_WINDUP' ? 'HURT' : enemy.state, stateTimer: health <= 0 ? 1.1 : enemy.state === 'ATTACK_WINDUP' ? 0.18 : enemy.stateTimer };
+      return { ...enemy, health, statusEffects: tick.statuses, state: health <= 0 ? 'DEAD' : enemy.state === 'ATTACK_WINDUP' ? 'HURT' : enemy.state, stateTimer: health <= 0 ? ENEMY_DEATH_ANIMATION_SECONDS : enemy.state === 'ATTACK_WINDUP' ? 0.18 : enemy.stateTimer };
     });
   }
 

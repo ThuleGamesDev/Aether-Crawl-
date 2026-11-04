@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { BiomeId, WeaponVisualType } from '../types';
+import type { OffHandVisualType } from '../data/assetRegistry';
 import type { PixelEffectId } from './vfxDefinitions';
 
 interface Palette { wall: string; wallLight: string; floor: string; floorLight: string; accent: string; }
@@ -41,11 +42,13 @@ export function createPixelTexture(kind: 'wall' | 'floor' | 'ceiling' | 'door' |
 
 export function createWeaponTexture(weaponType: WeaponVisualType, classId: string): THREE.CanvasTexture {
   const canvas = document.createElement('canvas');
-  canvas.width = 64;
-  canvas.height = 64;
+  canvas.width = 128;
+  canvas.height = 160;
   const context = canvas.getContext('2d');
   if (!context) throw new Error('Canvas 2D is unavailable for weapon sprite preparation.');
   context.imageSmoothingEnabled = false;
+  context.scale(2, 2);
+  context.translate(0, 8);
   const sleeve = classId === 'SORCERER' ? '#3e6764' : classId === 'NECROMANCER' ? '#60333a' : classId === 'PALADIN' || classId === 'CLERIC' ? '#9b7644' : '#733c32';
   context.fillStyle = '#151418';
   context.fillRect(38, 47, 16, 17);
@@ -73,6 +76,108 @@ export function createWeaponTexture(weaponType: WeaponVisualType, classId: strin
     context.fillStyle = weaponType === 'dagger' ? '#c4c5bd' : '#d5d7d2';
     context.fillRect(46, 9, 7, 28); context.fillRect(41, 35, 17, 4);
     context.fillStyle = '#f1f1df'; context.fillRect(48, 10, 3, 21);
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.magFilter = THREE.NearestFilter;
+  texture.minFilter = THREE.NearestFilter;
+  texture.generateMipmaps = false;
+  texture.needsUpdate = true;
+  return texture;
+}
+
+export function createOffHandTexture(handType: OffHandVisualType): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 128;
+  canvas.height = 160;
+  const context = canvas.getContext('2d');
+  if (!context) throw new Error('Canvas 2D is unavailable for off-hand sprite preparation.');
+  context.imageSmoothingEnabled = false;
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  const outline = '#20191a';
+  const skin = '#cf936f';
+  const skinLight = '#f0bf98';
+  const bronze = '#bd8747';
+  const sleeve = '#653a32';
+  const sleeveLight = '#9a5440';
+  const line = (points: [number, number][], color: string, width: number) => {
+    context.strokeStyle = color;
+    context.lineWidth = width;
+    context.lineJoin = 'round';
+    context.lineCap = 'square';
+    context.beginPath();
+    context.moveTo(points[0][0], points[0][1]);
+    for (const [x, y] of points.slice(1)) context.lineTo(x, y);
+    context.stroke();
+  };
+  const polygon = (points: [number, number][], fill: string, stroke: string | null = outline, width = 3) => {
+    context.beginPath();
+    context.moveTo(points[0][0], points[0][1]);
+    for (const [x, y] of points.slice(1)) context.lineTo(x, y);
+    context.closePath();
+    context.fillStyle = fill;
+    context.fill();
+    if (stroke) {
+      context.strokeStyle = stroke;
+      context.lineWidth = width;
+      context.lineJoin = 'round';
+      context.stroke();
+    }
+  };
+  if (handType === 'shield') {
+    context.fillStyle = outline;
+    context.strokeStyle = bronze;
+    context.lineWidth = 5;
+    context.beginPath(); context.ellipse(61, 57, 48, 51, 0, 0, Math.PI * 2); context.fill(); context.stroke();
+    context.fillStyle = '#765637'; context.strokeStyle = '#edc776'; context.lineWidth = 3;
+    context.beginPath(); context.ellipse(61, 57, 40, 43, 0, 0, Math.PI * 2); context.fill(); context.stroke();
+    for (const x of [31, 46, 61, 76, 89]) line([[x, 19], [x + 2, 94]], '#9c7445', 3);
+    polygon([[49, 29], [70, 30], [78, 83], [57, 88]], '#543a2a', bronze, 4);
+    context.fillStyle = '#2c211d'; context.strokeStyle = '#d2aa65'; context.lineWidth = 2;
+    context.fillRect(58, 39, 12, 43); context.strokeRect(58, 39, 12, 43);
+    line([[54, 59], [79, 57]], '#d2aa65', 3);
+    polygon([[42, 70], [50, 61], [61, 62], [68, 72], [65, 85], [56, 92], [46, 86]], skin, outline, 3);
+    line([[47, 72], [60, 75], [66, 73]], skinLight, 3);
+  } else if (handType === 'focus') {
+    context.fillStyle = bronze; context.strokeStyle = outline; context.lineWidth = 4;
+    context.beginPath(); context.ellipse(81, 53, 27, 28, 0, 0, Math.PI * 2); context.fill(); context.stroke();
+    context.fillStyle = '#5b7365'; context.strokeStyle = '#edc776'; context.lineWidth = 3;
+    context.beginPath(); context.ellipse(81, 53, 17, 18, 0, 0, Math.PI * 2); context.fill(); context.stroke();
+    polygon([[81, 41], [93, 53], [81, 66], [69, 53]], '#eef0d5', null);
+    line([[54, 72], [40, 109]], '#f0e4c6', 4);
+  } else if (handType === 'twoHandGrip' || handType === 'spear') {
+    line([[55, 145], [84, 22]], '#76502f', 11);
+    line([[56, 140], [84, 25]], '#aa7d4a', 3);
+    if (handType === 'spear') {
+      polygon([[78, 40], [86, 7], [103, 34], [91, 46]], '#c9c7b9', outline, 3);
+      line([[80, 40], [96, 44]], bronze, 4);
+    }
+  } else if (handType === 'bowDraw') {
+    line([[58, 19], [73, 59], [62, 101]], '#76502f', 7);
+    line([[58, 19], [65, 60], [59, 101]], '#f0e4c6', 2);
+    line([[27, 59], [94, 59]], '#c9c7b9', 4);
+    polygon([[96, 59], [82, 52], [82, 66]], '#f4ead0', null);
+  } else if (handType !== 'empty') {
+    line([[58, 141], [84, 29]], '#76502f', 8);
+    if (handType === 'sword' || handType === 'dagger') {
+      polygon([[78, 51], [42, 18], [51, 15], [89, 48]], '#c9c7b9', outline, 3);
+      line([[73, 49], [45, 21]], '#f4ead0', 2);
+    }
+    line([[61, 93], [86, 87]], bronze, 5);
+  }
+  polygon([[0, 122], [20, 107], [40, 109], [55, 126], [50, 159], [0, 159]], sleeve, outline, 4);
+  polygon([[6, 129], [22, 116], [39, 118], [48, 131], [45, 151], [7, 153]], sleeveLight, null);
+  line([[7, 142], [46, 138]], bronze, 4);
+  line([[8, 148], [45, 144]], '#edc776', 2);
+  if (handType !== 'shield') {
+    polygon([[31, 129], [39, 110], [52, 99], [67, 101], [75, 113], [68, 127], [50, 137], [40, 140]], skin, outline, 3);
+    line([[38, 124], [53, 108], [67, 111]], skinLight, 3);
+    polygon([[64, 92], [72, 82], [84, 83], [94, 92], [92, 107], [83, 117], [71, 111], [66, 103]], skin, outline, 3);
+    line([[70, 94], [85, 97], [93, 94]], skinLight, 3);
+  } else {
+    polygon([[29, 129], [37, 105], [48, 84], [56, 80], [64, 86], [59, 105], [48, 132], [40, 141]], skin, outline, 3);
+    polygon([[48, 67], [54, 57], [65, 59], [72, 69], [68, 82], [58, 86], [48, 78]], skin, outline, 3);
+    line([[52, 67], [64, 70], [70, 68]], skinLight, 3);
   }
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;

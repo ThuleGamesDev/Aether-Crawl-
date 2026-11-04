@@ -12,6 +12,14 @@ This deterministic Pillow script has no network dependency and uses only local d
 
 The wall generator can be run on its own with `python scripts/generate-wall-textures.py`; `--output-dir` writes an isolated copy for deterministic checks or previews.
 
+First-person weapon and hand sprites use a separate deterministic local authoring script:
+
+```bash
+python scripts/generate-viewmodel-assets.py
+```
+
+It writes 128×160 main-hand and offhand sheets, a 128×128 Aspis interior, and `docs/previews/R6F5_VIEWMODEL_ASSET_SHEET.png`. It uses only local Pillow drawing primitives; the runtime loads the resulting PNG files and keeps a larger-canvas procedural fallback for load failures.
+
 ## Registry and ownership
 
 - `data/assetRegistry.ts` maps stable gameplay visual IDs to local files.
@@ -23,4 +31,4 @@ The wall generator can be run on its own with `python scripts/generate-wall-text
 
 ## Adding assets
 
-Keep a 64 px character source sheet unless the sprite is a tiny VFX glyph or first-person weapon sheet. Use transparent backgrounds for billboards and props. Add stable visual IDs to the registry and generator together, then extend `tests/assetRegistry.test.ts` so every local path and registered enemy visual is checked.
+Keep a 64 px character source sheet unless the sprite is a tiny VFX glyph or first-person weapon sheet. First-person weapon sheets use the R6F5 128×160 canvas; the Aspis interior uses 128×128. Use transparent backgrounds for billboards and props. Add stable visual IDs to the registry and generator together, then extend `tests/assetRegistry.test.ts` so every local path and registered enemy visual is checked.
