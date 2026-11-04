@@ -8,7 +8,9 @@ The active renderer loads local pixel-art PNGs from `public/assets/maze/` throug
 python scripts/generate-maze-assets.py
 ```
 
-This deterministic Pillow script has no network dependency and uses only local drawing primitives. It produces hard-edged PNGs at 32–96 px source dimensions. Three.js uses nearest-neighbor sampling, disables mipmaps for these sprites, and the WebGL canvas is upscaled with pixelated CSS rendering.
+This deterministic Pillow script has no network dependency and uses only local drawing primitives. It also runs `scripts/generate-wall-textures.py`, which authors three 128×320 wall variants for each depth theme. Palace Foundations floors and ceilings use a 256×256 four-cell texture patch so world geometry can repeat their authored tile layout at a consistent scale. Three.js uses nearest-neighbor sampling, disables mipmaps for these pixel-art surfaces, and the WebGL canvas is upscaled with pixelated CSS rendering.
+
+The wall generator can be run on its own with `python scripts/generate-wall-textures.py`; `--output-dir` writes an isolated copy for deterministic checks or previews.
 
 ## Registry and ownership
 

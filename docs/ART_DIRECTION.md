@@ -13,6 +13,9 @@ The Labyrinth is an ancient Cretan structure interpreted through a deliberate fa
 - Use contrast to keep pathways, telegraphs, threats, and loot legible in dim spaces.
 - Keep interface text and icons sharp and high-resolution independently of the pixelated 3D render.
 - Favor local static pixel-art assets; procedural pixel textures are a fallback and a supporting material layer, not the full art direction.
+- Give Palace Foundations a large-form hierarchy: calm limestone courses first, occasional ochre fresco or carved relief panels second, and only sparse cracks and chisel wear at close range.
+- Keep wall accents deterministic and clustered by room-scale patches. Floors use varied slab layouts across a four-cell authored patch; ceilings use subdued coffers with less contrast than the walking path.
+- Repeat textures at their authored world scale with nearest filtering. Do not stretch a small tile over an entire room or use high-frequency pixel noise as a substitute for material design.
 
 ### Avoid
 

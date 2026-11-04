@@ -154,6 +154,48 @@ describe('R6A labyrinth architecture, rooms, and lighting', () => {
     }
   });
 
+  it('tiles Palace surface patches at world scale and keeps instanced walls aligned with collision cells', () => {
+    setCanvasDocumentMock();
+    const world = createDungeonWorld(1, 90231);
+    expect(world.biome).toBe('dungeon');
+    const mapBefore = world.map.map(row => [...row]);
+    const assets = new AssetManager();
+    const geometry = new WorldGeometry(world, assets);
+    const columns = world.map[0].length;
+    const rows = world.map.length;
+    const floor = geometry.group.getObjectByName('DungeonFloor') as THREE.Mesh;
+    const ceiling = geometry.group.getObjectByName('DungeonCeiling') as THREE.Mesh;
+    for (const surface of [floor, ceiling]) {
+      const material = surface.material as THREE.MeshStandardMaterial;
+      expect(material.map?.wrapS).toBe(THREE.RepeatWrapping);
+      expect(material.map?.wrapT).toBe(THREE.RepeatWrapping);
+      expect(material.map?.repeat.x).toBeCloseTo(columns / 4);
+      expect(material.map?.repeat.y).toBeCloseTo(rows / 4);
+      const uv = surface.geometry.getAttribute('uv');
+      const values = Array.from(uv.array as ArrayLike<number>);
+      expect(Math.min(...values)).toBe(0);
+      expect(Math.max(...values)).toBe(1);
+    }
+
+    const wallMeshes = geometry.group.children.filter(child => child.name.startsWith('DungeonWalls_V')) as THREE.InstancedMesh[];
+    expect(wallMeshes.length).toBeGreaterThan(0);
+    expect(wallMeshes.length).toBeLessThanOrEqual(3);
+    const matrix = new THREE.Matrix4();
+    for (const mesh of wallMeshes) for (let index = 0; index < mesh.count; index += 1) {
+      mesh.getMatrixAt(index, matrix);
+      const center = new THREE.Vector3().setFromMatrixPosition(matrix);
+      const x = Math.floor(center.x);
+      const z = Math.floor(center.z);
+      expect(center.x).toBeCloseTo(x + 0.5);
+      expect(center.z).toBeCloseTo(z + 0.5);
+      expect(world.map[z][x]).toBe(TileType.WALL);
+      expect(canOccupyWorldPosition(world.map, center.x, center.z, 0.1)).toBe(false);
+    }
+    expect(world.map).toEqual(mapBefore);
+    geometry.dispose();
+    assets.dispose();
+  });
+
   it('mounts torches on real wall faces, bounds and flickers local lights, and disposes geometry', () => {
     setCanvasDocumentMock();
     const world = createDungeonWorld(3, 88123);
